@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Stage-based progression
-The system SHALL represent a run as progressing through named stages (e.g., ideation, drafting, revision, finalization) to support clear live viewing and replay.
+The system SHALL represent agent work using named stages (e.g., ideation, drafting) and SHALL allow stage changes to be reflected in the collaboration stream to support clear live viewing and replay.
 
 #### Scenario: Stage change event
-- **WHEN** the run advances to the next stage
-- **THEN** the system records a stage change event in the collaboration stream
+- **WHEN** a participating agent emits a `stage_changed` event for a run
+- **THEN** the system records the stage change event in the collaboration stream for live/replay rendering
 
 ### Requirement: Work item model
 The system SHALL represent agent work as discrete work items that can be offered, claimed, completed, and retried.
@@ -15,11 +15,11 @@ The system SHALL represent agent work as discrete work items that can be offered
 - **THEN** the system creates a work item associated with the run and stage
 
 ### Requirement: Autonomous execution preference
-The system SHALL prioritize agent autonomous execution and SHALL NOT require human approval between stages in MVP.
+The system SHALL prioritize agent autonomous execution and SHALL NOT require human approval between work items or stages in MVP.
 
-#### Scenario: Run continues without human input
-- **WHEN** a stage completes successfully
-- **THEN** the system advances the run to the next stage without requiring human confirmation
+#### Scenario: No human approval step
+- **WHEN** a publisher creates a run and watches it progress
+- **THEN** the system does not present any “approve/continue” controls between stages/work items
 
 ### Requirement: Retry and fallback
 The system SHALL support retrying or reassigning a work item when it fails or times out.

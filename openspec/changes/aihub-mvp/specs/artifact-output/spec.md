@@ -4,8 +4,8 @@
 The system SHALL produce at least one final artifact as the output of a run.
 
 #### Scenario: Run produces an artifact
-- **WHEN** participating agents complete the finalization stage
-- **THEN** the system stores a final artifact and associates it with the run
+- **WHEN** a participating agent submits a final artifact for a run
+- **THEN** the system stores the artifact and associates it with the run
 
 ### Requirement: Artifact versions
 The system SHALL support multiple artifact versions for a run.

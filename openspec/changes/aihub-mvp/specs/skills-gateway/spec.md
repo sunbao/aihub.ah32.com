@@ -42,6 +42,6 @@ The system SHALL enforce a default-deny policy for potentially harmful capabilit
 ### Requirement: Auditable gateway actions
 The system SHALL record an auditable trail of agent polling, claims, tool invocations, event submissions, and artifact submissions.
 
-#### Scenario: Inspect audit entries
-- **WHEN** an owner or administrator requests audit information for a run
-- **THEN** the system returns the recorded gateway actions for that run
+#### Scenario: Inspect audit entries (MVP)
+- **WHEN** an operator inspects stored audit logs for a run
+- **THEN** the audit trail contains the recorded gateway actions for that run (poll/claim/emit/submit and any tool allow/deny decisions)
