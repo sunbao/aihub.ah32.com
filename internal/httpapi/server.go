@@ -994,7 +994,7 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// MVP: create a single initial work item and offer it to a matched set of agents.
-	workItemID, err := s.createInitialWorkItemAndOffers(ctx, tx, runID, req.RequiredTags)
+	workItemID, err := s.createInitialWorkItemAndOffers(ctx, tx, runID, userID, req.RequiredTags)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "matching failed"})
 		return
@@ -1009,8 +1009,8 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, createRunResponse{RunID: runID.String()})
 }
 
-func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, runID uuid.UUID, requiredTags []string) (uuid.UUID, error) {
-	agentIDs, err := s.matchAgents(ctx, tx, requiredTags, s.matchingParticipantCount)
+func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, runID uuid.UUID, publisherUserID uuid.UUID, requiredTags []string) (uuid.UUID, error) {
+	agentIDs, err := s.matchAgentsForRun(ctx, tx, publisherUserID, requiredTags, s.matchingParticipantCount)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -1033,6 +1033,116 @@ func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, r
 		}
 	}
 	return workItemID, nil
+}
+
+func (s server) matchAgentsForRun(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, publisherUserID uuid.UUID, requiredTags []string, limit int) ([]uuid.UUID, error) {
+	// Policy (MVP):
+	// - Prefer including publisher-owned eligible agents (so a solo user can publish + have their own agents participate).
+	// - Fill remaining slots with other eligible agents for exploration.
+	// - Still respects requiredTags and agent enabled status.
+	requiredTags = normalizeTags(requiredTags)
+	if limit < 1 {
+		limit = 1
+	}
+
+	ownerCandidates, err := s.matchOwnerAgents(ctx, q, publisherUserID, requiredTags)
+	if err != nil {
+		return nil, err
+	}
+	shuffleUUIDs(ownerCandidates)
+	if len(ownerCandidates) > limit {
+		return ownerCandidates[:limit], nil
+	}
+
+	remaining := limit - len(ownerCandidates)
+	otherCandidates, err := s.matchNonOwnerAgents(ctx, q, publisherUserID, requiredTags)
+	if err != nil {
+		return nil, err
+	}
+	shuffleUUIDs(otherCandidates)
+	if remaining > len(otherCandidates) {
+		remaining = len(otherCandidates)
+	}
+
+	out := make([]uuid.UUID, 0, limit)
+	out = append(out, ownerCandidates...)
+	out = append(out, otherCandidates[:remaining]...)
+	if len(out) == 0 {
+		return nil, errors.New("no eligible agents")
+	}
+	return out, nil
+}
+
+func (s server) matchOwnerAgents(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, ownerID uuid.UUID, requiredTags []string) ([]uuid.UUID, error) {
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if len(requiredTags) == 0 {
+		rows, err = q.Query(ctx, `select id from agents where status='enabled' and owner_id=$1`, ownerID)
+	} else {
+		rows, err = q.Query(ctx, `
+			select a.id
+			from agents a
+			join agent_tags t on t.agent_id = a.id
+			where a.status='enabled' and a.owner_id=$1 and t.tag = any($2)
+			group by a.id
+			having count(distinct t.tag) = $3
+		`, ownerID, requiredTags, len(requiredTags))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func (s server) matchNonOwnerAgents(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, ownerID uuid.UUID, requiredTags []string) ([]uuid.UUID, error) {
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if len(requiredTags) == 0 {
+		rows, err = q.Query(ctx, `select id from agents where status='enabled' and owner_id <> $1`, ownerID)
+	} else {
+		rows, err = q.Query(ctx, `
+			select a.id
+			from agents a
+			join agent_tags t on t.agent_id = a.id
+			where a.status='enabled' and a.owner_id <> $1 and t.tag = any($2)
+			group by a.id
+			having count(distinct t.tag) = $3
+		`, ownerID, requiredTags, len(requiredTags))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 func (s server) matchAgents(ctx context.Context, q interface {
@@ -1741,7 +1851,7 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 		Goal        string `json:"goal"`
 		Constraints string `json:"constraints"`
 	}
-	var offers []offerDTO
+	offers := make([]offerDTO, 0)
 	for rows.Next() {
 		var (
 			workItemID uuid.UUID
