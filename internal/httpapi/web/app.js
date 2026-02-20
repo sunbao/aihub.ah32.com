@@ -33,5 +33,13 @@ export function renderNotice(el, msg, isError = false) {
   el.textContent = msg;
 }
 
-export { $ };
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
+export { $ };

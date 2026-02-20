@@ -41,15 +41,45 @@
       </div>
 
       <div class="card">
+        <div class="card-title">一键接入 OpenClaw（复制命令）</div>
+        <div class="muted">创建 Agent 后，把下面命令复制到装有 OpenClaw 的机器执行即可完成安装与配置（会写入 OpenClaw 配置并自动备份）。</div>
+        <label>BaseUrl（固定/默认）</label>
+        <input id="baseUrl" class="mono" value="http://192.168.1.154:8080" />
+        <label>npx 命令</label>
+        <textarea id="npxCmd" class="mono" readonly></textarea>
+        <div class="row" style="margin-top:12px">
+          <button id="btnCopyNpx" class="btn" type="button">一键复制命令</button>
+          <button id="btnCopyKey" class="btn secondary" type="button">复制 Agent API Key</button>
+        </div>
+        <div id="noticeNpx" class="notice" style="margin-top:12px">提示：需要 Agent API Key（创建 Agent 后会自动填入）。</div>
+      </div>
+
+      <div class="card">
         <div class="card-title">我的 Agents</div>
         <div id="agents"></div>
       </div>
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, renderJSON, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, getStored, setStored, renderJSON, renderNotice, copyText } from "/ui/app.js";
       const KEY = "aihub_user_api_key";
       $("userKey").value = getStored(KEY);
+      let lastAgentKey = "";
+
+      function updateNpxCmd() {
+        const baseUrl = $("baseUrl").value.trim() || "http://192.168.1.154:8080";
+        const apiKey = (lastAgentKey || "").trim();
+        if (!apiKey) {
+          $("npxCmd").value = "";
+          renderNotice($("noticeNpx"), "提示：需要 Agent API Key（创建 Agent 后会自动填入）。");
+          return;
+        }
+        const cmd = `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl}`;
+        $("npxCmd").value = cmd;
+        renderNotice($("noticeNpx"), "已生成命令：复制后在目标机器运行。");
+      }
+
+      $("baseUrl").addEventListener("input", updateNpxCmd);
 
       $("btnCreateUser").addEventListener("click", async () => {
         try {
@@ -138,6 +168,8 @@
           const res = await apiFetch("/v1/agents", { method: "POST", apiKey, body: { name, description, tags }});
           renderJSON($("outAgent"), res);
           renderNotice($("noticeAgent"), "创建成功。Agent API Key 只显示一次，请保存。");
+          lastAgentKey = res.api_key || "";
+          updateNpxCmd();
           await listAgents();
         } catch (e) {
           renderJSON($("outAgent"), { status: e.status, error: e.message, body: e.body });
@@ -145,9 +177,27 @@
         }
       });
 
+      $("btnCopyNpx").addEventListener("click", async () => {
+        const cmd = $("npxCmd").value.trim();
+        if (!cmd) {
+          renderNotice($("noticeNpx"), "没有可复制的命令：请先创建 Agent。", true);
+          return;
+        }
+        const ok = await copyText(cmd);
+        renderNotice($("noticeNpx"), ok ? "已复制命令到剪贴板。" : "复制失败：请手动复制。", !ok);
+      });
+
+      $("btnCopyKey").addEventListener("click", async () => {
+        if (!lastAgentKey) {
+          renderNotice($("noticeNpx"), "没有可复制的 Agent API Key：请先创建 Agent。", true);
+          return;
+        }
+        const ok = await copyText(lastAgentKey);
+        renderNotice($("noticeNpx"), ok ? "已复制 Agent API Key。" : "复制失败：请手动复制。", !ok);
+      });
+
       // Auto refresh list if key is already stored.
       if ($("userKey").value.trim()) listAgents();
     </script>
   </body>
 </html>
-
