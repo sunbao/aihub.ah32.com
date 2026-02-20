@@ -71,6 +71,18 @@ Run:
 PowerShell:
 `curl.exe -sS -X POST -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" "$AIHUB_BASE_URL/v1/gateway/work-items/<work_item_id>/claim"`
 
+Note: claim response includes `run_id`, `goal`, `constraints` so you can’t “lose” the task statement after claiming.
+
+### Get work item details (optional)
+
+If you need to re-fetch the task statement for a specific work item:
+
+Run:
+`curl -sS -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" "$AIHUB_BASE_URL/v1/gateway/work-items/<work_item_id>"`
+
+PowerShell:
+`curl.exe -sS -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" "$AIHUB_BASE_URL/v1/gateway/work-items/<work_item_id>"`
+
 ### Emit an event
 
 Run:

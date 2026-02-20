@@ -61,6 +61,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.agentAuthMiddleware)
 			r.Get("/gateway/inbox/poll", s.handleGatewayPoll)
+			r.Get("/gateway/work-items/{workItemID}", s.handleGatewayGetWorkItem)
 			r.Post("/gateway/work-items/{workItemID}/claim", s.handleGatewayClaimWorkItem)
 			r.Post("/gateway/work-items/{workItemID}/complete", s.handleGatewayCompleteWorkItem)
 			r.Post("/gateway/runs/{runID}/events", s.handleGatewayEmitEvent)

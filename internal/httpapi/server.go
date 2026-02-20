@@ -1842,8 +1842,91 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"agent_id": agentID.String(), "offers": offers})
 }
 
+type workItemDetailDTO struct {
+	WorkItemID  string `json:"work_item_id"`
+	RunID       string `json:"run_id"`
+	Stage       string `json:"stage"`
+	Kind        string `json:"kind"`
+	Status      string `json:"status"`
+	Goal        string `json:"goal"`
+	Constraints string `json:"constraints"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := agentIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	workItemID, err := uuid.Parse(chi.URLParam(r, "workItemID"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work_item_id"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	// Must be offered to this agent.
+	var offered bool
+	if err := s.db.QueryRow(ctx, `select true from work_item_offers where work_item_id=$1 and agent_id=$2`, workItemID, agentID).Scan(&offered); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not offered"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "offer check failed"})
+		return
+	}
+
+	var (
+		runID       uuid.UUID
+		stage       string
+		kind        string
+		status      string
+		createdAt   time.Time
+		updatedAt   time.Time
+		goal        string
+		constraints string
+	)
+	err = s.db.QueryRow(ctx, `
+		select wi.run_id, wi.stage, wi.kind, wi.status, wi.created_at, wi.updated_at, r.goal, r.constraints
+		from work_items wi
+		join runs r on r.id = wi.run_id
+		where wi.id = $1
+	`, workItemID).Scan(&runID, &stage, &kind, &status, &createdAt, &updatedAt, &goal, &constraints)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	s.audit(ctx, "agent", agentID, "work_item_read", map[string]any{"work_item_id": workItemID.String(), "run_id": runID.String()})
+	writeJSON(w, http.StatusOK, workItemDetailDTO{
+		WorkItemID:  workItemID.String(),
+		RunID:       runID.String(),
+		Stage:       stage,
+		Kind:        kind,
+		Status:      status,
+		Goal:        goal,
+		Constraints: constraints,
+		CreatedAt:   createdAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   updatedAt.UTC().Format(time.RFC3339),
+	})
+}
+
 type claimResponse struct {
 	WorkItemID     string `json:"work_item_id"`
+	RunID          string `json:"run_id"`
+	Stage          string `json:"stage"`
+	Kind           string `json:"kind"`
+	Status         string `json:"status"`
+	Goal           string `json:"goal"`
+	Constraints    string `json:"constraints"`
 	LeaseExpiresAt string `json:"lease_expires_at"`
 }
 
@@ -1908,6 +1991,23 @@ func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	var (
+		runID       uuid.UUID
+		stage       string
+		kind        string
+		goal        string
+		constraints string
+	)
+	if err := tx.QueryRow(ctx, `
+		select wi.run_id, wi.stage, wi.kind, r.goal, r.constraints
+		from work_items wi
+		join runs r on r.id = wi.run_id
+		where wi.id = $1
+	`, workItemID).Scan(&runID, &stage, &kind, &goal, &constraints); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "work item lookup failed"})
+		return
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
@@ -1916,6 +2016,12 @@ func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Reques
 	s.audit(ctx, "agent", agentID, "work_item_claimed", map[string]any{"work_item_id": workItemID.String(), "lease_expires_at": expiresAt.Format(time.RFC3339)})
 	writeJSON(w, http.StatusOK, claimResponse{
 		WorkItemID:     workItemID.String(),
+		RunID:          runID.String(),
+		Stage:          stage,
+		Kind:           kind,
+		Status:         "claimed",
+		Goal:           goal,
+		Constraints:    constraints,
 		LeaseExpiresAt: expiresAt.Format(time.RFC3339),
 	})
 }
