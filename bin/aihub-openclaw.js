@@ -4,11 +4,12 @@ const path = require("path");
 const os = require("os");
 
 function parseArgs(argv) {
-  const out = { apiKey: "", baseUrl: "http://192.168.1.154:8080" };
+  const out = { apiKey: "", baseUrl: "http://192.168.1.154:8080", skillsDir: "" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--apiKey" || a === "--api-key") out.apiKey = argv[++i] || "";
     else if (a === "--baseUrl" || a === "--base-url") out.baseUrl = argv[++i] || out.baseUrl;
+    else if (a === "--skillsDir" || a === "--skills-dir") out.skillsDir = argv[++i] || "";
     else if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
@@ -41,6 +42,18 @@ function ensureObject(v) {
   return {};
 }
 
+function firstExistingDir(dirs) {
+  for (const d of dirs) {
+    if (!d) continue;
+    try {
+      if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
+    } catch {
+      // ignore
+    }
+  }
+  return "";
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -54,9 +67,10 @@ function main() {
         "Options:",
         "  --apiKey <key>           (required) AIHub Agent API key",
         "  --baseUrl <url>          (optional) default: http://192.168.1.154:8080",
+        "  --skillsDir <dir>        (optional) override OpenClaw skills directory",
         "",
         "What it does:",
-        "  - Installs skill to: %USERPROFILE%\\openclaw\\skills\\aihub-connector",
+        "  - Installs skill to your OpenClaw workspace skills directory (auto-detected)",
         "  - Writes config to: %USERPROFILE%\\.openclaw\\openclaw.json",
         ""
       ].join("\n")
@@ -71,8 +85,6 @@ function main() {
   if (!/^https?:\/\//i.test(baseUrl)) die("Invalid --baseUrl: must start with http:// or https://");
 
   const home = os.homedir();
-  const openclawRoot = path.join(home, "openclaw");
-  const skillDst = path.join(openclawRoot, "skills", "aihub-connector");
   const cfgPath = path.join(home, ".openclaw", "openclaw.json");
 
   if (!fs.existsSync(cfgPath)) {
@@ -83,8 +95,6 @@ function main() {
   const skillSrc = path.join(repoRoot, "openclaw", "skills", "aihub-connector");
   if (!fs.existsSync(skillSrc)) die("Skill source missing in package: " + skillSrc);
 
-  copyDir(skillSrc, skillDst);
-
   const raw = fs.readFileSync(cfgPath, "utf8");
   let cfg;
   try {
@@ -93,6 +103,34 @@ function main() {
     die("Failed to parse OpenClaw config JSON: " + cfgPath);
   }
 
+  const workspace = cfg?.agents?.defaults?.workspace || "";
+  const autoSkillsDir =
+    firstExistingDir([
+      (args.skillsDir || "").trim(),
+      workspace ? path.join(workspace, "skills") : "",
+      path.join(home, "clawd", "skills"),
+      path.join(home, "openclaw", "skills"),
+      path.join(home, ".openclaw", "skills")
+    ]) || "";
+
+  if (!autoSkillsDir) {
+    die(
+      [
+        "Unable to determine OpenClaw skills directory.",
+        "Tried:",
+        "  - --skillsDir",
+        workspace ? `  - ${path.join(workspace, "skills")}` : "  - <workspace>/skills (workspace missing in config)",
+        `  - ${path.join(home, "clawd", "skills")}`,
+        `  - ${path.join(home, "openclaw", "skills")}`,
+        `  - ${path.join(home, ".openclaw", "skills")}`,
+        "",
+        "Fix: pass --skillsDir <dir> explicitly."
+      ].join("\n")
+    );
+  }
+
+  const skillDst = path.join(autoSkillsDir, "aihub-connector");
+
   cfg.skills = ensureObject(cfg.skills);
   cfg.skills.entries = ensureObject(cfg.skills.entries);
 
@@ -100,6 +138,8 @@ function main() {
     enabled: true,
     config: { baseUrl, apiKey }
   };
+
+  copyDir(skillSrc, skillDst);
 
   const backup = backupFile(cfgPath);
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -117,4 +157,3 @@ function main() {
 }
 
 main();
-
