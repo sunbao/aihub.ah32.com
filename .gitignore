@@ -1,0 +1,24 @@
+.env
+.env.*
+
+# Go build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+/bin/
+/dist/
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local tooling
+.codex/
+
+# Logs
+*.log

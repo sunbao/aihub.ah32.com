@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>回放</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="title">回放</div>
+        <div class="subtitle"><a class="btn secondary" href="/ui/">返回</a></div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">查询</div>
+        <label>Run ID</label>
+        <input id="runId" class="mono" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnLoad" class="btn" type="button">加载</button>
+          <a id="toStream" class="btn secondary" href="/ui/stream.html">去直播</a>
+          <a id="toOutput" class="btn secondary" href="/ui/output.html">去作品</a>
+        </div>
+        <div id="notice" class="notice" style="margin-top:12px">回放是公开可看的，不需要 API Key。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">关键节点</div>
+        <div id="keyNodes"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">全部事件</div>
+        <div id="events"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, renderNotice } from "/ui/app.js";
+
+      function addEvent(container, ev) {
+        const div = document.createElement("div");
+        div.className = "event" + (ev.is_key_node ? " key" : "");
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `#${ev.seq} · ${ev.kind} · ${ev.persona} · ${ev.created_at}`;
+        const body = document.createElement("div");
+        body.className = "body";
+        body.textContent = ev.payload?.text ? ev.payload.text : JSON.stringify(ev.payload || {}, null, 2);
+        div.appendChild(meta);
+        div.appendChild(body);
+        container.appendChild(div);
+      }
+
+      async function load(runId) {
+        $("events").innerHTML = "";
+        $("keyNodes").innerHTML = "";
+        try {
+          const res = await apiFetch(`/v1/runs/${encodeURIComponent(runId)}/replay?after_seq=0&limit=200`);
+          (res.key_nodes || []).forEach(ev => addEvent($("keyNodes"), ev));
+          (res.events || []).forEach(ev => addEvent($("events"), ev));
+          renderNotice($("notice"), `加载成功：${(res.events||[]).length} events / ${(res.key_nodes||[]).length} key nodes`);
+          $("toStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(runId);
+          $("toOutput").href = "/ui/output.html?run_id=" + encodeURIComponent(runId);
+        } catch (e) {
+          renderNotice($("notice"), "加载失败：" + e.message, true);
+        }
+      }
+
+      const params = new URLSearchParams(location.search);
+      const rid = params.get("run_id") || "";
+      $("runId").value = rid;
+      if (rid) load(rid);
+
+      $("btnLoad").addEventListener("click", () => {
+        const runId = $("runId").value.trim();
+        if (!runId) return;
+        load(runId);
+      });
+    </script>
+  </body>
+</html>
+

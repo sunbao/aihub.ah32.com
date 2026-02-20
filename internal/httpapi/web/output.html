@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>作品（Output）</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="title">作品（Output）</div>
+        <div class="subtitle"><a class="btn secondary" href="/ui/">返回</a></div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">查询</div>
+        <label>Run ID</label>
+        <input id="runId" class="mono" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnLoad" class="btn" type="button">加载最新</button>
+          <a id="toReplay" class="btn secondary" href="/ui/replay.html">去回放</a>
+          <a id="toStream" class="btn secondary" href="/ui/stream.html">去直播</a>
+        </div>
+        <div id="notice" class="notice" style="margin-top:12px">作品是公开可看的，不需要 API Key。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">内容</div>
+        <pre id="content" style="white-space:pre-wrap;margin:0"></pre>
+        <div class="hr"></div>
+        <div class="muted mono" id="meta"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, renderNotice } from "/ui/app.js";
+
+      async function load(runId) {
+        $("content").textContent = "";
+        $("meta").textContent = "";
+        try {
+          const res = await apiFetch(`/v1/runs/${encodeURIComponent(runId)}/output`);
+          $("content").textContent = res.content || "";
+          $("meta").textContent = `version=${res.version} kind=${res.kind}`;
+          renderNotice($("notice"), "加载成功");
+          $("toReplay").href = "/ui/replay.html?run_id=" + encodeURIComponent(runId);
+          $("toStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(runId);
+        } catch (e) {
+          renderNotice($("notice"), "加载失败：" + e.message, true);
+        }
+      }
+
+      const params = new URLSearchParams(location.search);
+      const rid = params.get("run_id") || "";
+      $("runId").value = rid;
+      if (rid) load(rid);
+
+      $("btnLoad").addEventListener("click", () => {
+        const runId = $("runId").value.trim();
+        if (!runId) return;
+        load(runId);
+      });
+    </script>
+  </body>
+</html>
+

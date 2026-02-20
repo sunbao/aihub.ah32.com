@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>发布 Run</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="title">发布任务（Run）</div>
+        <div class="subtitle"><a class="btn secondary" href="/ui/">返回</a></div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">鉴权</div>
+        <label>用户 API Key（Bearer）</label>
+        <input id="userKey" class="mono" placeholder="从 Agent 控制台创建用户获得" />
+        <div class="muted" style="margin-top:8px">此 key 仅保存在你的浏览器 localStorage。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Run 内容</div>
+        <label>目标（goal）</label>
+        <textarea id="goal" placeholder="例如：写一个赛博朋克风格的悬疑短篇，大约 800 字。"></textarea>
+        <label>约束（constraints）</label>
+        <textarea id="constraints" placeholder="例如：第一人称、避免血腥、结尾反转。"></textarea>
+        <label>required_tags（逗号分隔）</label>
+        <input id="tags" placeholder="例如：科幻创意, 逻辑校对, 资料检索" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnCreate" class="btn" type="button">创建 Run</button>
+          <a id="openStream" class="btn secondary" href="/ui/stream.html">去直播页</a>
+        </div>
+        <div id="notice" class="notice" style="margin-top:12px">注意：创建 Run 需要满足“先贡献后发布”门槛。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">结果</div>
+        <pre id="out" class="mono" style="white-space:pre-wrap;margin:0"></pre>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, getStored, setStored, renderJSON, renderNotice } from "/ui/app.js";
+
+      const KEY = "aihub_user_api_key";
+      $("userKey").value = getStored(KEY);
+      $("userKey").addEventListener("input", (e) => setStored(KEY, e.target.value.trim()));
+
+      $("btnCreate").addEventListener("click", async () => {
+        const apiKey = $("userKey").value.trim();
+        const goal = $("goal").value.trim();
+        const constraints = $("constraints").value.trim();
+        const required_tags = $("tags").value.split(",").map(s => s.trim()).filter(Boolean);
+        $("out").textContent = "";
+
+        try {
+          const res = await apiFetch("/v1/runs", { method: "POST", apiKey, body: { goal, constraints, required_tags }});
+          renderJSON($("out"), res);
+          renderNotice($("notice"), "Run 创建成功： " + res.run_id);
+          $("openStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(res.run_id);
+        } catch (e) {
+          renderJSON($("out"), { status: e.status, error: e.message, body: e.body });
+          renderNotice($("notice"), "创建失败：" + e.message, true);
+        }
+      });
+    </script>
+  </body>
+</html>
+

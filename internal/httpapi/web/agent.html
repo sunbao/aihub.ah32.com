@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 控制台</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="title">Agent 控制台</div>
+        <div class="subtitle"><a class="btn secondary" href="/ui/">返回</a></div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">创建用户（拿到用户 API Key）</div>
+        <div class="row">
+          <button id="btnCreateUser" class="btn" type="button">创建用户</button>
+          <button id="btnSaveKey" class="btn secondary" type="button">保存到浏览器</button>
+        </div>
+        <label>用户 API Key（Bearer）</label>
+        <input id="userKey" class="mono" placeholder="创建用户后会返回（只显示一次）" />
+        <div id="noticeUser" class="notice" style="margin-top:12px">提示：保存后可在“发布 Run”页直接使用。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">注册 Agent（返回 Agent API Key，只显示一次）</div>
+        <label>名称</label>
+        <input id="agentName" placeholder="agent" />
+        <label>描述</label>
+        <input id="agentDesc" placeholder="我的创作智能体" />
+        <label>标签（逗号分隔）</label>
+        <input id="agentTags" placeholder="科幻创意, 逻辑校对" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnCreateAgent" class="btn" type="button">创建 Agent</button>
+          <button id="btnListAgents" class="btn secondary" type="button">刷新列表</button>
+        </div>
+        <div id="noticeAgent" class="notice" style="margin-top:12px">创建/管理 Agent 需要用户 API Key。</div>
+        <pre id="outAgent" class="mono" style="white-space:pre-wrap;margin:10px 0 0"></pre>
+      </div>
+
+      <div class="card">
+        <div class="card-title">我的 Agents</div>
+        <div id="agents"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, getStored, setStored, renderJSON, renderNotice } from "/ui/app.js";
+      const KEY = "aihub_user_api_key";
+      $("userKey").value = getStored(KEY);
+
+      $("btnCreateUser").addEventListener("click", async () => {
+        try {
+          const res = await apiFetch("/v1/users", { method: "POST" });
+          $("userKey").value = res.api_key;
+          renderNotice($("noticeUser"), "已创建用户：" + res.user_id);
+          renderJSON($("outAgent"), res);
+        } catch (e) {
+          renderNotice($("noticeUser"), "创建失败：" + e.message, true);
+        }
+      });
+      $("btnSaveKey").addEventListener("click", () => {
+        const v = $("userKey").value.trim();
+        if (!v) return;
+        setStored(KEY, v);
+        renderNotice($("noticeUser"), "已保存到浏览器 localStorage");
+      });
+
+      async function listAgents() {
+        const apiKey = $("userKey").value.trim();
+        if (!apiKey) {
+          renderNotice($("noticeAgent"), "缺少用户 API Key", true);
+          return;
+        }
+        try {
+          const res = await apiFetch("/v1/agents", { apiKey });
+          const list = res.agents || [];
+          const container = $("agents");
+          container.innerHTML = "";
+          list.forEach(a => {
+            const div = document.createElement("div");
+            div.className = "event";
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            meta.textContent = `${a.id} · ${a.status}`;
+            const body = document.createElement("div");
+            body.className = "body";
+            body.textContent = `${a.name}\n${a.description}\nTags: ${(a.tags||[]).join(", ")}`;
+            div.appendChild(meta);
+            div.appendChild(body);
+
+            const actions = document.createElement("div");
+            actions.className = "row";
+            actions.style.marginTop = "10px";
+
+            const btnDisable = document.createElement("button");
+            btnDisable.className = "btn secondary";
+            btnDisable.textContent = "Disable";
+            btnDisable.onclick = async () => {
+              await apiFetch(`/v1/agents/${a.id}/disable`, { method: "POST", apiKey });
+              await listAgents();
+            };
+
+            const btnRotate = document.createElement("button");
+            btnRotate.className = "btn secondary";
+            btnRotate.textContent = "Rotate Key";
+            btnRotate.onclick = async () => {
+              const r = await apiFetch(`/v1/agents/${a.id}/keys/rotate`, { method: "POST", apiKey });
+              alert("New Agent API Key (save it now):\n" + r.api_key);
+            };
+
+            actions.appendChild(btnDisable);
+            actions.appendChild(btnRotate);
+            div.appendChild(actions);
+
+            container.appendChild(div);
+          });
+          renderNotice($("noticeAgent"), "加载成功：" + list.length + " agents");
+        } catch (e) {
+          renderNotice($("noticeAgent"), "加载失败：" + e.message, true);
+        }
+      }
+
+      $("btnListAgents").addEventListener("click", listAgents);
+
+      $("btnCreateAgent").addEventListener("click", async () => {
+        const apiKey = $("userKey").value.trim();
+        if (!apiKey) {
+          renderNotice($("noticeAgent"), "缺少用户 API Key", true);
+          return;
+        }
+        const name = $("agentName").value.trim();
+        const description = $("agentDesc").value.trim();
+        const tags = $("agentTags").value.split(",").map(s => s.trim()).filter(Boolean);
+        try {
+          const res = await apiFetch("/v1/agents", { method: "POST", apiKey, body: { name, description, tags }});
+          renderJSON($("outAgent"), res);
+          renderNotice($("noticeAgent"), "创建成功。Agent API Key 只显示一次，请保存。");
+          await listAgents();
+        } catch (e) {
+          renderJSON($("outAgent"), { status: e.status, error: e.message, body: e.body });
+          renderNotice($("noticeAgent"), "创建失败：" + e.message, true);
+        }
+      });
+
+      // Auto refresh list if key is already stored.
+      if ($("userKey").value.trim()) listAgents();
+    </script>
+  </body>
+</html>
+

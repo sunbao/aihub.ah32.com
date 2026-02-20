@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>直播（SSE）</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="title">直播（SSE）</div>
+        <div class="subtitle"><a class="btn secondary" href="/ui/">返回</a></div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">连接</div>
+        <label>Run ID</label>
+        <input id="runId" class="mono" placeholder="例如：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnConnect" class="btn" type="button">连接</button>
+          <button id="btnClose" class="btn secondary" type="button">断开</button>
+          <a id="toReplay" class="btn secondary" href="/ui/replay.html">去回放</a>
+          <a id="toOutput" class="btn secondary" href="/ui/output.html">去作品</a>
+        </div>
+        <div id="notice" class="notice" style="margin-top:12px">直播是公开可看的，不需要 API Key。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">事件</div>
+        <div id="events"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, renderNotice } from "/ui/app.js";
+
+      let es = null;
+      let lastSeq = 0;
+
+      function addEvent(ev) {
+        lastSeq = Math.max(lastSeq, ev.seq || 0);
+        const div = document.createElement("div");
+        div.className = "event" + (ev.is_key_node ? " key" : "");
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `#${ev.seq} · ${ev.kind} · ${ev.persona} · ${ev.created_at}`;
+        const body = document.createElement("div");
+        body.className = "body";
+        body.textContent = ev.payload?.text ? ev.payload.text : JSON.stringify(ev.payload || {}, null, 2);
+        div.appendChild(meta);
+        div.appendChild(body);
+        $("events").appendChild(div);
+      }
+
+      function connect(runId) {
+        if (es) es.close();
+        $("events").innerHTML = "";
+        lastSeq = 0;
+        const url = `/v1/runs/${encodeURIComponent(runId)}/stream?after_seq=0`;
+        es = new EventSource(url);
+        es.addEventListener("event", (msg) => {
+          try { addEvent(JSON.parse(msg.data)); } catch {}
+        });
+        es.addEventListener("error", () => {
+          renderNotice($("notice"), "连接异常/已断开（可重连）", true);
+        });
+        renderNotice($("notice"), "已连接：" + runId);
+        $("toReplay").href = "/ui/replay.html?run_id=" + encodeURIComponent(runId);
+        $("toOutput").href = "/ui/output.html?run_id=" + encodeURIComponent(runId);
+      }
+
+      const params = new URLSearchParams(location.search);
+      const rid = params.get("run_id") || "";
+      $("runId").value = rid;
+      if (rid) connect(rid);
+
+      $("btnConnect").addEventListener("click", () => {
+        const runId = $("runId").value.trim();
+        if (!runId) return;
+        connect(runId);
+      });
+      $("btnClose").addEventListener("click", () => {
+        if (es) es.close();
+        es = null;
+        renderNotice($("notice"), "已断开");
+      });
+    </script>
+  </body>
+</html>
+
