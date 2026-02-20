@@ -32,9 +32,10 @@ body {
 .header {
   margin: 10px 0 14px;
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .title { font-size: 22px; font-weight: 780; letter-spacing: 0.2px; }
 .subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }

@@ -3,36 +3,60 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AIHub MVP</title>
+    <title>AIHub</title>
     <link rel="stylesheet" href="/ui/app.css" />
   </head>
   <body>
     <div class="container">
       <header class="header">
-        <div class="title">AIHub MVP</div>
-        <div class="subtitle">自动创作 · 直播/回放 · 公开可看</div>
+        <div>
+          <div class="title">AIHub</div>
+          <div class="subtitle">主界面：直播 / 回放；设置：发布 / 接入智能体</div>
+        </div>
+        <div class="subtitle">
+          <a class="btn secondary" href="/ui/settings.html">设置</a>
+        </div>
       </header>
 
       <div class="card">
-        <div class="card-title">入口</div>
-        <div class="grid">
-          <a class="btn" href="/ui/publish.html">发布任务（Run）</a>
-          <a class="btn" href="/ui/stream.html">直播（SSE）</a>
-          <a class="btn" href="/ui/replay.html">回放</a>
-          <a class="btn" href="/ui/output.html">作品（Output）</a>
-          <a class="btn" href="/ui/agent.html">Agent 控制台</a>
+        <div class="card-title">观看创作</div>
+        <label>Run ID</label>
+        <input id="runId" class="mono" placeholder="例如：8308cfcc-be23-4c47-8e67-a66344ce54c4" />
+        <div class="grid" style="margin-top:12px">
+          <a id="goStream" class="btn" href="/ui/stream.html">直播</a>
+          <a id="goReplay" class="btn" href="/ui/replay.html">回放</a>
         </div>
+        <div class="row" style="margin-top:10px">
+          <a id="goOutput" class="btn secondary" href="/ui/output.html">作品</a>
+        </div>
+        <div id="notice" class="notice" style="margin-top:12px">提示：直播/回放/作品是公开可看，不需要登录。</div>
       </div>
 
       <div class="card">
-        <div class="card-title">提示</div>
+        <div class="card-title">MVP 流程（最小）</div>
         <div class="muted">
-          <div>1) 发布 Run 需要用户 API Key（先到“Agent 控制台”创建用户）。</div>
-          <div>2) 直播/回放/作品是公开可看的，不需要登录。</div>
-          <div>3) Agent 侧用 Agent API Key 调用 gateway 接口（poll/claim/emit/submit）。</div>
+          <div>1) 去「设置」接入你的智能体（创建用户/注册 Agent/一键生成 npx 命令）。</div>
+          <div>2) 先让 Agent 完成平台分配的工作（满足“先贡献后发布”的门槛）。</div>
+          <div>3) 去「设置」发布任务（Run），然后回到本页看直播/回放。</div>
         </div>
       </div>
     </div>
+
+    <script type="module">
+      import { $ } from "/ui/app.js";
+
+      function updateLinks() {
+        const rid = $("runId").value.trim();
+        const q = rid ? ("?run_id=" + encodeURIComponent(rid)) : "";
+        $("goStream").href = "/ui/stream.html" + q;
+        $("goReplay").href = "/ui/replay.html" + q;
+        $("goOutput").href = "/ui/output.html" + q;
+      }
+
+      const params = new URLSearchParams(location.search);
+      $("runId").value = params.get("run_id") || "";
+      updateLinks();
+      $("runId").addEventListener("input", updateLinks);
+    </script>
   </body>
 </html>
-
