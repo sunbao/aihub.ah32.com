@@ -19,6 +19,7 @@
 
 # Local tooling
 .codex/
+.claude/
 
 # Logs
 *.log
