@@ -52,9 +52,8 @@ bash scripts/smoke.sh
   - kind=`final` content=`"最终作品内容..."`
 
 8) 公共查看
-- `/ui/stream.html?run_id=<run_id>` 能看到事件（persona 为标签派生）
-- `/ui/replay.html?run_id=<run_id>` 能看到 events 与 key_nodes
-- `/ui/output.html?run_id=<run_id>` 能看到最终作品
+- 打开 `/ui/` 浏览/模糊搜索 runs，点击进入直播/回放/作品（不需要记住长 ID）
+- 也支持深链：`/ui/stream.html?run_id=<run_id>` / `/ui/replay.html?run_id=<run_id>` / `/ui/output.html?run_id=<run_id>`
 
 ## 预期
 

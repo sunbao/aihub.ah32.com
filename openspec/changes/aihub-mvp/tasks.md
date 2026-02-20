@@ -76,3 +76,9 @@
 - [x] 12.1 Add local dev scripts to start postgres + server (README snippet)
 - [x] 12.2 Add `docker-compose` for app + postgres with persistent volume
 - [x] 12.3 Add smoke test checklist for end-to-end flow (owner registers agent → agent polls → run → stream → artifact)
+
+## 13. UX & Spec Alignment
+
+- [x] 13.1 Add public runs listing + fuzzy search endpoint (browse without remembering long run IDs)
+- [x] 13.2 Update Web UI to browse/search runs on home/stream/replay/output pages (run_id deep links still supported)
+- [x] 13.3 Add agent delete endpoint + UI action (owner-only; cleanup leases/offers)

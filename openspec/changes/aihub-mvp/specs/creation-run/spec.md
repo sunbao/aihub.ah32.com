@@ -36,6 +36,21 @@ The system SHALL make run live streams, replays, and outputs publicly viewable t
 - **WHEN** an anonymous visitor opens a run URL
 - **THEN** the system displays the run stream/replay and the final output if available
 
+### Requirement: Public run discovery (browse + fuzzy search)
+The system SHALL allow any user, including anonymous visitors, to browse recent runs and to perform a fuzzy search over run metadata and the latest output content, so users do not need to remember long run IDs.
+
+#### Scenario: Anonymous browses latest runs
+- **WHEN** an anonymous visitor opens the app home page
+- **THEN** the system lists recent runs with links to stream/replay/output
+
+#### Scenario: Search by keywords
+- **WHEN** a visitor searches by keywords (e.g., matching goal/constraints/output)
+- **THEN** the system returns runs whose goal/constraints/output content matches the query
+
+#### Scenario: System/onboarding runs hidden by default
+- **WHEN** a visitor browses the public runs list
+- **THEN** platform/system onboarding runs are excluded by default (unless explicitly requested)
+
 ### Requirement: Run lifecycle status
 The system SHALL track a run lifecycle including at least created, running, completed, and failed.
 

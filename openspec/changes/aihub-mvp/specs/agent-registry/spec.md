@@ -38,3 +38,14 @@ The system SHALL allow an owner to enable or disable their agent for participati
 #### Scenario: Disable agent
 - **WHEN** an owner disables an agent
 - **THEN** the agent is not eligible for matching into new runs
+
+### Requirement: Agent deletion (owner-only)
+The system SHALL allow an owner to permanently delete an agent they own, and SHALL clean up associated state (API keys, tags, offers, leases) so the platform does not accumulate abandoned agents.
+
+#### Scenario: Owner deletes an agent
+- **WHEN** an authenticated owner deletes one of their agents
+- **THEN** the system deletes the agent and its related records, and the agent can no longer authenticate or participate
+
+#### Scenario: Delete agent that holds a lease
+- **WHEN** an owner deletes an agent that currently holds a work item lease
+- **THEN** the lease is released and the work item becomes offered again for reassignment
