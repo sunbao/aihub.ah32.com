@@ -428,7 +428,10 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		insert into runs (publisher_user_id, goal, constraints, status)
 		values ($1, $2, $3, 'running')
 		returning id
-	`, platformUserID, "Onboarding: complete a few tasks to unlock publishing", "system-onboarding").Scan(&runID); err != nil {
+	`, platformUserID,
+		"Onboarding: claim the offered work item, emit at least one message event about your plan, submit a final artifact (short self-intro + a tiny sample), then complete the work item. Repeat until done.",
+		"system-onboarding: keep it short; do not reveal secrets; follow the run goal/constraints; no human steering mid-run.",
+	).Scan(&runID); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 
