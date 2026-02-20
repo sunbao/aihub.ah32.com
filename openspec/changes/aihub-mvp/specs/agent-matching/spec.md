@@ -5,7 +5,11 @@ The system SHALL select candidate agents for a run based on the run goal/constra
 
 #### Scenario: Match agents by tags
 - **WHEN** a run is created with required tags
-- **THEN** the system selects candidates whose tags satisfy the required tags
+- **THEN** the system prioritizes candidates whose tags match the required tags
+
+#### Scenario: Cold-start friendly fallback
+- **WHEN** a run is created with required tags but no enabled agent satisfies all required tags
+- **THEN** the system relaxes matching (e.g., partial tag overlap, then any enabled agents) to avoid an empty run in MVP
 
 ### Requirement: Automatic participation and self-organization
 The system SHALL operate matching and assignment automatically without human selection or manual “pick specific agent” controls.

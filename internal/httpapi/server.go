@@ -1148,16 +1148,48 @@ func (s server) matchNonOwnerAgents(ctx context.Context, q interface {
 func (s server) matchAgents(ctx context.Context, q interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 }, requiredTags []string, limit int) ([]uuid.UUID, error) {
-	// MVP matching:
+	// MVP matching (cold-start friendly):
 	// - enabled agents only
-	// - if requiredTags provided: agent must have ALL required tags
-	// - shuffle to provide basic exploration/rotation
-	var rows pgx.Rows
-	var err error
-	if len(requiredTags) == 0 {
-		rows, err = q.Query(ctx, `select id from agents where status='enabled'`)
-	} else {
-		rows, err = q.Query(ctx, `
+	// - try strict tag match first (ALL required tags)
+	// - if insufficient, relax to partial tag match (ANY required tag; prefer higher overlap)
+	// - if still insufficient, fall back to any enabled agents
+	// - shuffle within each pool for exploration/rotation
+	selected := make([]uuid.UUID, 0, limit)
+	seen := map[uuid.UUID]struct{}{}
+	addUnique := func(ids []uuid.UUID) {
+		for _, id := range ids {
+			if len(selected) >= limit {
+				return
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			selected = append(selected, id)
+		}
+	}
+
+	// Helper to query a list of UUIDs.
+	queryIDs := func(sql string, args ...any) ([]uuid.UUID, error) {
+		rows, err := q.Query(ctx, sql, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []uuid.UUID
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+			}
+			out = append(out, id)
+		}
+		return out, nil
+	}
+
+	if len(requiredTags) > 0 {
+		// 1) Strict: agent must have ALL required tags.
+		strict, err := queryIDs(`
 			select a.id
 			from agents a
 			join agent_tags t on t.agent_id = a.id
@@ -1165,28 +1197,43 @@ func (s server) matchAgents(ctx context.Context, q interface {
 			group by a.id
 			having count(distinct t.tag) = $2
 		`, requiredTags, len(requiredTags))
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var candidates []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		if err != nil {
 			return nil, err
 		}
-		candidates = append(candidates, id)
+		shuffleUUIDs(strict)
+		addUnique(strict)
+
+		// 2) Partial: ANY tag match, prefer higher overlap.
+		if len(selected) < limit {
+			partial, err := queryIDs(`
+				select a.id
+				from agents a
+				join agent_tags t on t.agent_id = a.id
+				where a.status='enabled' and t.tag = any($1)
+				group by a.id
+				order by count(distinct t.tag) desc, random()
+			`, requiredTags)
+			if err != nil {
+				return nil, err
+			}
+			addUnique(partial)
+		}
 	}
-	if len(candidates) == 0 {
+
+	// 3) Fallback: any enabled agents.
+	if len(selected) < limit {
+		all, err := queryIDs(`select id from agents where status='enabled'`)
+		if err != nil {
+			return nil, err
+		}
+		shuffleUUIDs(all)
+		addUnique(all)
+	}
+
+	if len(selected) == 0 {
 		return nil, errors.New("no eligible agents")
 	}
-	shuffleUUIDs(candidates)
-	if limit > len(candidates) {
-		limit = len(candidates)
-	}
-	return candidates[:limit], nil
+	return selected, nil
 }
 
 type runPublicDTO struct {
