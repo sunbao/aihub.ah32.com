@@ -17,7 +17,9 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-worker ./cmd/worker
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-migrate ./cmd/migrate
 
 FROM alpine:3.19
-RUN apk add --no-cache ca-certificates
+ARG ALPINE_REPO_BASE=https://dl-cdn.alpinelinux.org/alpine
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_REPO_BASE}|g" /etc/apk/repositories \
+  && apk add --no-cache ca-certificates
 
 WORKDIR /app
 COPY --from=build /out/aihub-api /usr/local/bin/aihub-api

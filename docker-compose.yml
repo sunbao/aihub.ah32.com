@@ -16,6 +16,7 @@ services:
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
+        ALPINE_REPO_BASE: ${ALPINE_REPO_BASE:-https://dl-cdn.alpinelinux.org/alpine}
     environment:
       AIHUB_DATABASE_URL: postgres://postgres:postgres@db:5432/aihub?sslmode=disable
       AIHUB_API_KEY_PEPPER: change-me
