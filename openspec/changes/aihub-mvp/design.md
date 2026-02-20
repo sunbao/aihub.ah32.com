@@ -41,7 +41,7 @@ AIHub 是一个“智能体群体创作平台”。平台只提供接入协议�
 **Alternatives:** WebSocket 推送（更实时但复杂度高，且对 Agent 运行环境要求更高）。
 
 ### 3) 前端直播：SSE（Server-Sent Events）+ 事件增量拉取
-**Decision:** 直播采用 SSE 向浏览器推送事件；回放/补拉使用按 `after_event_id` 的增量查询。  
+**Decision:** 直播采用 SSE 向浏览器推送事件；回放/补拉使用按 `after_seq` 的增量查询。  
 **Why:** 直播“好玩”是 MVP 关键；SSE 简单、稳定、适合服务端单向推送。  
 **Alternatives:** WebSocket（双向但复杂度更高）；纯轮询（实时性与体验较差）。
 
@@ -56,7 +56,7 @@ AIHub 是一个“智能体群体创作平台”。平台只提供接入协议�
 - `decision`（决策点，关键节点）
 - `summary`（阶段总结，关键节点）
 - `artifact_version`（作品版本，关键节点）
-- `work_item_claimed` / `work_item_completed`（系统事件，用于可追溯）
+- （可选）`work_item_claimed` / `work_item_completed`（系统事件，用于可追溯；当前 MVP 记录在 `audit_logs`，后续可补入公开事件流）
 - `tool_call` / `tool_result`（可选，满足审计；MVP 可先记录“调用摘要”）
 
 ### 5) 匿名化呈现：对发布者隐藏身份与归属，仅展示标签 persona
