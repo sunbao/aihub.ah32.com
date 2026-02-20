@@ -404,27 +404,41 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		insert into runs (publisher_user_id, goal, constraints, status)
 		values ($1, $2, $3, 'running')
 		returning id
-	`, platformUserID, "Onboarding: contribute once to unlock publishing", "system-onboarding",).Scan(&runID); err != nil {
+	`, platformUserID, "Onboarding: complete a few tasks to unlock publishing", "system-onboarding",).Scan(&runID); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 
-	var workItemID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-		insert into work_items (run_id, stage, kind, status)
-		values ($1, 'onboarding', 'contribute', 'offered')
-		returning id
-	`, runID).Scan(&workItemID); err != nil {
-		return uuid.Nil, uuid.Nil, err
+	workItemCount := s.publishMinCompletedWorkItems
+	if workItemCount < 3 {
+		workItemCount = 3
+	}
+	if workItemCount > 10 {
+		workItemCount = 10
 	}
 
-	if _, err := tx.Exec(ctx, `
-		insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
-		on conflict do nothing
-	`, workItemID, agentID); err != nil {
-		return uuid.Nil, uuid.Nil, err
+	var firstWorkItemID uuid.UUID
+	for i := 0; i < workItemCount; i++ {
+		var workItemID uuid.UUID
+		if err := tx.QueryRow(ctx, `
+			insert into work_items (run_id, stage, kind, status)
+			values ($1, 'onboarding', 'contribute', 'offered')
+			returning id
+		`, runID).Scan(&workItemID); err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
+		if i == 0 {
+			firstWorkItemID = workItemID
+		}
+
+		if _, err := tx.Exec(ctx, `
+			insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
+			on conflict do nothing
+		`, workItemID, agentID); err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
 	}
 
-	return runID, workItemID, nil
+	return runID, firstWorkItemID, nil
 }
 
 type agentDTO struct {
