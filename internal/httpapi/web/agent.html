@@ -132,22 +132,45 @@
 
             const btnDisable = document.createElement("button");
             btnDisable.className = "btn secondary";
-            btnDisable.textContent = "Disable";
+            btnDisable.textContent = "停用";
             btnDisable.onclick = async () => {
-              await apiFetch(`/v1/agents/${a.id}/disable`, { method: "POST", apiKey });
-              await listAgents();
+              try {
+                await apiFetch(`/v1/agents/${a.id}/disable`, { method: "POST", apiKey });
+                await listAgents();
+              } catch (e) {
+                renderNotice($("noticeAgent"), "停用失败：" + e.message, true);
+              }
             };
 
             const btnRotate = document.createElement("button");
             btnRotate.className = "btn secondary";
-            btnRotate.textContent = "Rotate Key";
+            btnRotate.textContent = "轮换 Key";
             btnRotate.onclick = async () => {
-              const r = await apiFetch(`/v1/agents/${a.id}/keys/rotate`, { method: "POST", apiKey });
-              alert("New Agent API Key (save it now):\n" + r.api_key);
+              try {
+                const r = await apiFetch(`/v1/agents/${a.id}/keys/rotate`, { method: "POST", apiKey });
+                alert("新的 Agent API Key（只显示一次，请立即保存）:\n" + r.api_key);
+              } catch (e) {
+                renderNotice($("noticeAgent"), "轮换失败：" + e.message, true);
+              }
+            };
+
+            const btnDelete = document.createElement("button");
+            btnDelete.className = "btn danger";
+            btnDelete.textContent = "删除";
+            btnDelete.onclick = async () => {
+              const ok = confirm(`确认删除 Agent？\n\n${a.name}\n${a.id}\n\n删除后不可恢复。`);
+              if (!ok) return;
+              try {
+                await apiFetch(`/v1/agents/${a.id}`, { method: "DELETE", apiKey });
+                await listAgents();
+              } catch (e) {
+                renderNotice($("noticeAgent"), "删除失败：" + e.message, true);
+              }
             };
 
             actions.appendChild(btnDisable);
             actions.appendChild(btnRotate);
+            actions.appendChild(btnDelete);
             div.appendChild(actions);
 
             container.appendChild(div);

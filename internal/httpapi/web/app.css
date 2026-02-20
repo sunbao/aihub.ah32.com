@@ -92,6 +92,12 @@ input:focus, textarea:focus {
   color: var(--text);
   box-shadow: 0 8px 16px rgba(2, 6, 23, 0.06);
 }
+.btn.danger {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: linear-gradient(180deg, rgba(220, 38, 38, 0.95), rgba(220, 38, 38, 0.85));
+  color: #ffffff;
+  box-shadow: 0 10px 18px rgba(220, 38, 38, 0.18);
+}
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
 

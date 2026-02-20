@@ -19,6 +19,19 @@
       </header>
 
       <div class="card">
+        <div class="card-title">Run 列表（不需要记 ID）</div>
+        <label>模糊查询（goal / constraints / output 内容）</label>
+        <input id="qRuns" placeholder="例如：悬疑 赛博朋克" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnRunsSearch" class="btn secondary" type="button">查询</button>
+          <button id="btnRunsMore" class="btn secondary" type="button">加载更多</button>
+        </div>
+        <div class="hr"></div>
+        <div id="runs"></div>
+        <div id="noticeRuns" class="notice" style="margin-top:12px">提示：选择一个 Run 后点击“连接直播”。</div>
+      </div>
+
+      <div class="card">
         <div class="card-title">连接</div>
         <label>Run ID</label>
         <input id="runId" class="mono" placeholder="例如：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
@@ -38,10 +51,12 @@
     </div>
 
     <script type="module">
-      import { $, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, renderNotice } from "/ui/app.js";
 
       let es = null;
       let lastSeq = 0;
+      let runsOffset = 0;
+      const runsLimit = 20;
 
       function addEvent(ev) {
         lastSeq = Math.max(lastSeq, ev.seq || 0);
@@ -56,6 +71,82 @@
         div.appendChild(meta);
         div.appendChild(body);
         $("events").appendChild(div);
+      }
+
+      function fmtTime(ts) {
+        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+      }
+      function trunc(s, n) {
+        const t = (s || "").trim();
+        if (!t) return "";
+        return t.length > n ? (t.slice(0, n) + "…") : t;
+      }
+
+      function addRun(run) {
+        const div = document.createElement("div");
+        div.className = "event";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const out = run.output_version ? (`output v${run.output_version}`) : "no output";
+        meta.textContent = `${run.status} · ${fmtTime(run.created_at)} · ${out}`;
+        const body = document.createElement("div");
+        body.className = "body";
+        body.textContent = trunc(run.goal, 200);
+        div.appendChild(meta);
+        div.appendChild(body);
+
+        const actions = document.createElement("div");
+        actions.className = "row";
+        actions.style.marginTop = "10px";
+
+        const rid = run.run_id;
+
+        const btn = document.createElement("button");
+        btn.className = "btn";
+        btn.type = "button";
+        btn.textContent = "连接直播";
+        btn.onclick = () => {
+          $("runId").value = rid;
+          connect(rid);
+        };
+
+        const aReplay = document.createElement("a");
+        aReplay.className = "btn secondary";
+        aReplay.href = "/ui/replay.html?run_id=" + encodeURIComponent(rid);
+        aReplay.textContent = "回放";
+
+        const aOutput = document.createElement("a");
+        aOutput.className = "btn secondary";
+        aOutput.href = "/ui/output.html?run_id=" + encodeURIComponent(rid);
+        aOutput.textContent = "作品";
+
+        actions.appendChild(btn);
+        actions.appendChild(aReplay);
+        actions.appendChild(aOutput);
+        div.appendChild(actions);
+        $("runs").appendChild(div);
+      }
+
+      async function loadRuns({ reset } = { reset: false }) {
+        const q = $("qRuns").value.trim();
+        if (reset) {
+          runsOffset = 0;
+          $("runs").innerHTML = "";
+        }
+        renderNotice($("noticeRuns"), "加载中…");
+        try {
+          const url =
+            `/v1/runs?limit=${runsLimit}&offset=${runsOffset}` +
+            (q ? `&q=${encodeURIComponent(q)}` : "");
+          const res = await apiFetch(url);
+          const list = res.runs || [];
+          list.forEach(addRun);
+          runsOffset = res.next_offset || (runsOffset + list.length);
+          $("btnRunsMore").style.display = res.has_more ? "inline-block" : "none";
+          renderNotice($("noticeRuns"), `已加载 ${$("runs").children.length} 个 Run`);
+        } catch (e) {
+          renderNotice($("noticeRuns"), "加载失败：" + e.message, true);
+        }
       }
 
       function connect(runId) {
@@ -79,6 +170,12 @@
       const rid = params.get("run_id") || "";
       $("runId").value = rid;
       if (rid) connect(rid);
+
+      $("qRuns").value = params.get("q") || "";
+      loadRuns({ reset: true });
+      $("btnRunsSearch").addEventListener("click", () => loadRuns({ reset: true }));
+      $("btnRunsMore").addEventListener("click", () => loadRuns({ reset: false }));
+      $("qRuns").addEventListener("keydown", (e) => { if (e.key === "Enter") loadRuns({ reset: true }); });
 
       $("btnConnect").addEventListener("click", () => {
         const runId = $("runId").value.trim();

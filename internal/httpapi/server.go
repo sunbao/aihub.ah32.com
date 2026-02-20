@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"aihub/internal/keys"
 
@@ -270,9 +271,9 @@ type createAgentRequest struct {
 }
 
 type createAgentResponse struct {
-	AgentID   string         `json:"agent_id"`
-	APIKey    string         `json:"api_key"`
-	Endpoints map[string]any `json:"endpoints"`
+	AgentID    string         `json:"agent_id"`
+	APIKey     string         `json:"api_key"`
+	Endpoints  map[string]any `json:"endpoints"`
 	Onboarding map[string]any `json:"onboarding,omitempty"`
 }
 
@@ -289,6 +290,29 @@ func normalizeTags(tags []string) []string {
 		}
 		seen[tt] = struct{}{}
 		out = append(out, tt)
+	}
+	return out
+}
+
+func splitSearchTerms(q string) []string {
+	parts := strings.FieldsFunc(q, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == '，' || r == ';' || r == '；'
+	})
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t == "" || len(t) > 64 {
+			continue
+		}
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+		if len(out) >= 6 {
+			break
+		}
 	}
 	return out
 }
@@ -404,7 +428,7 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		insert into runs (publisher_user_id, goal, constraints, status)
 		values ($1, $2, $3, 'running')
 		returning id
-	`, platformUserID, "Onboarding: complete a few tasks to unlock publishing", "system-onboarding",).Scan(&runID); err != nil {
+	`, platformUserID, "Onboarding: complete a few tasks to unlock publishing", "system-onboarding").Scan(&runID); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 
@@ -551,6 +575,98 @@ func (s server) handleDisableAgent(w http.ResponseWriter, r *http.Request) {
 
 	s.audit(ctx, "user", userID, "agent_disabled", map[string]any{"agent_id": agentID.String()})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "disabled"})
+}
+
+func (s server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Verify ownership.
+	var exists bool
+	if err := tx.QueryRow(ctx, `select true from agents where id=$1 and owner_id=$2`, agentID, userID).Scan(&exists); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	// Delete any per-agent onboarding runs (platform-owned) to avoid leaving
+	// orphaned "offered but no offers" work items after cascades.
+	if _, err := tx.Exec(ctx, `
+		delete from runs r
+		where r.publisher_user_id = $2
+		  and r.constraints = 'system-onboarding'
+		  and exists (
+		    select 1
+		    from work_items wi
+		    join work_item_offers o on o.work_item_id = wi.id
+		    where wi.run_id = r.id and o.agent_id = $1
+		  )
+		  and not exists (
+		    select 1
+		    from work_items wi
+		    join work_item_offers o on o.work_item_id = wi.id
+		    where wi.run_id = r.id and o.agent_id <> $1
+		  )
+	`, agentID, platformUserID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cleanup failed"})
+		return
+	}
+
+	// Release any claimed work items held by this agent (otherwise the work item
+	// could remain "claimed" with no lease after cascades).
+	if _, err := tx.Exec(ctx, `
+		with del as (
+		  delete from work_item_leases
+		  where agent_id = $1
+		  returning work_item_id
+		)
+		update work_items wi
+		set status = 'offered', updated_at = now()
+		where wi.id in (select work_item_id from del) and wi.status = 'claimed'
+	`, agentID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lease cleanup failed"})
+		return
+	}
+
+	cmd, err := tx.Exec(ctx, `delete from agents where id=$1 and owner_id=$2`, agentID, userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	if cmd.RowsAffected() == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+
+	s.audit(ctx, "user", userID, "agent_deleted", map[string]any{"agent_id": agentID.String()})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 type updateAgentRequest struct {
@@ -969,6 +1085,147 @@ type runPublicDTO struct {
 	Constraints string `json:"constraints"`
 	Status      string `json:"status"`
 	CreatedAt   string `json:"created_at"`
+}
+
+type runListItemDTO struct {
+	RunID         string `json:"run_id"`
+	Goal          string `json:"goal"`
+	Constraints   string `json:"constraints"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+	OutputVersion int    `json:"output_version"`
+	OutputKind    string `json:"output_kind"`
+}
+
+type listRunsResponse struct {
+	Runs       []runListItemDTO `json:"runs"`
+	HasMore    bool             `json:"has_more"`
+	NextOffset int              `json:"next_offset"`
+}
+
+func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	terms := splitSearchTerms(q)
+
+	limit := 20
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			limit = clampInt(n, 1, 50)
+		}
+	}
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			offset = clampInt(n, 0, 50_000)
+		}
+	}
+
+	includeSystem := false
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_system"))) {
+	case "1", "true", "yes", "y":
+		includeSystem = true
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	args := make([]any, 0, 16)
+	where := make([]string, 0, 8)
+	argN := 1
+
+	if !includeSystem {
+		where = append(where, "r.publisher_user_id <> $"+strconv.Itoa(argN))
+		args = append(args, platformUserID)
+		argN++
+	}
+
+	// If search terms exist, apply AND across terms, each term matches any field.
+	for _, t := range terms {
+		pat := "%" + t + "%"
+		parts := []string{
+			"r.id::text ilike $" + strconv.Itoa(argN),
+			"r.goal ilike $" + strconv.Itoa(argN),
+			"r.constraints ilike $" + strconv.Itoa(argN),
+			"coalesce(a.content, '') ilike $" + strconv.Itoa(argN),
+		}
+		where = append(where, "("+strings.Join(parts, " or ")+")")
+		args = append(args, pat)
+		argN++
+	}
+
+	// Use limit+1 to determine has_more.
+	limitPlusOne := limit + 1
+
+	sql := `
+		select r.id, r.goal, r.constraints, r.status, r.created_at, r.updated_at,
+		       coalesce(a.version, 0) as output_version,
+		       coalesce(a.kind, '') as output_kind
+		from runs r
+		left join lateral (
+			select version, kind, content
+			from artifacts
+			where run_id = r.id
+			order by version desc
+			limit 1
+		) a on true
+	`
+	if len(where) > 0 {
+		sql += " where " + strings.Join(where, " and ")
+	}
+	sql += " order by r.created_at desc limit $" + strconv.Itoa(argN) + " offset $" + strconv.Itoa(argN+1)
+	args = append(args, limitPlusOne, offset)
+
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	defer rows.Close()
+
+	out := make([]runListItemDTO, 0, limit)
+	for rows.Next() {
+		var (
+			id          uuid.UUID
+			goal        string
+			constraints string
+			status      string
+			createdAt   time.Time
+			updatedAt   time.Time
+			outVer      int
+			outKind     string
+		)
+		if err := rows.Scan(&id, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		out = append(out, runListItemDTO{
+			RunID:         id.String(),
+			Goal:          goal,
+			Constraints:   constraints,
+			Status:        status,
+			CreatedAt:     createdAt.UTC().Format(time.RFC3339),
+			UpdatedAt:     updatedAt.UTC().Format(time.RFC3339),
+			OutputVersion: outVer,
+			OutputKind:    outKind,
+		})
+	}
+
+	hasMore := false
+	if len(out) > limit {
+		hasMore = true
+		out = out[:limit]
+	}
+	nextOffset := offset + len(out)
+	if hasMore {
+		nextOffset = offset + limit
+	}
+
+	writeJSON(w, http.StatusOK, listRunsResponse{
+		Runs:       out,
+		HasMore:    hasMore,
+		NextOffset: nextOffset,
+	})
 }
 
 func (s server) handleGetRunPublic(w http.ResponseWriter, r *http.Request) {

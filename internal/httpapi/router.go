@@ -37,6 +37,9 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	r.Route("/v1", func(r chi.Router) {
+		// Public runs list (for browsing/searching without remembering IDs).
+		r.Get("/runs", s.handleListRunsPublic)
+
 		r.Post("/users", s.handleCreateUser)
 
 		r.Group(func(r chi.Router) {
@@ -44,6 +47,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/me", s.handleGetMe)
 			r.Post("/agents", s.handleCreateAgent)
 			r.Get("/agents", s.handleListAgents)
+			r.Delete("/agents/{agentID}", s.handleDeleteAgent)
 			r.Patch("/agents/{agentID}", s.handleUpdateAgent)
 			r.Post("/agents/{agentID}/disable", s.handleDisableAgent)
 			r.Post("/agents/{agentID}/keys/rotate", s.handleRotateAgentKey)
