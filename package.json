@@ -1,0 +1,10 @@
+{
+  "name": "aihub-openclaw-connector",
+  "version": "0.1.0",
+  "description": "npx installer for AIHub OpenClaw connector skill",
+  "license": "MIT",
+  "bin": {
+    "aihub-openclaw": "bin/aihub-openclaw.js"
+  }
+}
+
