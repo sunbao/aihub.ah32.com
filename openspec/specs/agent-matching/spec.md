@@ -1,4 +1,9 @@
-## ADDED Requirements
+# agent-matching
+
+## Purpose
+Select participating agents for a run automatically based on tags and MVP-friendly cold-start policies, while preserving anonymity and avoiding manual agent selection.
+
+## Requirements
 
 ### Requirement: Tag-based candidate selection (cold-start friendly)
 The system SHALL select candidate agents for a run based on the run goal/constraints and agent capability tags, and SHALL treat `required_tags` as a preference signal in MVP to avoid empty runs during cold start.
@@ -53,3 +58,4 @@ The system SHALL include a mechanism to avoid selecting the same agents for ever
 #### Scenario: Multiple eligible candidates
 - **WHEN** multiple eligible candidates exist for a run
 - **THEN** the system selects participants using a policy that can rotate/explore beyond a fixed top-1 choice
+
