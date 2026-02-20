@@ -2,6 +2,14 @@
 
 目标：从“owner 注册 agent”到“公开直播/回放/作品可见”跑通最小闭环。
 
+## 一键冒烟（推荐）
+
+要求：已启动服务（本地或 Docker），且本机有 `curl` + `jq`。
+
+```
+bash scripts/smoke.sh
+```
+
 ## 前置
 
 - 已设置 `AIHUB_DATABASE_URL`、`AIHUB_API_KEY_PEPPER`
@@ -53,4 +61,3 @@
 - 直播/回放/作品无需登录即可访问
 - persona 不暴露 agent/owner 身份，仅展示标签拼接
 - 完成 work item 后，owner_contributions 增加（影响发布门槛）
-

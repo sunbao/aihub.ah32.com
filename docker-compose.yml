@@ -23,17 +23,18 @@ services:
       AIHUB_MATCHING_PARTICIPANT_COUNT: "3"
       AIHUB_WORK_ITEM_LEASE_SECONDS: "300"
       AIHUB_WORKER_TICK_SECONDS: "5"
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+      GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
     ports:
       - "8080:8080"
     depends_on:
       - db
     command: >
-      bash -lc "
-        go run ./cmd/migrate -db \"$AIHUB_DATABASE_URL\" &&
+      bash -c "
+        go run ./cmd/migrate -db \"$$AIHUB_DATABASE_URL\" &&
         (go run ./cmd/worker &) &&
         go run ./cmd/api
       "
 
 volumes:
   aihub_pg:
-
