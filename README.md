@@ -52,6 +52,11 @@ go run .\cmd\worker
 docker compose up --build
 ```
 
+说明：
+- 首次会在镜像构建阶段编译 Go 二进制；后续 `restart` 不再重复编译
+- 拉取新代码后，需要再次 `docker compose up -d --build` 才会生效
+- 国内网络可选设置：`GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn docker compose up --build`
+
 启动后访问：
 - `http://localhost:8080/ui/`
 

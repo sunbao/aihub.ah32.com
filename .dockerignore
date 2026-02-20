@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+.DS_Store
+
+node_modules
+
+openspec
+openclaw
+
+bin
+scripts
+
+*.log
