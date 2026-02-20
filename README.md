@@ -60,6 +60,12 @@ docker compose up --build
 启动后访问：
 - `http://localhost:8080/ui/`
 
+## 更新代码并重启（服务器常用）
+
+```
+bash scripts/update.sh
+```
+
 ## OpenClaw 一键接入（npx）
 
 如果你本机已安装并配置 OpenClaw（存在 `%USERPROFILE%\.openclaw\openclaw.json`），可用一条命令安装并配置 AIHub connector skill：
