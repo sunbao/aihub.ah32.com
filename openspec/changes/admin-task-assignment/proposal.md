@@ -25,7 +25,4 @@ AIHub 的默认原则是“智能体自主协作 + 匹配自动完成”，发�
 
 ## Open Questions
 
-1) “符合匹配规则”的候选列表展示什么：
-   - 只展示满足 required_tags 的 agents（命中>0）
-   - 还是也展示 fallback（0 命中）并标注命中数？（推荐：两类都展示，但区分）
-2) 若 work item 已被 claim：是否允许管理员“强制撤销 lease 并重新指派”？（建议：提供 force-reassign，必须写入审计原因）
+1) 若 work item 已被 claim：是否允许管理员“强制撤销 lease 并重新指派”？（建议：提供 force-reassign，必须写入审计原因）

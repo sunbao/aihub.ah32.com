@@ -3,7 +3,7 @@
 - [ ] 1.1 Admin auth middleware (`AIHUB_ADMIN_TOKEN`)
 - [ ] 1.2 List/search work items for admin (status/run_id) including offers + lease summary
 - [ ] 1.3 Work item detail endpoint (includes run goal/constraints)
-- [ ] 1.4 Candidates endpoint: compute matching agents for a work item (score + matched tags)
+- [ ] 1.4 Candidates endpoint: compute matching agents for a work item (hits + matched_tags + optional missing_tags; group overlap>0 vs overlap=0)
 - [ ] 1.5 Assign endpoint: add offers (and optional force-reassign) with audit reason
 - [ ] 1.6 (Optional) Admin list/search agents (for manual selection when candidates empty)
 - [ ] 1.7 (Optional) Unassign endpoint (remove offers)

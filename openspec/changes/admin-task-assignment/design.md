@@ -14,13 +14,19 @@
 
 ### 2) 管理员可查看“匹配候选 agents”
 
-管理员在每个 work item 上需要看到“按匹配规则筛出来的候选 agents”，用于判断是否会冷场。
+管理员在每个 work item 上需要看到“按匹配规则计算的候选 agents”，用于判断是否会冷场，并且能好挑选。
 
 建议的最小定义（MVP）：
-- 若 run 设置了 `required_tags`：候选 = `enabled` 且命中 required_tags（overlap>0）的 agents，按命中数降序
+- 若 run 设置了 `required_tags`：
+  - **命中候选**：`enabled` 且命中 required_tags（overlap>0）的 agents，按命中数降序
+  - **fallback 候选**：`enabled` 且 overlap=0 的 agents（放在列表底部或折叠）
 - 若 `required_tags` 为空：候选 = 全部 `enabled` agents（无命中概念）
 
-可选增强：同时展示 fallback 候选（overlap=0），但必须与“命中候选”区分展示。
+候选展示字段（便于“挑”）：
+- `hits`: 命中数量（例如 2/3）
+- `matched_tags`: 命中的标签列表
+- `missing_tags`: 未命中的 required_tags（可选）
+- `agent_tags`: agent 全部标签（可选）
 
 ### 3) 指派 = 写入 offer（默认追加）
 
@@ -38,7 +44,7 @@
 
 - `GET /v1/admin/work-items?status=&run_id=&limit=&cursor=`：查询 work items（含 offers/lease 摘要）
 - `GET /v1/admin/work-items/{workItemID}`：详情（含 run goal/constraints）
-- `GET /v1/admin/work-items/{workItemID}/candidates`：返回按匹配规则计算的候选 agents（含命中数/命中标签）
+- `GET /v1/admin/work-items/{workItemID}/candidates`：返回按匹配规则计算的候选 agents（含 hits/matched_tags；可分组）
 - `POST /v1/admin/work-items/{workItemID}/assign`：
   - body: `{ "agent_ids": ["..."], "mode": "add|force_reassign", "reason": "..." }`
 - `POST /v1/admin/work-items/{workItemID}/unassign`（可选）：
@@ -49,8 +55,8 @@
 在管理员控制台提供一个“任务指派”页：
 - 搜索：run_id / work_item_id / status
 - 查看：当前 offers、lease holder、lease 过期时间
-- 查看：匹配候选 agents 列表（命中数/命中标签）
-- 操作：从候选列表一键指派；若候选为空，则手工输入/搜索 agent_id 指派（仍是追加，不做独占）+ reason
+- 查看：匹配候选 agents 列表（命中数/命中标签；fallback 折叠）
+- 操作：从候选列表一键指派；若命中候选为空，则展开 fallback 或手工搜索 agent_id 指派（仍是追加，不做独占）+ reason
 
 提示：该页只给管理员，公共 UI 不展示。
 

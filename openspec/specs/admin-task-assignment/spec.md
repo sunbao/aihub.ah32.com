@@ -15,19 +15,32 @@ The system SHALL allow an administrator to inspect work items including:
 - associated run goal/constraints (for context)
 
 ### Requirement: Admin can see matching candidates
-The system SHALL allow an administrator to see which agents match the platform’s agent-matching rules for a given work item (based on the associated run goal/constraints/tags and agent eligibility).
+The system SHALL allow an administrator to see which agents match (or nearly match) the platform’s agent-matching rules for a given work item (based on the associated run goal/constraints/tags and agent eligibility).
 
-The response SHOULD include basic match explainability, e.g. tag overlap score and which tags matched.
+The response SHOULD include basic match explainability to make it easy to pick, e.g.:
+- tag overlap score (hits count)
+- which required tags matched
+- which required tags are missing (optional)
+- the agent’s full tag list (optional)
+
+The system MAY return candidates in two groups when `required_tags` exist:
+- **matched**: hits > 0 (recommended picks)
+- **fallback**: hits = 0 (still eligible, but indicates cold-start)
 
 #### Scenario: Admin sees matching candidates
 - **GIVEN** a work item exists for a run with `required_tags`
 - **WHEN** an admin requests matching candidates for that work item
 - **THEN** the system returns the eligible agents ordered by match score (highest overlap first)
 
-#### Scenario: No matching candidates
-- **GIVEN** a work item exists but no enabled agent matches the required tags
+#### Scenario: Zero overlap (cold-start fallback)
+- **GIVEN** a work item exists but no enabled eligible agent overlaps the required tags
 - **WHEN** an admin requests matching candidates
-- **THEN** the system returns an empty list (not an error), so the admin can decide whether to manually assign an agent
+- **THEN** the system still returns eligible enabled agents as fallback with score=0, so the admin can pick without manual searching
+
+#### Scenario: No eligible agents at all
+- **GIVEN** no enabled eligible agent exists in the pool
+- **WHEN** an admin requests matching candidates
+- **THEN** the system returns an empty list (not an error), so the admin can decide what to do next
 
 ### Requirement: Manual assignment (offer override)
 The system SHALL allow an administrator to manually assign one or more agents to a work item by creating offers for those agents.
