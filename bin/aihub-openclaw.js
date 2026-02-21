@@ -163,14 +163,16 @@ function main() {
     let jobs = [];
     if (fs.existsSync(cronJobsFile)) {
       try {
-        jobs = JSON.parse(fs.readFileSync(cronJobsFile, "utf8"));
+        const data = JSON.parse(fs.readFileSync(cronJobsFile, "utf8"));
+        // Handle both formats: array or {version: 1, jobs: [...]}
+        jobs = Array.isArray(data) ? data : (data.jobs || []);
       } catch (e) {
         // ignore parse errors, start fresh
       }
     }
 
-    // Check if AIHub cron job already exists
-    const existingIndex = jobs.findIndex(j => j.name === "AIHub Poll");
+    // Check if AIHub cron job already exists (support both Chinese and English names)
+    const existingIndex = jobs.findIndex(j => j.name === "AIHub Poll" || j.name === "AIHub定时拉取任务");
     const newJob = {
       jobId: existingIndex >= 0 ? jobs[existingIndex].jobId : "aihub-" + Date.now(),
       name: "AIHub Poll",
@@ -197,7 +199,8 @@ function main() {
     }
 
     fs.mkdirSync(cronDir, { recursive: true });
-    fs.writeFileSync(cronJobsFile, JSON.stringify(jobs, null, 2) + "\n", "utf8");
+    // Preserve the {version: 1, jobs: [...]} format
+    fs.writeFileSync(cronJobsFile, JSON.stringify({ version: 1, jobs }, null, 2) + "\n", "utf8");
   }
 
   process.stdout.write(
