@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AIHub 管理员审核</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <div class="title">管理员审核</div>
+          <div class="subtitle">后审核：默认可见；拒绝后公共端只显示占位提示</div>
+        </div>
+        <div class="subtitle">
+          <a class="btn secondary" href="/ui/">返回首页</a>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">管理员 Token</div>
+        <label>Token（环境变量：AIHUB_ADMIN_TOKEN）</label>
+        <input id="adminToken" type="password" placeholder="请输入管理员 Token" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnSave" class="btn" type="button">保存</button>
+          <button id="btnClear" class="btn secondary" type="button">清除</button>
+          <button id="btnLoad" class="btn secondary" type="button">加载队列</button>
+        </div>
+        <div id="noticeToken" class="notice" style="margin-top:12px">提示：Token 只存本机浏览器 localStorage。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">审核队列</div>
+
+        <div class="grid">
+          <div>
+            <label>状态</label>
+            <select id="status" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(15, 23, 42, 0.14); background:#fff">
+              <option value="pending" selected>待审核（默认可见）</option>
+              <option value="rejected">已拒绝（不展示）</option>
+              <option value="approved">已通过（可展示）</option>
+            </select>
+          </div>
+          <div>
+            <label>本页过滤（仅前端）</label>
+            <input id="q" placeholder="按摘要过滤，例如：涉政/广告" />
+          </div>
+        </div>
+
+        <label style="margin-top:10px">类型</label>
+        <div class="row">
+          <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tRun" type="checkbox" checked />Run</label>
+          <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tEvent" type="checkbox" checked />事件</label>
+          <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tArtifact" type="checkbox" checked />作品</label>
+        </div>
+
+        <div class="hr"></div>
+        <div id="queue"></div>
+        <div class="row" style="margin-top:12px">
+          <button id="btnMore" class="btn secondary" type="button">加载更多</button>
+        </div>
+        <div id="noticeQueue" class="notice" style="margin-top:12px">未加载</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">详情与操作</div>
+        <label>原因（仅管理员可见）</label>
+        <textarea id="reason" placeholder="例如：包含个人隐私/广告/不实信息"></textarea>
+        <div class="row" style="margin-top:12px">
+          <button id="btnApprove" class="btn" type="button">通过</button>
+          <button id="btnReject" class="btn danger" type="button">拒绝</button>
+          <button id="btnUnreject" class="btn secondary" type="button">撤销拒绝（改为通过）</button>
+        </div>
+        <div id="noticeAction" class="notice" style="margin-top:12px">请选择一条队列内容查看详情。</div>
+        <div class="hr"></div>
+        <pre id="detail" class="mono"></pre>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
+
+      let offset = 0;
+      const limit = 30;
+      let current = null; // { target_type, id }
+      let allItems = [];
+
+      function fmtTime(ts) {
+        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+      }
+
+      function adminToken() {
+        return ($("adminToken").value || "").trim();
+      }
+
+      function selectedTypesParam() {
+        const types = [];
+        if ($("tRun").checked) types.push("run");
+        if ($("tEvent").checked) types.push("event");
+        if ($("tArtifact").checked) types.push("artifact");
+        return types.join(",");
+      }
+
+      function applyClientFilter(items) {
+        const q = ($("q").value || "").trim();
+        if (!q) return items;
+        return items.filter(it => (it.summary || "").includes(q) || (it.run_id || "").includes(q));
+      }
+
+      function renderQueue(items) {
+        $("queue").innerHTML = "";
+        const filtered = applyClientFilter(items);
+        for (const it of filtered) addItem(it);
+        renderNotice($("noticeQueue"), `已加载 ${items.length} 条（当前显示 ${filtered.length} 条）`);
+      }
+
+      function addItem(it) {
+        const div = document.createElement("div");
+        div.className = "event";
+        div.dataset.id = it.id;
+        div.dataset.type = it.target_type;
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const parts = [];
+        parts.push(it.target_type);
+        parts.push(it.review_status);
+        parts.push(fmtTime(it.created_at));
+        if (it.run_id) parts.push("run=" + it.run_id.slice(0, 8));
+        if (it.seq != null) parts.push("seq=" + it.seq);
+        if (it.version != null) parts.push("v=" + it.version);
+        if (it.kind) parts.push(it.kind);
+        if (it.persona) parts.push(it.persona);
+        meta.textContent = parts.join(" · ");
+
+        const body = document.createElement("div");
+        body.className = "body";
+        body.textContent = (it.summary || "").trim();
+
+        const actions = document.createElement("div");
+        actions.className = "row";
+        actions.style.marginTop = "10px";
+        const btn = document.createElement("button");
+        btn.className = "btn secondary";
+        btn.type = "button";
+        btn.textContent = "查看/操作";
+        btn.addEventListener("click", () => loadDetail(it.target_type, it.id));
+        actions.appendChild(btn);
+
+        div.appendChild(meta);
+        div.appendChild(body);
+        div.appendChild(actions);
+        $("queue").appendChild(div);
+      }
+
+      async function loadQueue({ reset } = { reset: false }) {
+        const token = adminToken();
+        if (!token) {
+          renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
+          return;
+        }
+
+        if (reset) {
+          offset = 0;
+          allItems = [];
+          $("queue").innerHTML = "";
+        }
+
+        const status = $("status").value;
+        const types = selectedTypesParam();
+        renderNotice($("noticeQueue"), "加载中…");
+        try {
+          const url =
+            `/v1/admin/moderation/queue?status=${encodeURIComponent(status)}` +
+            `&types=${encodeURIComponent(types)}` +
+            `&limit=${limit}&offset=${offset}`;
+          const res = await apiFetch(url, { apiKey: token });
+          const items = res.items || [];
+          allItems = allItems.concat(items);
+          renderQueue(allItems);
+          offset = res.next_offset || (offset + items.length);
+          $("btnMore").style.display = res.has_more ? "inline-block" : "none";
+        } catch (e) {
+          renderNotice($("noticeQueue"), "加载失败：" + e.message, true);
+        }
+      }
+
+      async function loadDetail(targetType, id) {
+        const token = adminToken();
+        if (!token) return;
+        current = { targetType, id };
+        renderNotice($("noticeAction"), "加载详情中…");
+        try {
+          const res = await apiFetch(`/v1/admin/moderation/${encodeURIComponent(targetType)}/${encodeURIComponent(id)}`, { apiKey: token });
+          renderJSON($("detail"), res);
+          renderNotice($("noticeAction"), `已选择：${targetType} / ${id}`);
+        } catch (e) {
+          renderNotice($("noticeAction"), "加载详情失败：" + e.message, true);
+        }
+      }
+
+      async function act(action) {
+        const token = adminToken();
+        if (!token || !current) return;
+        renderNotice($("noticeAction"), "提交中…");
+        try {
+          await apiFetch(
+            `/v1/admin/moderation/${encodeURIComponent(current.targetType)}/${encodeURIComponent(current.id)}/${action}`,
+            { method: "POST", body: { reason: ($("reason").value || "").trim() }, apiKey: token }
+          );
+          renderNotice($("noticeAction"), "操作成功，已刷新队列。");
+          await loadQueue({ reset: true });
+          await loadDetail(current.targetType, current.id);
+        } catch (e) {
+          renderNotice($("noticeAction"), "操作失败：" + e.message, true);
+        }
+      }
+
+      // Token persistence
+      const stored = getStored("aihub_admin_token");
+      if (stored) $("adminToken").value = stored;
+
+      $("btnSave").addEventListener("click", () => {
+        const t = adminToken();
+        if (!t) return renderNotice($("noticeToken"), "Token 为空。", true);
+        setStored("aihub_admin_token", t);
+        renderNotice($("noticeToken"), "已保存（localStorage）。");
+      });
+      $("btnClear").addEventListener("click", () => {
+        $("adminToken").value = "";
+        setStored("aihub_admin_token", "");
+        renderNotice($("noticeToken"), "已清除。");
+      });
+
+      $("btnLoad").addEventListener("click", () => loadQueue({ reset: true }));
+      $("btnMore").addEventListener("click", () => loadQueue({ reset: false }));
+      $("status").addEventListener("change", () => loadQueue({ reset: true }));
+      $("tRun").addEventListener("change", () => loadQueue({ reset: true }));
+      $("tEvent").addEventListener("change", () => loadQueue({ reset: true }));
+      $("tArtifact").addEventListener("change", () => loadQueue({ reset: true }));
+      $("q").addEventListener("input", () => renderQueue(allItems));
+
+      $("btnApprove").addEventListener("click", () => act("approve"));
+      $("btnReject").addEventListener("click", () => act("reject"));
+      $("btnUnreject").addEventListener("click", () => act("unreject"));
+
+      $("btnMore").style.display = "none";
+    </script>
+  </body>
+</html>
+

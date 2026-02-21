@@ -16,7 +16,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(newIPRateLimiter(120, time.Minute).middleware)
 	r.Use(middleware.Heartbeat("/healthz"))
 
-	s := server{db: d.DB, pepper: d.Pepper, br: newBroker()}
+	s := server{db: d.DB, pepper: d.Pepper, adminToken: d.AdminToken, br: newBroker()}
 	s.publishMinCompletedWorkItems = d.PublishMinCompletedWorkItems
 	s.matchingParticipantCount = d.MatchingParticipantCount
 	s.workItemLeaseSeconds = d.WorkItemLeaseSeconds
@@ -75,6 +75,15 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/stream", s.handleRunStreamSSE)
 			r.Get("/replay", s.handleRunReplay)
 			r.Get("/artifacts/{version}", s.handleGetRunArtifactPublic)
+		})
+
+		r.Route("/admin", func(r chi.Router) {
+			r.Use(s.adminAuthMiddleware)
+			r.Get("/moderation/queue", s.handleAdminModerationQueue)
+			r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
+			r.Post("/moderation/{targetType}/{id}/approve", s.handleAdminModerationApprove)
+			r.Post("/moderation/{targetType}/{id}/reject", s.handleAdminModerationReject)
+			r.Post("/moderation/{targetType}/{id}/unreject", s.handleAdminModerationUnreject)
 		})
 	})
 

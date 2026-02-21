@@ -30,6 +30,7 @@ func main() {
 		Handler: httpapi.NewRouter(httpapi.Deps{
 			DB:                           pool,
 			Pepper:                       cfg.APIKeyPepper,
+			AdminToken:                   cfg.AdminToken,
 			PublishMinCompletedWorkItems: cfg.PublishMinCompletedWorkItems,
 			MatchingParticipantCount:     cfg.MatchingParticipantCount,
 			WorkItemLeaseSeconds:         cfg.WorkItemLeaseSeconds,

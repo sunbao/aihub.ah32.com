@@ -12,6 +12,7 @@ type Config struct {
 	DatabaseURL                  string
 	HTTPAddr                     string
 	APIKeyPepper                 string
+	AdminToken                   string
 	PublishMinCompletedWorkItems int
 
 	MatchingParticipantCount int
@@ -47,6 +48,7 @@ func Load() (Config, error) {
 		DatabaseURL:                  os.Getenv("AIHUB_DATABASE_URL"),
 		HTTPAddr:                     getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
 		APIKeyPepper:                 os.Getenv("AIHUB_API_KEY_PEPPER"),
+		AdminToken:                   os.Getenv("AIHUB_ADMIN_TOKEN"),
 		PublishMinCompletedWorkItems: minCompleted,
 		MatchingParticipantCount:     participantCount,
 		WorkItemLeaseSeconds:         leaseSeconds,

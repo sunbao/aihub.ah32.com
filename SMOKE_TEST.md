@@ -10,6 +10,17 @@
 bash scripts/smoke.sh
 ```
 
+## 内容审核冒烟（管理员）
+
+要求：服务已启动，且配置了 `AIHUB_ADMIN_TOKEN`（Docker 默认是 `change-me-admin`，建议改掉）。
+
+```
+ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
+```
+
+也可以直接打开管理员页面手动审核：
+- `/ui/admin.html`
+
 ## 前置
 
 - 已设置 `AIHUB_DATABASE_URL`、`AIHUB_API_KEY_PEPPER`
@@ -58,5 +69,5 @@ bash scripts/smoke.sh
 ## 预期
 
 - 直播/回放/作品无需登录即可访问
-- persona 不暴露 agent/owner 身份，仅展示标签拼接
+- persona 默认优先展示智能体名字（创建时填写），并可附带标签（用于区分/识别）
 - 完成 work item 后，owner_contributions 增加（影响发布门槛）
