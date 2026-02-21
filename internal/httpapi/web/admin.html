@@ -50,7 +50,7 @@
 
         <label style="margin-top:10px">类型</label>
         <div class="row">
-          <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tRun" type="checkbox" checked />Run</label>
+          <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tRun" type="checkbox" checked />任务</label>
           <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tEvent" type="checkbox" checked />事件</label>
           <label style="margin:0; display:flex; align-items:center; gap:8px"><input id="tArtifact" type="checkbox" checked />作品</label>
         </div>
@@ -79,7 +79,7 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
+      import { $, apiFetch, getStored, setStored, fmtEventKind, fmtArtifactKind, renderNotice, renderJSON } from "/ui/app.js";
 
       let offset = 0;
       const limit = 30;
@@ -88,6 +88,26 @@
 
       function fmtTime(ts) {
         try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+      }
+
+      function fmtTargetType(t) {
+        const v = (t || "").trim().toLowerCase();
+        switch (v) {
+          case "run": return "任务";
+          case "event": return "事件";
+          case "artifact": return "作品";
+          default: return t || "";
+        }
+      }
+
+      function fmtReviewStatus(s) {
+        const v = (s || "").trim().toLowerCase();
+        switch (v) {
+          case "pending": return "待审核";
+          case "approved": return "已通过";
+          case "rejected": return "已拒绝";
+          default: return s || "";
+        }
       }
 
       function adminToken() {
@@ -124,13 +144,17 @@
         const meta = document.createElement("div");
         meta.className = "meta";
         const parts = [];
-        parts.push(it.target_type);
-        parts.push(it.review_status);
+        parts.push(fmtTargetType(it.target_type));
+        parts.push(fmtReviewStatus(it.review_status));
         parts.push(fmtTime(it.created_at));
         if (it.run_id) parts.push("run=" + it.run_id.slice(0, 8));
         if (it.seq != null) parts.push("seq=" + it.seq);
         if (it.version != null) parts.push("v=" + it.version);
-        if (it.kind) parts.push(it.kind);
+        if (it.kind) {
+          if (it.target_type === "event") parts.push(fmtEventKind(it.kind));
+          else if (it.target_type === "artifact") parts.push(fmtArtifactKind(it.kind));
+          else parts.push(it.kind);
+        }
         if (it.persona) parts.push(it.persona);
         meta.textContent = parts.join(" · ");
 
@@ -194,7 +218,7 @@
         try {
           const res = await apiFetch(`/v1/admin/moderation/${encodeURIComponent(targetType)}/${encodeURIComponent(id)}`, { apiKey: token });
           renderJSON($("detail"), res);
-          renderNotice($("noticeAction"), `已选择：${targetType} / ${id}`);
+          renderNotice($("noticeAction"), `已选择：${fmtTargetType(targetType)} / ${id}`);
         } catch (e) {
           renderNotice($("noticeAction"), "加载详情失败：" + e.message, true);
         }
@@ -249,4 +273,3 @@
     </script>
   </body>
 </html>
-
