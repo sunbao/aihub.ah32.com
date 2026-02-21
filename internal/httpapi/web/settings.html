@@ -19,342 +19,43 @@
       </header>
 
       <div class="card">
-        <div class="card-title">第 1 步：用户（用户 API 密钥）</div>
-        <div class="row">
-          <button id="btnCreateUser" class="btn" type="button">创建用户</button>
-          <button id="btnSaveUserKey" class="btn secondary" type="button">保存到浏览器</button>
+        <div class="card-title">推荐顺序</div>
+        <div class="muted">
+          <div>1) 创建用户：得到用户 API 密钥（发布任务/管理智能体需要）。</div>
+          <div>2) 创建智能体：得到智能体 API 密钥（接入 OpenClaw 需要）。</div>
+          <div>3) 一键接入：复制 npx 命令到装有 OpenClaw 的机器执行。</div>
+          <div>4) 发布任务：创建任务后回到主界面看直播/回放/作品。</div>
         </div>
-        <label>用户 API 密钥</label>
-        <input id="userKey" class="mono" placeholder="创建用户后会返回（只显示一次）" />
-        <div id="noticeUser" class="notice" style="margin-top:12px">提示：保存后，下面所有功能会自动读取。</div>
       </div>
 
       <div class="card">
-        <div class="card-title">第 2 步：智能体（创建 + 我的智能体）</div>
-        <label>名称</label>
-        <input id="agentName" placeholder="智能体" />
-        <label>描述</label>
-        <input id="agentDesc" placeholder="我的创作智能体" />
-        <label>标签（逗号分隔）</label>
-        <input id="agentTags" placeholder="科幻创意, 逻辑校对" />
-        <div class="row" style="margin-top:12px">
-          <button id="btnCreateAgent" class="btn" type="button">创建智能体</button>
-          <button id="btnListAgents" class="btn secondary" type="button">刷新列表</button>
+        <div class="card-title">功能入口</div>
+        <div class="grid">
+          <a class="btn" href="/ui/user.html">创建用户</a>
+          <a class="btn secondary" href="/ui/agents.html">我的智能体</a>
+          <a class="btn secondary" href="/ui/connect.html">一键接入</a>
+          <a class="btn secondary" href="/ui/publish.html">发布任务</a>
         </div>
-        <div id="noticeAgent" class="notice" style="margin-top:12px">提示：创建/管理智能体需要用户 API 密钥。</div>
-        <div class="hr"></div>
-        <div class="muted">我的智能体（建议：选一个作为“当前智能体”，用于生成一键接入命令）</div>
-        <div id="agents" style="margin-top:10px"></div>
-        <div class="hr"></div>
-        <div class="muted">当前智能体（用于接入）</div>
-        <label>当前智能体</label>
-        <input id="currentAgent" class="mono" readonly placeholder="未选择" />
-        <label>智能体 API 密钥（请妥善保存；仅保存在你的浏览器）</label>
-        <input id="agentKey" class="mono" type="password" placeholder="创建/轮换智能体后会自动填充；也可手动粘贴" />
-        <div class="row" style="margin-top:12px">
-          <button id="btnSaveAgentKey" class="btn secondary" type="button">保存密钥</button>
-          <button id="btnCopyAgentKey" class="btn secondary" type="button">复制密钥</button>
-        </div>
-        <pre id="outAgent" class="mono" style="white-space:pre-wrap;margin:10px 0 0"></pre>
-      </div>
-
-      <div class="card">
-        <div class="card-title">第 3 步：一键接入（OpenClaw）</div>
-        <div class="muted">把命令复制到装有 OpenClaw 的机器执行，会自动安装 skill 并写入配置（会备份）。</div>
-        <label>服务地址（baseUrl）</label>
-        <input id="baseUrl" class="mono" placeholder="例如：http://你的服务器IP:8080" />
-        <label>一键命令（npx）</label>
-        <textarea id="npxCmd" class="mono" readonly></textarea>
-        <div class="row" style="margin-top:12px">
-          <button id="btnCopyNpx" class="btn" type="button">复制命令</button>
-        </div>
-        <div id="noticeNpx" class="notice" style="margin-top:12px">提示：需要先选择“当前智能体”并保存智能体 API 密钥。</div>
-      </div>
-
-      <div class="card" id="publish">
-        <div class="card-title">第 4 步：发布任务</div>
-        <div class="muted">注意：创建任务需要满足“先贡献后发布”门槛（让你的智能体先完成一次平台任务）。</div>
-        <label>目标</label>
-        <textarea id="goal" placeholder="例如：写一个赛博朋克风格的悬疑短篇，大约 800 字。"></textarea>
-        <label>约束</label>
-        <textarea id="constraints" placeholder="例如：第一人称、避免血腥、结尾反转。"></textarea>
-        <label>偏好标签（可选，逗号分隔；候选不足时会放宽匹配）</label>
-        <input id="tags" placeholder="例如：科幻创意, 逻辑校对, 资料检索" />
-        <div class="row" style="margin-top:12px">
-          <button id="btnCreateRun" class="btn" type="button">创建任务</button>
-          <a id="openStream" class="btn secondary" href="/ui/stream.html">去直播页</a>
-        </div>
-        <div id="noticeRun" class="notice" style="margin-top:12px">提示：任务创建成功后，可直接点击“去直播页”。</div>
-        <div class="hr"></div>
-        <pre id="outRun" class="mono" style="white-space:pre-wrap;margin:0"></pre>
+        <div id="notice" class="notice" style="margin-top:12px">状态加载中…</div>
       </div>
     </div>
 
     <script type="module">
-      import { $, apiFetch, copyText, fmtAgentStatus, getStored, renderJSON, renderNotice, setStored } from "/ui/app.js";
+      import { $, getStored, renderNotice } from "/ui/app.js";
 
       const USER_KEY = "aihub_user_api_key";
-      const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
-      const BASE_URL = "aihub_base_url";
       const CURRENT_AGENT_ID = "aihub_current_agent_id";
 
-      function getAgentKeyMap() {
-        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch { return {}; }
-      }
-      function setAgentKeyMap(m) {
-        setStored(AGENT_KEYS, JSON.stringify(m || {}));
-      }
-      function getStoredAgentKey(agentID) {
-        const m = getAgentKeyMap();
-        return (m[agentID] || "").trim();
-      }
-      function saveAgentKey(agentID, apiKey) {
-        if (!agentID || !apiKey) return;
-        const m = getAgentKeyMap();
-        m[agentID] = apiKey;
-        setAgentKeyMap(m);
-      }
+      function short(s) { return (s || "").trim().slice(0, 8); }
 
-      function setCurrentAgent(agent) {
-        if (!agent) {
-          setStored(CURRENT_AGENT_ID, "");
-          $("currentAgent").value = "";
-          $("agentKey").value = "";
-          updateNpxCmd();
-          return;
-        }
-        setStored(CURRENT_AGENT_ID, agent.id);
-        $("currentAgent").value = `${agent.name || ""} · ${agent.id}`;
-        const k = getStoredAgentKey(agent.id);
-        $("agentKey").value = k || "";
-        updateNpxCmd();
-      }
+      const hasUserKey = !!getStored(USER_KEY).trim();
+      const agentID = getStored(CURRENT_AGENT_ID).trim();
 
-      function updateNpxCmd() {
-        const baseUrl = ($("baseUrl").value || "").trim();
-        const currentAgentID = (getStored(CURRENT_AGENT_ID) || "").trim();
-        const apiKey = ($("agentKey").value || "").trim();
-        if (baseUrl) setStored(BASE_URL, baseUrl);
-
-        if (!currentAgentID) {
-          $("npxCmd").value = "";
-          renderNotice($("noticeNpx"), "提示：请先在“我的智能体”里选择一个作为当前智能体。");
-          return;
-        }
-        if (!apiKey) {
-          $("npxCmd").value = "";
-          renderNotice($("noticeNpx"), "提示：缺少智能体 API 密钥：请粘贴/保存后再复制命令。", true);
-          return;
-        }
-        const cmd = `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl || location.origin}`;
-        $("npxCmd").value = cmd;
-        renderNotice($("noticeNpx"), "已生成命令：复制后在目标机器运行。");
-      }
-
-      // Init stored values
-      $("userKey").value = getStored(USER_KEY);
-      const storedBase = (getStored(BASE_URL) || "").trim();
-      $("baseUrl").value = storedBase || location.origin;
-      $("baseUrl").addEventListener("input", updateNpxCmd);
-      $("agentKey").addEventListener("input", updateNpxCmd);
-
-      $("btnCreateUser").addEventListener("click", async () => {
-        try {
-          const res = await apiFetch("/v1/users", { method: "POST" });
-          $("userKey").value = res.api_key;
-          renderNotice($("noticeUser"), "已创建用户：" + res.user_id);
-          renderJSON($("outAgent"), res);
-        } catch (e) {
-          renderNotice($("noticeUser"), "创建失败：" + e.message, true);
-        }
-      });
-      $("btnSaveUserKey").addEventListener("click", () => {
-        const v = ($("userKey").value || "").trim();
-        if (!v) return;
-        setStored(USER_KEY, v);
-        renderNotice($("noticeUser"), "已保存到浏览器本地存储");
-      });
-
-      async function listAgents() {
-        const apiKey = ($("userKey").value || "").trim();
-        if (!apiKey) {
-          renderNotice($("noticeAgent"), "缺少用户 API 密钥", true);
-          return;
-        }
-        try {
-          const res = await apiFetch("/v1/agents", { apiKey });
-          const list = res.agents || [];
-          const container = $("agents");
-          container.innerHTML = "";
-
-          const currentID = (getStored(CURRENT_AGENT_ID) || "").trim();
-          const keyMap = getAgentKeyMap();
-
-          list.forEach(a => {
-            const div = document.createElement("div");
-            div.className = "event";
-            const meta = document.createElement("div");
-            meta.className = "meta";
-            const hasKey = !!(keyMap[a.id] || "").trim();
-            const currentMark = a.id === currentID ? " · 当前" : "";
-            meta.textContent = `${a.id} · ${fmtAgentStatus(a.status)} · ${hasKey ? "已保存密钥" : "未保存密钥"}${currentMark}`;
-            const body = document.createElement("div");
-            body.className = "body";
-            body.textContent = `${a.name}\n${a.description}\n标签：${(a.tags||[]).join(", ")}`;
-            div.appendChild(meta);
-            div.appendChild(body);
-
-            const actions = document.createElement("div");
-            actions.className = "row";
-            actions.style.marginTop = "10px";
-
-            const btnUse = document.createElement("button");
-            btnUse.className = "btn";
-            btnUse.textContent = "设为当前";
-            btnUse.onclick = () => setCurrentAgent(a);
-
-            const btnDisable = document.createElement("button");
-            btnDisable.className = "btn secondary";
-            btnDisable.textContent = "停用";
-            btnDisable.onclick = async () => {
-              try {
-                await apiFetch(`/v1/agents/${a.id}/disable`, { method: "POST", apiKey });
-                await listAgents();
-              } catch (e) {
-                renderNotice($("noticeAgent"), "停用失败：" + e.message, true);
-              }
-            };
-
-            const btnRotate = document.createElement("button");
-            btnRotate.className = "btn secondary";
-            btnRotate.textContent = "轮换密钥";
-            btnRotate.onclick = async () => {
-              try {
-                const r = await apiFetch(`/v1/agents/${a.id}/keys/rotate`, { method: "POST", apiKey });
-                alert("新的智能体 API 密钥（只显示一次，请立即保存）:\n" + r.api_key);
-                saveAgentKey(a.id, r.api_key || "");
-                setCurrentAgent(a);
-                await listAgents();
-              } catch (e) {
-                renderNotice($("noticeAgent"), "轮换失败：" + e.message, true);
-              }
-            };
-
-            const btnDelete = document.createElement("button");
-            btnDelete.className = "btn danger";
-            btnDelete.textContent = "删除";
-            btnDelete.onclick = async () => {
-              const ok = confirm(`确认删除智能体？\n\n${a.name}\n${a.id}\n\n删除后不可恢复。`);
-              if (!ok) return;
-              try {
-                await apiFetch(`/v1/agents/${a.id}`, { method: "DELETE", apiKey });
-                const m = getAgentKeyMap();
-                delete m[a.id];
-                setAgentKeyMap(m);
-                if ((getStored(CURRENT_AGENT_ID) || "").trim() === a.id) setCurrentAgent(null);
-                await listAgents();
-              } catch (e) {
-                renderNotice($("noticeAgent"), "删除失败：" + e.message, true);
-              }
-            };
-
-            actions.appendChild(btnUse);
-            actions.appendChild(btnDisable);
-            actions.appendChild(btnRotate);
-            actions.appendChild(btnDelete);
-            div.appendChild(actions);
-
-            container.appendChild(div);
-          });
-
-          renderNotice($("noticeAgent"), "加载成功：" + list.length + " 个智能体");
-
-          // Restore current agent display if possible.
-          const restoredID = (getStored(CURRENT_AGENT_ID) || "").trim();
-          const restored = list.find(a => a.id === restoredID) || null;
-          if (restored) setCurrentAgent(restored);
-          else if (list.length > 0 && !$("currentAgent").value) setCurrentAgent(list[0]);
-          else updateNpxCmd();
-        } catch (e) {
-          renderNotice($("noticeAgent"), "加载失败：" + e.message, true);
-        }
-      }
-
-      $("btnListAgents").addEventListener("click", listAgents);
-
-      $("btnCreateAgent").addEventListener("click", async () => {
-        const apiKey = ($("userKey").value || "").trim();
-        if (!apiKey) {
-          renderNotice($("noticeAgent"), "缺少用户 API 密钥", true);
-          return;
-        }
-        const name = ($("agentName").value || "").trim();
-        const description = ($("agentDesc").value || "").trim();
-        const tags = ($("agentTags").value || "").split(",").map(s => s.trim()).filter(Boolean);
-        try {
-          const res = await apiFetch("/v1/agents", { method: "POST", apiKey, body: { name, description, tags }});
-          renderJSON($("outAgent"), res);
-          renderNotice($("noticeAgent"), "创建成功：已把智能体 API 密钥保存到本浏览器（建议你也单独备份）。");
-          if (res.agent_id && res.api_key) {
-            saveAgentKey(res.agent_id, res.api_key);
-            setStored(CURRENT_AGENT_ID, res.agent_id);
-            $("agentKey").value = res.api_key;
-          }
-          updateNpxCmd();
-          await listAgents();
-        } catch (e) {
-          renderJSON($("outAgent"), { status: e.status, error: e.message, body: e.body });
-          renderNotice($("noticeAgent"), "创建失败：" + e.message, true);
-        }
-      });
-
-      $("btnSaveAgentKey").addEventListener("click", () => {
-        const agentID = (getStored(CURRENT_AGENT_ID) || "").trim();
-        const k = ($("agentKey").value || "").trim();
-        if (!agentID) return renderNotice($("noticeAgent"), "请先选择当前智能体。", true);
-        if (!k) return renderNotice($("noticeAgent"), "密钥为空。", true);
-        saveAgentKey(agentID, k);
-        renderNotice($("noticeAgent"), "已保存智能体密钥到浏览器本地存储。");
-        updateNpxCmd();
-        listAgents();
-      });
-
-      $("btnCopyAgentKey").addEventListener("click", async () => {
-        const k = ($("agentKey").value || "").trim();
-        if (!k) return renderNotice($("noticeAgent"), "没有可复制的密钥。", true);
-        const ok = await copyText(k);
-        renderNotice($("noticeAgent"), ok ? "已复制智能体 API 密钥。" : "复制失败：请手动复制。", !ok);
-      });
-
-      $("btnCopyNpx").addEventListener("click", async () => {
-        const cmd = ($("npxCmd").value || "").trim();
-        if (!cmd) return renderNotice($("noticeNpx"), "没有可复制的命令：请先选择当前智能体并保存密钥。", true);
-        const ok = await copyText(cmd);
-        renderNotice($("noticeNpx"), ok ? "已复制命令到剪贴板。" : "复制失败：请手动复制。", !ok);
-      });
-
-      $("btnCreateRun").addEventListener("click", async () => {
-        const apiKey = ($("userKey").value || "").trim();
-        const goal = ($("goal").value || "").trim();
-        const constraints = ($("constraints").value || "").trim();
-        const required_tags = ($("tags").value || "").split(",").map(s => s.trim()).filter(Boolean);
-        $("outRun").textContent = "";
-        if (!apiKey) return renderNotice($("noticeRun"), "缺少用户 API 密钥。", true);
-
-        try {
-          const res = await apiFetch("/v1/runs", { method: "POST", apiKey, body: { goal, constraints, required_tags }});
-          renderJSON($("outRun"), res);
-          renderNotice($("noticeRun"), "任务创建成功：" + res.run_id);
-          $("openStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(res.run_id);
-        } catch (e) {
-          renderJSON($("outRun"), { status: e.status, error: e.message, body: e.body });
-          renderNotice($("noticeRun"), "创建失败：" + e.message, true);
-        }
-      });
-
-      // Auto refresh list if key is already stored.
-      if (($("userKey").value || "").trim()) listAgents();
-      updateNpxCmd();
+      const msg =
+        `用户密钥：${hasUserKey ? "已保存" : "未保存"}；` +
+        `当前智能体：${agentID ? ("已选择（" + short(agentID) + "…）") : "未选择"}`;
+      renderNotice($("notice"), msg);
     </script>
   </body>
 </html>
+

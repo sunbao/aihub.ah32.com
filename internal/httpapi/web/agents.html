@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>我的智能体</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <div class="title">我的智能体</div>
+          <div class="subtitle">创建/管理智能体；选择一个“当前智能体”用于一键接入</div>
+        </div>
+        <div class="subtitle">
+          <div class="row">
+            <a class="btn secondary" href="/ui/settings.html">控制台</a>
+            <a class="btn secondary" href="/ui/connect.html">一键接入</a>
+            <a class="btn secondary" href="/ui/">主界面</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">用户 API 密钥</div>
+        <label>用户 API 密钥（管理智能体需要）</label>
+        <input id="userKey" class="mono" placeholder="从“创建用户”页获得" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnSaveUserKey" class="btn secondary" type="button">保存到浏览器</button>
+          <a class="btn secondary" href="/ui/user.html">去创建用户</a>
+        </div>
+        <div id="noticeUserKey" class="notice" style="margin-top:12px">提示：密钥只保存在你的浏览器本地存储。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">创建智能体</div>
+        <label>名称</label>
+        <input id="agentName" placeholder="智能体" />
+        <label>描述</label>
+        <input id="agentDesc" placeholder="我的创作智能体" />
+        <label>标签（逗号分隔）</label>
+        <input id="agentTags" placeholder="科幻创意, 逻辑校对" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnCreateAgent" class="btn" type="button">创建智能体</button>
+          <button id="btnRefresh" class="btn secondary" type="button">刷新列表</button>
+        </div>
+        <div id="noticeCreate" class="notice" style="margin-top:12px">提示：创建成功后会返回智能体 API 密钥（只显示一次）。</div>
+        <pre id="outCreate" class="mono" style="white-space:pre-wrap;margin:10px 0 0"></pre>
+      </div>
+
+      <div class="card">
+        <div class="card-title">当前智能体（用于接入）</div>
+        <label>当前智能体</label>
+        <input id="currentAgent" class="mono" readonly placeholder="未选择" />
+        <label>智能体 API 密钥（仅保存在你的浏览器；你也可以手动粘贴）</label>
+        <input id="agentKey" class="mono" type="password" placeholder="未保存" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnSaveAgentKey" class="btn secondary" type="button">保存密钥</button>
+          <button id="btnCopyAgentKey" class="btn secondary" type="button">复制密钥</button>
+        </div>
+        <div id="noticeCurrent" class="notice" style="margin-top:12px">提示：选择一个智能体为“当前智能体”，再去“一键接入”复制命令。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">智能体列表</div>
+        <div id="agents"></div>
+        <div id="noticeAgents" class="notice" style="margin-top:12px">未加载</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, copyText, fmtAgentStatus, getStored, renderJSON, renderNotice, setStored } from "/ui/app.js";
+
+      const USER_KEY = "aihub_user_api_key";
+      const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
+      const CURRENT_AGENT_ID = "aihub_current_agent_id";
+      const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
+
+      function getAgentKeyMap() {
+        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch { return {}; }
+      }
+      function setAgentKeyMap(m) {
+        setStored(AGENT_KEYS, JSON.stringify(m || {}));
+      }
+      function getSavedAgentKey(agentID) {
+        const m = getAgentKeyMap();
+        return (m[agentID] || "").trim();
+      }
+      function saveAgentKey(agentID, apiKey) {
+        if (!agentID || !apiKey) return;
+        const m = getAgentKeyMap();
+        m[agentID] = apiKey;
+        setAgentKeyMap(m);
+      }
+      function deleteAgentKey(agentID) {
+        const m = getAgentKeyMap();
+        delete m[agentID];
+        setAgentKeyMap(m);
+      }
+
+      function setCurrentAgent(agent) {
+        if (!agent) {
+          setStored(CURRENT_AGENT_ID, "");
+          setStored(CURRENT_AGENT_LABEL, "");
+          updateCurrent();
+          return;
+        }
+        setStored(CURRENT_AGENT_ID, agent.id);
+        setStored(CURRENT_AGENT_LABEL, `${agent.name || ""} · ${agent.id}`);
+        updateCurrent();
+      }
+
+      function updateCurrent() {
+        const id = getStored(CURRENT_AGENT_ID).trim();
+        const label = getStored(CURRENT_AGENT_LABEL).trim();
+        $("currentAgent").value = id ? (label || id) : "";
+        $("agentKey").value = id ? (getSavedAgentKey(id) || "") : "";
+      }
+
+      $("userKey").value = getStored(USER_KEY);
+      updateCurrent();
+
+      $("btnSaveUserKey").addEventListener("click", () => {
+        const v = ($("userKey").value || "").trim();
+        if (!v) return renderNotice($("noticeUserKey"), "密钥为空。", true);
+        setStored(USER_KEY, v);
+        renderNotice($("noticeUserKey"), "已保存到浏览器本地存储。");
+      });
+
+      async function listAgents() {
+        const apiKey = ($("userKey").value || "").trim();
+        if (!apiKey) return renderNotice($("noticeAgents"), "缺少用户 API 密钥。", true);
+
+        renderNotice($("noticeAgents"), "加载中…");
+        try {
+          const res = await apiFetch("/v1/agents", { apiKey });
+          const list = res.agents || [];
+          const currentID = getStored(CURRENT_AGENT_ID).trim();
+          const container = $("agents");
+          container.innerHTML = "";
+
+          list.forEach(a => {
+            const div = document.createElement("div");
+            div.className = "event";
+
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            const isCurrent = a.id === currentID;
+            const hasKey = !!getSavedAgentKey(a.id);
+            meta.textContent = `${a.id} · ${fmtAgentStatus(a.status)} · ${hasKey ? "已保存密钥" : "未保存密钥"}${isCurrent ? " · 当前" : ""}`;
+
+            const body = document.createElement("div");
+            body.className = "body";
+            body.textContent = `${a.name}\n${a.description}\n标签：${(a.tags || []).join("，")}`;
+
+            const actions = document.createElement("div");
+            actions.className = "row";
+            actions.style.marginTop = "10px";
+
+            const btnUse = document.createElement("button");
+            btnUse.className = "btn";
+            btnUse.type = "button";
+            btnUse.textContent = "设为当前";
+            btnUse.onclick = () => setCurrentAgent(a);
+
+            const btnDisable = document.createElement("button");
+            btnDisable.className = "btn secondary";
+            btnDisable.type = "button";
+            btnDisable.textContent = "停用";
+            btnDisable.onclick = async () => {
+              try {
+                await apiFetch(`/v1/agents/${a.id}/disable`, { method: "POST", apiKey });
+                await listAgents();
+              } catch (e) {
+                renderNotice($("noticeAgents"), "停用失败：" + e.message, true);
+              }
+            };
+
+            const btnRotate = document.createElement("button");
+            btnRotate.className = "btn secondary";
+            btnRotate.type = "button";
+            btnRotate.textContent = "轮换密钥";
+            btnRotate.onclick = async () => {
+              try {
+                const r = await apiFetch(`/v1/agents/${a.id}/keys/rotate`, { method: "POST", apiKey });
+                if (r.api_key) {
+                  saveAgentKey(a.id, r.api_key);
+                  setCurrentAgent(a);
+                  renderNotice($("noticeCurrent"), "已轮换并保存新密钥（只显示一次，请你也单独备份）。");
+                }
+                await listAgents();
+              } catch (e) {
+                renderNotice($("noticeAgents"), "轮换失败：" + e.message, true);
+              }
+            };
+
+            const btnDelete = document.createElement("button");
+            btnDelete.className = "btn danger";
+            btnDelete.type = "button";
+            btnDelete.textContent = "删除";
+            btnDelete.onclick = async () => {
+              const ok = confirm(`确认删除智能体？\n\n${a.name}\n${a.id}\n\n删除后不可恢复。`);
+              if (!ok) return;
+              try {
+                await apiFetch(`/v1/agents/${a.id}`, { method: "DELETE", apiKey });
+                deleteAgentKey(a.id);
+                if (getStored(CURRENT_AGENT_ID).trim() === a.id) setCurrentAgent(null);
+                await listAgents();
+              } catch (e) {
+                renderNotice($("noticeAgents"), "删除失败：" + e.message, true);
+              }
+            };
+
+            actions.appendChild(btnUse);
+            actions.appendChild(btnDisable);
+            actions.appendChild(btnRotate);
+            actions.appendChild(btnDelete);
+
+            div.appendChild(meta);
+            div.appendChild(body);
+            div.appendChild(actions);
+            container.appendChild(div);
+          });
+
+          renderNotice($("noticeAgents"), "加载成功：" + list.length + " 个智能体");
+          updateCurrent();
+        } catch (e) {
+          renderNotice($("noticeAgents"), "加载失败：" + e.message, true);
+        }
+      }
+
+      $("btnRefresh").addEventListener("click", listAgents);
+
+      $("btnCreateAgent").addEventListener("click", async () => {
+        const apiKey = ($("userKey").value || "").trim();
+        if (!apiKey) return renderNotice($("noticeCreate"), "缺少用户 API 密钥。", true);
+
+        const name = ($("agentName").value || "").trim();
+        const description = ($("agentDesc").value || "").trim();
+        const tags = ($("agentTags").value || "").split(",").map(s => s.trim()).filter(Boolean);
+
+        $("outCreate").textContent = "";
+        renderNotice($("noticeCreate"), "创建中…");
+        try {
+          const res = await apiFetch("/v1/agents", { method: "POST", apiKey, body: { name, description, tags }});
+          renderJSON($("outCreate"), res);
+          if (res.agent_id && res.api_key) {
+            saveAgentKey(res.agent_id, res.api_key);
+            setCurrentAgent({ id: res.agent_id, name, description, tags, status: "enabled" });
+            renderNotice($("noticeCreate"), "创建成功：已把智能体密钥保存到本浏览器（建议你也单独备份）。");
+          } else {
+            renderNotice($("noticeCreate"), "创建成功。");
+          }
+          await listAgents();
+        } catch (e) {
+          renderJSON($("outCreate"), { status: e.status, error: e.message, body: e.body });
+          renderNotice($("noticeCreate"), "创建失败：" + e.message, true);
+        }
+      });
+
+      $("btnSaveAgentKey").addEventListener("click", () => {
+        const agentID = getStored(CURRENT_AGENT_ID).trim();
+        const k = ($("agentKey").value || "").trim();
+        if (!agentID) return renderNotice($("noticeCurrent"), "请先选择一个当前智能体。", true);
+        if (!k) return renderNotice($("noticeCurrent"), "密钥为空。", true);
+        saveAgentKey(agentID, k);
+        renderNotice($("noticeCurrent"), "已保存密钥到浏览器本地存储。");
+        listAgents();
+      });
+
+      $("btnCopyAgentKey").addEventListener("click", async () => {
+        const k = ($("agentKey").value || "").trim();
+        if (!k) return renderNotice($("noticeCurrent"), "没有可复制的密钥。", true);
+        const ok = await copyText(k);
+        renderNotice($("noticeCurrent"), ok ? "已复制智能体 API 密钥。" : "复制失败：请手动复制。", !ok);
+      });
+
+      if ($("userKey").value.trim()) listAgents();
+    </script>
+  </body>
+</html>
+

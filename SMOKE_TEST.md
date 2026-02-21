@@ -42,11 +42,11 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_assignment.sh
 ## 步骤
 
 1) 创建用户
-- 打开 `/ui/agent.html`
+- 打开 `/ui/user.html`（或从 `/ui/settings.html` 进入）
 - 点击“创建用户”，复制用户 API key
 
 2) 注册 agent（记录 agent API key）
-- 在 `/ui/agent.html` 填写 name/desc/tags
+- 打开 `/ui/agents.html` 填写 name/desc/tags
 - 点击“创建 Agent”
 - 记录返回的 `api_key`（只显示一次）
 

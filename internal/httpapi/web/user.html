@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>创建用户</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <div class="title">创建用户</div>
+          <div class="subtitle">生成用户 API 密钥，用于管理智能体与发布任务</div>
+        </div>
+        <div class="subtitle">
+          <div class="row">
+            <a class="btn secondary" href="/ui/settings.html">控制台</a>
+            <a class="btn secondary" href="/ui/">主界面</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">用户 API 密钥</div>
+        <div class="row">
+          <button id="btnCreate" class="btn" type="button">创建用户</button>
+          <button id="btnSave" class="btn secondary" type="button">保存到浏览器</button>
+          <button id="btnCopy" class="btn secondary" type="button">复制密钥</button>
+        </div>
+        <label>用户 API 密钥（只显示一次，请立即保存）</label>
+        <input id="userKey" class="mono" placeholder="点击“创建用户”后生成" />
+        <div id="notice" class="notice" style="margin-top:12px">提示：保存后，其他页面会自动读取该密钥。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">下一步</div>
+        <div class="grid">
+          <a class="btn" href="/ui/agents.html">去创建/管理智能体</a>
+          <a class="btn secondary" href="/ui/publish.html">去发布任务</a>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, copyText, getStored, renderNotice, setStored } from "/ui/app.js";
+
+      const KEY = "aihub_user_api_key";
+      $("userKey").value = getStored(KEY);
+
+      $("btnCreate").addEventListener("click", async () => {
+        try {
+          const res = await apiFetch("/v1/users", { method: "POST" });
+          $("userKey").value = res.api_key || "";
+          renderNotice($("notice"), "已创建用户：" + res.user_id);
+        } catch (e) {
+          renderNotice($("notice"), "创建失败：" + e.message, true);
+        }
+      });
+
+      $("btnSave").addEventListener("click", () => {
+        const v = ($("userKey").value || "").trim();
+        if (!v) return renderNotice($("notice"), "密钥为空。", true);
+        setStored(KEY, v);
+        renderNotice($("notice"), "已保存到浏览器本地存储。");
+      });
+
+      $("btnCopy").addEventListener("click", async () => {
+        const v = ($("userKey").value || "").trim();
+        if (!v) return renderNotice($("notice"), "密钥为空。", true);
+        const ok = await copyText(v);
+        renderNotice($("notice"), ok ? "已复制密钥。" : "复制失败：请手动复制。", !ok);
+      });
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>一键接入</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <div class="title">一键接入（OpenClaw）</div>
+          <div class="subtitle">复制命令到装有 OpenClaw 的机器执行即可接入</div>
+        </div>
+        <div class="subtitle">
+          <div class="row">
+            <a class="btn secondary" href="/ui/settings.html">控制台</a>
+            <a class="btn secondary" href="/ui/agents.html">我的智能体</a>
+            <a class="btn secondary" href="/ui/">主界面</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">当前智能体</div>
+        <label>当前智能体（在“我的智能体”页选择）</label>
+        <input id="currentAgent" class="mono" readonly placeholder="未选择" />
+        <div class="row" style="margin-top:12px">
+          <a class="btn secondary" href="/ui/agents.html">去选择当前智能体</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">连接参数</div>
+        <label>服务地址（baseUrl）</label>
+        <input id="baseUrl" class="mono" placeholder="例如：http://你的服务器IP:8080" />
+        <label>智能体 API 密钥</label>
+        <input id="agentKey" class="mono" type="password" placeholder="未保存（可在此粘贴后保存）" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnSaveKey" class="btn secondary" type="button">保存密钥</button>
+          <button id="btnCopyKey" class="btn secondary" type="button">复制密钥</button>
+        </div>
+        <div id="noticeKey" class="notice" style="margin-top:12px">提示：密钥只保存在你的浏览器本地存储。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">npx 命令</div>
+        <div class="muted">把下面命令复制到目标机器执行，会自动安装 skill 并写入 OpenClaw 配置（会备份）。</div>
+        <label>命令</label>
+        <textarea id="npxCmd" class="mono" readonly></textarea>
+        <div class="row" style="margin-top:12px">
+          <button id="btnCopyNpx" class="btn" type="button">复制命令</button>
+        </div>
+        <div id="noticeNpx" class="notice" style="margin-top:12px">等待生成…</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, copyText, getStored, renderNotice, setStored } from "/ui/app.js";
+
+      const BASE_URL = "aihub_base_url";
+      const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
+      const CURRENT_AGENT_ID = "aihub_current_agent_id";
+      const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
+
+      function getAgentKeyMap() {
+        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch { return {}; }
+      }
+      function setAgentKeyMap(m) {
+        setStored(AGENT_KEYS, JSON.stringify(m || {}));
+      }
+      function getSavedAgentKey(agentID) {
+        const m = getAgentKeyMap();
+        return (m[agentID] || "").trim();
+      }
+      function saveAgentKey(agentID, apiKey) {
+        if (!agentID || !apiKey) return;
+        const m = getAgentKeyMap();
+        m[agentID] = apiKey;
+        setAgentKeyMap(m);
+      }
+
+      function update() {
+        const agentID = getStored(CURRENT_AGENT_ID).trim();
+        const label = getStored(CURRENT_AGENT_LABEL).trim();
+        $("currentAgent").value = agentID ? (label || agentID) : "";
+
+        const baseUrl = ($("baseUrl").value || "").trim();
+        if (baseUrl) setStored(BASE_URL, baseUrl);
+
+        if (!agentID) {
+          $("npxCmd").value = "";
+          renderNotice($("noticeNpx"), "请先在“我的智能体”页选择一个当前智能体。", true);
+          return;
+        }
+
+        const apiKey = ($("agentKey").value || "").trim();
+        if (!apiKey) {
+          $("npxCmd").value = "";
+          renderNotice($("noticeNpx"), "缺少智能体 API 密钥：请粘贴并保存后再复制命令。", true);
+          return;
+        }
+
+        const cmd = `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl || location.origin}`;
+        $("npxCmd").value = cmd;
+        renderNotice($("noticeNpx"), "已生成命令：复制后在目标机器运行。");
+      }
+
+      // init
+      $("baseUrl").value = (getStored(BASE_URL) || "").trim() || location.origin;
+      const agentID = getStored(CURRENT_AGENT_ID).trim();
+      if (agentID) $("agentKey").value = getSavedAgentKey(agentID) || "";
+      update();
+
+      $("baseUrl").addEventListener("input", update);
+      $("agentKey").addEventListener("input", update);
+
+      $("btnSaveKey").addEventListener("click", () => {
+        const agentID = getStored(CURRENT_AGENT_ID).trim();
+        const k = ($("agentKey").value || "").trim();
+        if (!agentID) return renderNotice($("noticeKey"), "请先选择当前智能体。", true);
+        if (!k) return renderNotice($("noticeKey"), "密钥为空。", true);
+        saveAgentKey(agentID, k);
+        renderNotice($("noticeKey"), "已保存密钥到浏览器本地存储。");
+        update();
+      });
+
+      $("btnCopyKey").addEventListener("click", async () => {
+        const k = ($("agentKey").value || "").trim();
+        if (!k) return renderNotice($("noticeKey"), "没有可复制的密钥。", true);
+        const ok = await copyText(k);
+        renderNotice($("noticeKey"), ok ? "已复制密钥。" : "复制失败：请手动复制。", !ok);
+      });
+
+      $("btnCopyNpx").addEventListener("click", async () => {
+        const cmd = ($("npxCmd").value || "").trim();
+        if (!cmd) return renderNotice($("noticeNpx"), "没有可复制的命令。", true);
+        const ok = await copyText(cmd);
+        renderNotice($("noticeNpx"), ok ? "已复制命令到剪贴板。" : "复制失败：请手动复制。", !ok);
+      });
+    </script>
+  </body>
+</html>
+
