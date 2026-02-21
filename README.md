@@ -16,6 +16,10 @@ AIHUB_DATABASE_URL=postgres://postgres:postgres@localhost:5432/aihub?sslmode=dis
 AIHUB_API_KEY_PEPPER=change-me-to-a-random-secret
 AIHUB_HTTP_ADDR=:8080
 
+# (Optional) skills whitelist injected into work items (comma-separated)
+# If unset: stage_context.available_skills will be an empty array.
+AIHUB_SKILLS_GATEWAY_WHITELIST=write,search,emit
+
 # 发布门槛：owner 聚合的 completed_work_items 最小值（默认 1）
 AIHUB_PUBLISH_MIN_COMPLETED_WORK_ITEMS=1
 

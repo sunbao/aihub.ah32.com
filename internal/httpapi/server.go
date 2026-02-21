@@ -23,9 +23,10 @@ import (
 )
 
 type server struct {
-	db     *pgxpool.Pool
-	pepper string
-	adminToken string
+	db                     *pgxpool.Pool
+	pepper                 string
+	adminToken             string
+	skillsGatewayWhitelist []string
 
 	publishMinCompletedWorkItems int
 	matchingParticipantCount     int
@@ -465,14 +466,22 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		workItemCount = 10
 	}
 
+	skills := s.skillsGatewayWhitelist
+	if skills == nil {
+		skills = []string{}
+	}
+	availableSkillsJSON, _ := json.Marshal(skills)
+
+	stageContextJSON, _ := json.Marshal(s.stageContextForStage("onboarding", skills))
+
 	var firstWorkItemID uuid.UUID
 	for i := 0; i < workItemCount; i++ {
 		var workItemID uuid.UUID
 		if err := tx.QueryRow(ctx, `
-			insert into work_items (run_id, stage, kind, status)
-			values ($1, 'onboarding', 'contribute', 'offered')
+			insert into work_items (run_id, stage, kind, status, context, available_skills)
+			values ($1, 'onboarding', 'contribute', 'offered', $2, $3)
 			returning id
-		`, runID).Scan(&workItemID); err != nil {
+		`, runID, stageContextJSON, availableSkillsJSON).Scan(&workItemID); err != nil {
 			return uuid.Nil, uuid.Nil, err
 		}
 		if i == 0 {
@@ -1035,19 +1044,72 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, createRunResponse{RunID: runID.String()})
 }
 
+type stageTemplate struct {
+	StageDescription string
+	OutputDesc       string
+	OutputLength     string
+	OutputFormat     string
+}
+
+var stageTemplates = map[string]stageTemplate{
+	"ideation": {
+		StageDescription: "Initial ideation stage - generate creative ideas",
+		OutputDesc:       "A brief summary of creative ideas",
+		OutputLength:     "100-200 words",
+		OutputFormat:     "plain text",
+	},
+	"onboarding": {
+		StageDescription: "Onboarding - validate basic gateway flow",
+		OutputDesc:       "A short self-intro + a tiny sample output",
+		OutputLength:     "200-400 words",
+		OutputFormat:     "markdown",
+	},
+	"review": {
+		StageDescription: "Review stage - provide feedback on a peer's artifact",
+		OutputDesc:       "Constructive critique and actionable suggestions",
+		OutputLength:     "100-200 words",
+		OutputFormat:     "markdown",
+	},
+}
+
+func (s server) stageContextForStage(stage string, skills []string) map[string]any {
+	tpl, ok := stageTemplates[stage]
+	if !ok {
+		tpl = stageTemplate{
+			StageDescription: stage,
+			OutputDesc:       "Follow goal and constraints",
+			OutputLength:     "",
+			OutputFormat:     "plain text",
+		}
+	}
+	expectedOutput := map[string]any{
+		"description": tpl.OutputDesc,
+		"length":      tpl.OutputLength,
+		"format":      tpl.OutputFormat,
+	}
+	return map[string]any{
+		"stage_description":  tpl.StageDescription,
+		"expected_output":    expectedOutput,
+		"available_skills":   skills,
+		"previous_artifacts": []any{},
+		// Backward-compatible convenience fields.
+		"format": tpl.OutputFormat,
+	}
+}
+
 func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, runID uuid.UUID, publisherUserID uuid.UUID, requiredTags []string, scheduledAt *time.Time) (uuid.UUID, error) {
 	agentIDs, err := s.matchAgentsForRun(ctx, tx, publisherUserID, requiredTags, s.matchingParticipantCount)
 	if err != nil {
 		return uuid.Nil, err
 	}
 
-	// Generate stage context for the initial work item
-	stageContext := map[string]any{
-		"stage_description": "Initial ideation stage - generate creative ideas",
-		"expected_output":  "A brief summary of creative ideas (100-200 words)",
-		"format":           "plain text",
+	skills := s.skillsGatewayWhitelist
+	if skills == nil {
+		skills = []string{}
 	}
-	stageContextJSON, _ := json.Marshal(stageContext)
+	availableSkillsJSON, _ := json.Marshal(skills)
+
+	stageContextJSON, _ := json.Marshal(s.stageContextForStage("ideation", skills))
 
 	// Determine initial status based on scheduled_at
 	status := "offered"
@@ -1057,10 +1119,10 @@ func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, r
 
 	var workItemID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		insert into work_items (run_id, stage, kind, status, context, scheduled_at)
-		values ($1, 'ideation', 'draft', $2, $3, $4)
+		insert into work_items (run_id, stage, kind, status, context, available_skills, scheduled_at)
+		values ($1, 'ideation', 'draft', $2, $3, $4, $5)
 		returning id
-	`, runID, status, stageContextJSON, scheduledAt).Scan(&workItemID); err != nil {
+	`, runID, status, stageContextJSON, availableSkillsJSON, scheduledAt).Scan(&workItemID); err != nil {
 		return uuid.Nil, err
 	}
 
@@ -1400,9 +1462,10 @@ type submitArtifactRequest struct {
 }
 
 type submitArtifactResponse struct {
-	RunID   string `json:"run_id"`
-	Version int    `json:"version"`
-	Kind    string `json:"kind"`
+	RunID      string `json:"run_id"`
+	Version    int    `json:"version"`
+	Kind       string `json:"kind"`
+	ArtifactID string `json:"artifact_id,omitempty"`
 }
 
 func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Request) {
@@ -1460,6 +1523,27 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Review work items should emit feedback as events, not submit new artifacts (to avoid overriding run output).
+	var onReviewLease bool
+	if err := s.db.QueryRow(ctx, `
+		select exists(
+			select 1
+			from work_item_leases l
+			join work_items wi on wi.id = l.work_item_id
+			where l.agent_id = $1
+			  and wi.run_id = $2
+			  and wi.kind = 'review'
+			  and wi.status = 'claimed'
+		)
+	`, agentID, runID).Scan(&onReviewLease); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lease check failed"})
+		return
+	}
+	if onReviewLease {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "review_work_item_no_artifacts"})
+		return
+	}
+
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
@@ -1486,10 +1570,12 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		linkedSeq = nil
 	}
 
-	if _, err := tx.Exec(ctx, `
+	var artifactID uuid.UUID
+	if err := tx.QueryRow(ctx, `
 		insert into artifacts (run_id, version, kind, content, linked_event_seq)
 		values ($1, $2, $3, $4, $5)
-	`, runID, nextVersion, req.Kind, req.Content, linkedSeq); err != nil {
+		returning id
+	`, runID, nextVersion, req.Kind, req.Content, linkedSeq).Scan(&artifactID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert failed"})
 		return
 	}
@@ -1499,8 +1585,109 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	s.audit(ctx, "agent", agentID, "artifact_submitted", map[string]any{"run_id": runID.String(), "version": nextVersion, "kind": req.Kind})
-	writeJSON(w, http.StatusCreated, submitArtifactResponse{RunID: runID.String(), Version: nextVersion, Kind: req.Kind})
+	// Best-effort: automatically create a review work item for final artifacts when there is at least one other eligible agent.
+	if req.Kind == "final" {
+		_ = s.maybeCreateReviewWorkItem(ctx, runID, artifactID, agentID)
+	}
+
+	s.audit(ctx, "agent", agentID, "artifact_submitted", map[string]any{"run_id": runID.String(), "version": nextVersion, "kind": req.Kind, "artifact_id": artifactID.String()})
+	writeJSON(w, http.StatusCreated, submitArtifactResponse{RunID: runID.String(), Version: nextVersion, Kind: req.Kind, ArtifactID: artifactID.String()})
+}
+
+func (s server) maybeCreateReviewWorkItem(ctx context.Context, runID uuid.UUID, artifactID uuid.UUID, authorAgentID uuid.UUID) error {
+	// Avoid duplicate review items for the same target artifact.
+	var exists bool
+	if err := s.db.QueryRow(ctx, `
+		select exists(
+			select 1
+			from work_items
+			where run_id = $1
+			  and kind = 'review'
+			  and review_context->>'target_artifact_id' = $2
+		)
+	`, runID, artifactID.String()).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	// Pick any other enabled participant as reviewer.
+	rows, err := s.db.Query(ctx, `
+		select distinct o.agent_id
+		from work_item_offers o
+		join work_items wi on wi.id = o.work_item_id
+		join agents a on a.id = o.agent_id
+		where wi.run_id = $1
+		  and o.agent_id <> $2
+		  and a.status = 'enabled'
+	`, runID, authorAgentID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var candidates []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		candidates = append(candidates, id)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	shuffleUUIDs(candidates)
+	reviewerID := candidates[0]
+
+	authorTag, _ := s.personaForAgentInRun(ctx, runID, authorAgentID)
+	reviewContext := map[string]any{
+		"target_artifact_id": artifactID.String(),
+		"target_author_tag":  authorTag,
+		"review_criteria":    []string{"creativity", "logic", "readability"},
+	}
+	reviewContextJSON, _ := json.Marshal(reviewContext)
+
+	skills := s.skillsGatewayWhitelist
+	if skills == nil {
+		skills = []string{}
+	}
+	availableSkillsJSON, _ := json.Marshal(skills)
+	stageContextJSON, _ := json.Marshal(s.stageContextForStage("review", skills))
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var workItemID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		insert into work_items (run_id, stage, kind, status, context, available_skills, review_context)
+		values ($1, 'review', 'review', 'offered', $2, $3, $4)
+		returning id
+	`, runID, stageContextJSON, availableSkillsJSON, reviewContextJSON).Scan(&workItemID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
+		on conflict do nothing
+	`, workItemID, reviewerID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	s.audit(ctx, "system", platformUserID, "review_work_item_created", map[string]any{
+		"run_id":             runID.String(),
+		"work_item_id":       workItemID.String(),
+		"reviewer_agent_id":  reviewerID.String(),
+		"target_artifact_id": artifactID.String(),
+	})
+	return nil
 }
 
 func (s server) ownerForAgent(ctx context.Context, agentID uuid.UUID) (uuid.UUID, error) {
@@ -1522,9 +1709,9 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 	defer cancel()
 
 	var (
-		version int
-		kind    string
-		content string
+		version      int
+		kind         string
+		content      string
 		reviewStatus string
 	)
 	err = s.db.QueryRow(ctx, `
@@ -1639,7 +1826,7 @@ type adminModerationQueueItemDTO struct {
 	ID           string `json:"id"`
 	RunID        string `json:"run_id,omitempty"`
 	Seq          *int64 `json:"seq,omitempty"`
-	Version      *int  `json:"version,omitempty"`
+	Version      *int   `json:"version,omitempty"`
 	Kind         string `json:"kind,omitempty"`
 	Persona      string `json:"persona,omitempty"`
 	ReviewStatus string `json:"review_status"`
@@ -2123,6 +2310,136 @@ func (s server) handleAdminModerationSetStatus(w http.ResponseWriter, r *http.Re
 
 // --- Admin work item assignment (break-glass)
 
+type adminAgentListItemDTO struct {
+	AgentID     string   `json:"agent_id"`
+	OwnerID     string   `json:"owner_id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Status      string   `json:"status"`
+	Tags        []string `json:"tags"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
+type adminAgentListResponse struct {
+	Items      []adminAgentListItemDTO `json:"items"`
+	HasMore    bool                    `json:"has_more"`
+	NextOffset int                     `json:"next_offset"`
+}
+
+func (s server) handleAdminListAgents(w http.ResponseWriter, r *http.Request) {
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	ownerIDStr := strings.TrimSpace(r.URL.Query().Get("owner_id"))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit = clampInt(limit, 1, 200)
+	offset, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("offset")))
+	if offset < 0 {
+		offset = 0
+	}
+
+	var ownerID uuid.UUID
+	if ownerIDStr != "" {
+		id, err := uuid.Parse(ownerIDStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid owner_id"})
+			return
+		}
+		ownerID = id
+	}
+
+	if q != "" && len(q) > 200 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q too long"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	args := make([]any, 0, 8)
+	where := make([]string, 0, 4)
+	argN := 1
+
+	if status != "" {
+		where = append(where, "a.status = $"+strconv.Itoa(argN))
+		args = append(args, status)
+		argN++
+	}
+	if ownerIDStr != "" {
+		where = append(where, "a.owner_id = $"+strconv.Itoa(argN))
+		args = append(args, ownerID)
+		argN++
+	}
+	if q != "" {
+		where = append(where, `(a.name ilike '%' || $`+strconv.Itoa(argN)+` || '%' or a.description ilike '%' || $`+strconv.Itoa(argN)+` || '%' or exists (select 1 from agent_tags t where t.agent_id = a.id and t.tag ilike '%' || $`+strconv.Itoa(argN)+` || '%'))`)
+		args = append(args, q)
+		argN++
+	}
+
+	sql := `
+		select
+			a.id, a.owner_id, a.name, a.description, a.status, a.created_at, a.updated_at,
+			coalesce((select json_agg(tag order by tag) from agent_tags t where t.agent_id = a.id), '[]'::json) as tags_json
+		from agents a
+	`
+	if len(where) > 0 {
+		sql += " where " + strings.Join(where, " and ")
+	}
+	sql += " order by a.created_at desc limit $" + strconv.Itoa(argN) + " offset $" + strconv.Itoa(argN+1)
+	args = append(args, limit+1, offset)
+
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]adminAgentListItemDTO, 0, limit+1)
+	for rows.Next() {
+		var (
+			agentID     uuid.UUID
+			ownerID     uuid.UUID
+			name        string
+			description string
+			status      string
+			createdAt   time.Time
+			updatedAt   time.Time
+			tagsJSON    []byte
+		)
+		if err := rows.Scan(&agentID, &ownerID, &name, &description, &status, &createdAt, &updatedAt, &tagsJSON); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		var tags []string
+		_ = json.Unmarshal(tagsJSON, &tags)
+		items = append(items, adminAgentListItemDTO{
+			AgentID:     agentID.String(),
+			OwnerID:     ownerID.String(),
+			Name:        name,
+			Description: description,
+			Status:      status,
+			Tags:        tags,
+			CreatedAt:   createdAt.UTC().Format(time.RFC3339),
+			UpdatedAt:   updatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	hasMore := false
+	if len(items) > limit {
+		items = items[:limit]
+		hasMore = true
+	}
+	nextOffset := offset + len(items)
+
+	writeJSON(w, http.StatusOK, adminAgentListResponse{
+		Items:      items,
+		HasMore:    hasMore,
+		NextOffset: nextOffset,
+	})
+}
+
 type adminAgentRefDTO struct {
 	AgentID string `json:"agent_id"`
 	Name    string `json:"name"`
@@ -2135,27 +2452,27 @@ type adminLeaseDTO struct {
 }
 
 type adminWorkItemDTO struct {
-	WorkItemID string            `json:"work_item_id"`
-	RunID      string            `json:"run_id"`
-	Stage      string            `json:"stage"`
-	Kind       string            `json:"kind"`
-	Status     string            `json:"status"`
+	WorkItemID string             `json:"work_item_id"`
+	RunID      string             `json:"run_id"`
+	Stage      string             `json:"stage"`
+	Kind       string             `json:"kind"`
+	Status     string             `json:"status"`
 	Offers     []adminAgentRefDTO `json:"offers"`
-	Lease      *adminLeaseDTO    `json:"lease,omitempty"`
-	CreatedAt  string            `json:"created_at"`
-	UpdatedAt  string            `json:"updated_at"`
+	Lease      *adminLeaseDTO     `json:"lease,omitempty"`
+	CreatedAt  string             `json:"created_at"`
+	UpdatedAt  string             `json:"updated_at"`
 }
 
 type adminWorkItemListItemDTO struct {
 	adminWorkItemDTO
-	RunGoal       string   `json:"run_goal"`
-	RequiredTags  []string `json:"required_tags"`
+	RunGoal      string   `json:"run_goal"`
+	RequiredTags []string `json:"required_tags"`
 }
 
 type adminListWorkItemsResponse struct {
 	Items      []adminWorkItemListItemDTO `json:"items"`
-	HasMore    bool               `json:"has_more"`
-	NextOffset int                `json:"next_offset"`
+	HasMore    bool                       `json:"has_more"`
+	NextOffset int                        `json:"next_offset"`
 }
 
 func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request) {
@@ -2289,9 +2606,9 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 			leaseAgentStatus string
 			leaseExpiresAt   *time.Time
 
-			runGoal string
+			runGoal          string
 			requiredTagsJSON []byte
-			offersJSON []byte
+			offersJSON       []byte
 		)
 		if err := rows.Scan(
 			&workItemID, &runID, &stage, &kind, &statusV, &createdAt, &updatedAt,
@@ -2336,7 +2653,7 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 				CreatedAt:  createdAt.UTC().Format(time.RFC3339),
 				UpdatedAt:  updatedAt.UTC().Format(time.RFC3339),
 			},
-			RunGoal: runGoal,
+			RunGoal:      runGoal,
 			RequiredTags: requiredTags,
 		})
 	}
@@ -2359,10 +2676,10 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 }
 
 type adminWorkItemDetailDTO struct {
-	WorkItem adminWorkItemDTO `json:"work_item"`
-	RunGoal  string          `json:"run_goal"`
-	RunConstraints string     `json:"run_constraints"`
-	RequiredTags []string     `json:"required_tags"`
+	WorkItem       adminWorkItemDTO `json:"work_item"`
+	RunGoal        string           `json:"run_goal"`
+	RunConstraints string           `json:"run_constraints"`
+	RequiredTags   []string         `json:"required_tags"`
 }
 
 func (s server) handleAdminGetWorkItem(w http.ResponseWriter, r *http.Request) {
@@ -2376,13 +2693,13 @@ func (s server) handleAdminGetWorkItem(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var (
-		runID      uuid.UUID
-		stage      string
-		kind       string
-		statusV    string
-		createdAt  time.Time
-		updatedAt  time.Time
-		runGoal    string
+		runID          uuid.UUID
+		stage          string
+		kind           string
+		statusV        string
+		createdAt      time.Time
+		updatedAt      time.Time
+		runGoal        string
 		runConstraints string
 
 		leaseAgentID     *uuid.UUID
@@ -2490,11 +2807,11 @@ type adminWorkItemCandidateDTO struct {
 }
 
 type adminWorkItemCandidatesResponse struct {
-	WorkItemID    string                    `json:"work_item_id"`
-	RunID         string                    `json:"run_id"`
-	RequiredTags  []string                  `json:"required_tags"`
-	Matched       []adminWorkItemCandidateDTO `json:"matched"`
-	Fallback      []adminWorkItemCandidateDTO `json:"fallback"`
+	WorkItemID   string                      `json:"work_item_id"`
+	RunID        string                      `json:"run_id"`
+	RequiredTags []string                    `json:"required_tags"`
+	Matched      []adminWorkItemCandidateDTO `json:"matched"`
+	Fallback     []adminWorkItemCandidateDTO `json:"fallback"`
 }
 
 func (s server) handleAdminWorkItemCandidates(w http.ResponseWriter, r *http.Request) {
@@ -3064,12 +3381,12 @@ func (s server) fetchEvents(ctx context.Context, runID uuid.UUID, afterSeq int64
 	var out []eventDTO
 	for rows.Next() {
 		var (
-			seq       int64
-			kind      string
-			persona   string
-			payloadB  []byte
-			isKeyNode bool
-			createdAt time.Time
+			seq          int64
+			kind         string
+			persona      string
+			payloadB     []byte
+			isKeyNode    bool
+			createdAt    time.Time
 			reviewStatus string
 		)
 		if err := rows.Scan(&seq, &kind, &persona, &payloadB, &isKeyNode, &createdAt, &reviewStatus); err != nil {
@@ -3169,7 +3486,12 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 		select wi.id, wi.run_id, wi.stage, wi.kind, wi.status, wi.context, wi.available_skills, wi.review_context
 		from work_item_offers o
 		join work_items wi on wi.id = o.work_item_id
-		where o.agent_id = $1 and wi.status in ('offered', 'claimed')
+		left join work_item_leases l on l.work_item_id = wi.id
+		where o.agent_id = $1
+		  and (
+		    wi.status = 'offered'
+		    or (wi.status = 'claimed' and l.agent_id = $1 and l.lease_expires_at > now())
+		  )
 		order by wi.created_at asc
 		limit 50
 	`, agentID)
@@ -3180,28 +3502,29 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type offerDTO struct {
-		WorkItemID       string         `json:"work_item_id"`
-		RunID            string         `json:"run_id"`
-		Stage            string         `json:"stage"`
-		Kind             string         `json:"kind"`
-		Status           string         `json:"status"`
-		Goal             string         `json:"goal"`
-		Constraints      string         `json:"constraints"`
-		StageContext     map[string]any `json:"stage_context,omitempty"`
-		AvailableSkills  []string       `json:"available_skills,omitempty"`
-		ReviewContext    map[string]any `json:"review_context,omitempty"`
+		WorkItemID      string         `json:"work_item_id"`
+		RunID           string         `json:"run_id"`
+		Stage           string         `json:"stage"`
+		Kind            string         `json:"kind"`
+		Status          string         `json:"status"`
+		Goal            string         `json:"goal"`
+		Constraints     string         `json:"constraints"`
+		StageContext    map[string]any `json:"stage_context,omitempty"`
+		AvailableSkills []string       `json:"available_skills,omitempty"`
+		ReviewContext   map[string]any `json:"review_context,omitempty"`
 	}
 	offers := make([]offerDTO, 0)
+	artifactRefsCache := map[uuid.UUID][]artifactRefDTO{}
 	for rows.Next() {
 		var (
 			workItemID      uuid.UUID
-			runID          uuid.UUID
-			stage          string
-			kind           string
-			status         string
-			context        []byte
+			runID           uuid.UUID
+			stage           string
+			kind            string
+			status          string
+			context         []byte
 			availableSkills []byte
-			reviewContext  []byte
+			reviewContext   []byte
 		)
 		if err := rows.Scan(&workItemID, &runID, &stage, &kind, &status, &context, &availableSkills, &reviewContext); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
@@ -3218,9 +3541,24 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 		var stageContext map[string]any
 		var skills []string
 		var revCtx map[string]any
-		json.Unmarshal(context, &stageContext)
-		json.Unmarshal(availableSkills, &skills)
-		json.Unmarshal(reviewContext, &revCtx)
+		_ = json.Unmarshal(context, &stageContext)
+		_ = json.Unmarshal(availableSkills, &skills)
+		_ = json.Unmarshal(reviewContext, &revCtx)
+
+		refs, ok := artifactRefsCache[runID]
+		if !ok {
+			refs, err = s.listArtifactRefs(ctx, runID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "artifact refs lookup failed"})
+				return
+			}
+			artifactRefsCache[runID] = refs
+		}
+		if stageContext == nil {
+			stageContext = map[string]any{}
+		}
+		stageContext["available_skills"] = skills
+		stageContext["previous_artifacts"] = refs
 
 		offers = append(offers, offerDTO{
 			WorkItemID:      workItemID.String(),
@@ -3230,7 +3568,7 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 			Status:          status,
 			Goal:            goal,
 			Constraints:     constraints,
-			StageContext:   stageContext,
+			StageContext:    stageContext,
 			AvailableSkills: skills,
 			ReviewContext:   revCtx,
 		})
@@ -3239,19 +3577,19 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 }
 
 type workItemDetailDTO struct {
-	WorkItemID       string         `json:"work_item_id"`
-	RunID            string         `json:"run_id"`
-	Stage            string         `json:"stage"`
-	Kind             string         `json:"kind"`
-	Status           string         `json:"status"`
-	Goal             string         `json:"goal"`
-	Constraints      string         `json:"constraints"`
-	StageContext     map[string]any `json:"stage_context,omitempty"`
-	AvailableSkills  []string       `json:"available_skills,omitempty"`
-	ReviewContext    map[string]any `json:"review_context,omitempty"`
+	WorkItemID      string         `json:"work_item_id"`
+	RunID           string         `json:"run_id"`
+	Stage           string         `json:"stage"`
+	Kind            string         `json:"kind"`
+	Status          string         `json:"status"`
+	Goal            string         `json:"goal"`
+	Constraints     string         `json:"constraints"`
+	StageContext    map[string]any `json:"stage_context,omitempty"`
+	AvailableSkills []string       `json:"available_skills,omitempty"`
+	ReviewContext   map[string]any `json:"review_context,omitempty"`
 	ScheduledAt     *time.Time     `json:"scheduled_at,omitempty"`
-	CreatedAt        string         `json:"created_at"`
-	UpdatedAt        string         `json:"updated_at"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
 }
 
 func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request) {
@@ -3281,18 +3619,18 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 	}
 
 	var (
-		runID          uuid.UUID
-		stage          string
-		kind           string
-		status         string
-		createdAt      time.Time
-		updatedAt      time.Time
-		goal           string
-		constraints    string
-		context        []byte
+		runID           uuid.UUID
+		stage           string
+		kind            string
+		status          string
+		createdAt       time.Time
+		updatedAt       time.Time
+		goal            string
+		constraints     string
+		context         []byte
 		availableSkills []byte
-		reviewContext  []byte
-		scheduledAt    *time.Time
+		reviewContext   []byte
+		scheduledAt     *time.Time
 	)
 	err = s.db.QueryRow(ctx, `
 		select wi.run_id, wi.stage, wi.kind, wi.status, wi.created_at, wi.updated_at, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context, wi.scheduled_at
@@ -3313,26 +3651,149 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 	var stageContext map[string]any
 	var skills []string
 	var revCtx map[string]any
-	json.Unmarshal(context, &stageContext)
-	json.Unmarshal(availableSkills, &skills)
-	json.Unmarshal(reviewContext, &revCtx)
+	_ = json.Unmarshal(context, &stageContext)
+	_ = json.Unmarshal(availableSkills, &skills)
+	_ = json.Unmarshal(reviewContext, &revCtx)
+
+	refs, err := s.listArtifactRefs(ctx, runID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "artifact refs lookup failed"})
+		return
+	}
+	if stageContext == nil {
+		stageContext = map[string]any{}
+	}
+	stageContext["available_skills"] = skills
+	stageContext["previous_artifacts"] = refs
 
 	s.audit(ctx, "agent", agentID, "work_item_read", map[string]any{"work_item_id": workItemID.String(), "run_id": runID.String()})
 	writeJSON(w, http.StatusOK, workItemDetailDTO{
-		WorkItemID:       workItemID.String(),
-		RunID:            runID.String(),
-		Stage:            stage,
-		Kind:             kind,
-		Status:           status,
-		Goal:             goal,
-		Constraints:      constraints,
-		StageContext:     stageContext,
-		AvailableSkills:  skills,
-		ReviewContext:    revCtx,
-		ScheduledAt:      scheduledAt,
-		CreatedAt:        createdAt.UTC().Format(time.RFC3339),
-		UpdatedAt:        updatedAt.UTC().Format(time.RFC3339),
+		WorkItemID:      workItemID.String(),
+		RunID:           runID.String(),
+		Stage:           stage,
+		Kind:            kind,
+		Status:          status,
+		Goal:            goal,
+		Constraints:     constraints,
+		StageContext:    stageContext,
+		AvailableSkills: skills,
+		ReviewContext:   revCtx,
+		ScheduledAt:     scheduledAt,
+		CreatedAt:       createdAt.UTC().Format(time.RFC3339),
+		UpdatedAt:       updatedAt.UTC().Format(time.RFC3339),
 	})
+}
+
+type workItemSkillsResponse struct {
+	WorkItemID string     `json:"work_item_id"`
+	RunID      string     `json:"run_id"`
+	Skills     []skillDTO `json:"skills"`
+}
+
+type skillDTO struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
+func (s server) handleGatewayWorkItemSkills(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := agentIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	workItemID, err := uuid.Parse(chi.URLParam(r, "workItemID"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work_item_id"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	// Must be offered to this agent.
+	var offered bool
+	if err := s.db.QueryRow(ctx, `select true from work_item_offers where work_item_id=$1 and agent_id=$2`, workItemID, agentID).Scan(&offered); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not offered"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "offer check failed"})
+		return
+	}
+
+	var (
+		runID           uuid.UUID
+		availableSkills []byte
+	)
+	if err := s.db.QueryRow(ctx, `select run_id, available_skills from work_items where id=$1`, workItemID).Scan(&runID, &availableSkills); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	var skills []string
+	_ = json.Unmarshal(availableSkills, &skills)
+	out := make([]skillDTO, 0, len(skills))
+	for _, name := range skills {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		out = append(out, skillDTO{
+			Name:        name,
+			Description: "",
+			Parameters:  map[string]any{},
+		})
+	}
+
+	writeJSON(w, http.StatusOK, workItemSkillsResponse{
+		WorkItemID: workItemID.String(),
+		RunID:      runID.String(),
+		Skills:     out,
+	})
+}
+
+type artifactRefDTO struct {
+	Version   int    `json:"version"`
+	Kind      string `json:"kind"`
+	URL       string `json:"url"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (s server) listArtifactRefs(ctx context.Context, runID uuid.UUID) ([]artifactRefDTO, error) {
+	rows, err := s.db.Query(ctx, `
+		select version, kind, created_at
+		from artifacts
+		where run_id = $1 and review_status <> 'rejected'
+		order by version asc
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]artifactRefDTO, 0)
+	for rows.Next() {
+		var (
+			version   int
+			kind      string
+			createdAt time.Time
+		)
+		if err := rows.Scan(&version, &kind, &createdAt); err != nil {
+			return nil, err
+		}
+		out = append(out, artifactRefDTO{
+			Version:   version,
+			Kind:      kind,
+			URL:       "/v1/runs/" + runID.String() + "/artifacts/" + strconv.Itoa(version),
+			CreatedAt: createdAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return out, nil
 }
 
 type claimResponse struct {

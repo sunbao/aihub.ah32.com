@@ -96,6 +96,7 @@ func ensurePublisherAgentsOffered(ctx context.Context, pool *pgxpool.Pool) error
 			join runs r on r.id = wi.run_id
 			left join req on req.run_id = r.id
 			where wi.status = 'offered'
+			  and wi.kind <> 'review'
 			  and not exists (
 				select 1
 				from work_item_offers o

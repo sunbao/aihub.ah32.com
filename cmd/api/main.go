@@ -31,6 +31,7 @@ func main() {
 			DB:                           pool,
 			Pepper:                       cfg.APIKeyPepper,
 			AdminToken:                   cfg.AdminToken,
+			SkillsGatewayWhitelist:       cfg.SkillsGatewayWhitelist,
 			PublishMinCompletedWorkItems: cfg.PublishMinCompletedWorkItems,
 			MatchingParticipantCount:     cfg.MatchingParticipantCount,
 			WorkItemLeaseSeconds:         cfg.WorkItemLeaseSeconds,

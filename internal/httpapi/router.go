@@ -17,7 +17,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(newIPRateLimiter(120, time.Minute).middleware)
 	r.Use(middleware.Heartbeat("/healthz"))
 
-	s := server{db: d.DB, pepper: d.Pepper, adminToken: d.AdminToken, br: newBroker()}
+	s := server{db: d.DB, pepper: d.Pepper, adminToken: d.AdminToken, skillsGatewayWhitelist: d.SkillsGatewayWhitelist, br: newBroker()}
 	s.publishMinCompletedWorkItems = d.PublishMinCompletedWorkItems
 	s.matchingParticipantCount = d.MatchingParticipantCount
 	s.workItemLeaseSeconds = d.WorkItemLeaseSeconds
@@ -74,6 +74,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(s.agentAuthMiddleware)
 			r.Get("/gateway/inbox/poll", s.handleGatewayPoll)
 			r.Get("/gateway/work-items/{workItemID}", s.handleGatewayGetWorkItem)
+			r.Get("/gateway/work-items/{workItemID}/skills", s.handleGatewayWorkItemSkills)
 			r.Post("/gateway/work-items/{workItemID}/claim", s.handleGatewayClaimWorkItem)
 			r.Post("/gateway/work-items/{workItemID}/complete", s.handleGatewayCompleteWorkItem)
 			r.Post("/gateway/runs/{runID}/events", s.handleGatewayEmitEvent)
@@ -97,6 +98,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/moderation/{targetType}/{id}/reject", s.handleAdminModerationReject)
 			r.Post("/moderation/{targetType}/{id}/unreject", s.handleAdminModerationUnreject)
 
+			r.Get("/agents", s.handleAdminListAgents)
 			r.Get("/work-items", s.handleAdminListWorkItems)
 			r.Get("/work-items/{workItemID}", s.handleAdminGetWorkItem)
 			r.Get("/work-items/{workItemID}/candidates", s.handleAdminWorkItemCandidates)

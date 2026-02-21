@@ -102,6 +102,31 @@
       </div>
 
       <div class="card">
+        <div class="card-title">Search agents (optional)</div>
+        <div class="grid">
+          <div>
+            <label>Query</label>
+            <input id="agentQ" placeholder="name / description / tag" />
+          </div>
+          <div>
+            <label>Status</label>
+            <select id="agentStatus" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(15, 23, 42, 0.14); background:#fff">
+              <option value="" selected>All</option>
+              <option value="enabled">enabled</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btnAgentSearch" class="btn secondary" type="button">Search</button>
+          <button id="btnAgentMore" class="btn secondary" type="button">More</button>
+        </div>
+        <div class="hr"></div>
+        <div id="agents"></div>
+        <div id="noticeAgents" class="notice" style="margin-top:12px">Not loaded</div>
+      </div>
+
+      <div class="card">
         <div class="card-title">候选智能体（按标签命中排序）</div>
         <div class="muted">说明：命中候选（命中&gt;0）优先；备选（命中=0）也会列出，避免任务冷场。</div>
         <div class="hr"></div>
@@ -115,6 +140,8 @@
 
       let offset = 0;
       const limit = 30;
+      let agentOffset = 0;
+      const agentLimit = 30;
       let currentWorkItemID = "";
       let cachedDetail = null;
       let showRaw = false;
@@ -193,6 +220,79 @@
         } catch (e) {
           renderNotice($("noticeList"), "加载失败：" + e.message, true);
         }
+      }
+
+      async function loadAgents({ reset } = { reset: false }) {
+        const t = token();
+        if (!t) return renderNotice($("noticeToken"), "Please enter admin token first.", true);
+
+        if (reset) {
+          agentOffset = 0;
+          $("agents").innerHTML = "";
+        }
+
+        const q = ($("agentQ").value || "").trim();
+        const status = ($("agentStatus").value || "").trim();
+        renderNotice($("noticeAgents"), "Loading...");
+        try {
+          let url = `/v1/admin/agents?limit=${agentLimit}&offset=${agentOffset}`;
+          if (q) url += `&q=${encodeURIComponent(q)}`;
+          if (status) url += `&status=${encodeURIComponent(status)}`;
+          const res = await apiFetch(url, { apiKey: t });
+          const items = res.items || [];
+          for (const it of items) addAgentItem(it);
+          agentOffset = res.next_offset || (agentOffset + items.length);
+          $("btnAgentMore").style.display = res.has_more ? "inline-block" : "none";
+          renderNotice($("noticeAgents"), `Loaded ${$("agents").children.length} agent(s).`);
+        } catch (e) {
+          renderNotice($("noticeAgents"), "Load failed: " + e.message, true);
+        }
+      }
+
+      function addAgentItem(it) {
+        const div = document.createElement("div");
+        div.className = "event";
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const tags = (it.tags || []).filter(Boolean);
+        meta.textContent = `${(it.status || "").toUpperCase()} · ${it.name || ""} · AGENT-${shortID(it.agent_id)} · tags=${tags.length}`;
+
+        const body = document.createElement("div");
+        body.className = "body";
+        body.textContent =
+          `agent_id: ${it.agent_id || ""}\n` +
+          `owner_id: ${it.owner_id || ""}\n` +
+          `tags: ${tags.length ? tags.join(" / ") : "-"}`;
+
+        const actions = document.createElement("div");
+        actions.className = "row";
+        actions.style.marginTop = "10px";
+
+        const btnUse = document.createElement("button");
+        btnUse.className = "btn";
+        btnUse.type = "button";
+        btnUse.textContent = "Use";
+        btnUse.addEventListener("click", () => {
+          $("manualAgentId").value = it.agent_id || "";
+          renderNotice($("noticeDetail"), "Agent selected. You can click Assign.", false);
+        });
+        actions.appendChild(btnUse);
+
+        const btnCopy = document.createElement("button");
+        btnCopy.className = "btn secondary";
+        btnCopy.type = "button";
+        btnCopy.textContent = "Copy agent_id";
+        btnCopy.addEventListener("click", async () => {
+          const ok = await copyText(it.agent_id || "");
+          renderNotice($("noticeAgents"), ok ? "Copied." : "Copy failed.", !ok);
+        });
+        actions.appendChild(btnCopy);
+
+        div.appendChild(meta);
+        div.appendChild(body);
+        div.appendChild(actions);
+        $("agents").appendChild(div);
       }
 
       function addListItem(it) {
@@ -447,7 +547,12 @@
       $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadList({ reset: true }); });
       $("runId").addEventListener("keydown", (e) => { if (e.key === "Enter") loadList({ reset: true }); });
 
+      $("btnAgentSearch").addEventListener("click", () => loadAgents({ reset: true }));
+      $("btnAgentMore").addEventListener("click", () => loadAgents({ reset: false }));
+      $("agentQ").addEventListener("keydown", (e) => { if (e.key === "Enter") loadAgents({ reset: true }); });
+
       $("btnMore").style.display = "none";
+      $("btnAgentMore").style.display = "none";
     </script>
   </body>
 </html>

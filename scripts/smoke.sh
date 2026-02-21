@@ -18,84 +18,127 @@ fi
 
 echo "== create user =="
 user_json="$(curl -fsS -X POST "$BASE/v1/users")"
-user_id="$(echo "$user_json" | jq -r .user_id)"
 user_key="$(echo "$user_json" | jq -r .api_key)"
-echo "user_id=$user_id"
 
-echo "== create agent =="
-name="smoke-agent-$(date +%s)"
-agent_json="$(curl -fsS -X POST "$BASE/v1/agents" \
+echo "== create agents (creator + reviewer) =="
+name_a="smoke-agent-a-$(date +%s)"
+agent_a_body="$(jq -nc --arg name "$name_a" '{name:$name,description:"smoke test agent (creator)",tags:["scifi","logic"]}')"
+agent_a_json="$(curl -fsS -X POST "$BASE/v1/agents" \
   -H "Authorization: Bearer $user_key" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"$name\",\"description\":\"smoke test agent\",\"tags\":[\"科幻创意\",\"逻辑校对\"]}")"
-agent_id="$(echo "$agent_json" | jq -r .agent_id)"
-agent_key="$(echo "$agent_json" | jq -r .api_key)"
-onb_run_id="$(echo "$agent_json" | jq -r .onboarding.run_id)"
-onb_work_item_id="$(echo "$agent_json" | jq -r .onboarding.work_item_id)"
-echo "agent_id=$agent_id"
-echo "onboarding_run_id=$onb_run_id"
-echo "onboarding_work_item_id=$onb_work_item_id"
+  -d "$agent_a_body")"
+agent_a_id="$(echo "$agent_a_json" | jq -r .agent_id)"
+agent_a_key="$(echo "$agent_a_json" | jq -r .api_key)"
+agent_a_onb_work_item_id="$(echo "$agent_a_json" | jq -r .onboarding.work_item_id)"
+
+name_b="smoke-agent-b-$(date +%s)"
+agent_b_body="$(jq -nc --arg name "$name_b" '{name:$name,description:"smoke test agent (reviewer)",tags:["scifi","reviewer"]}')"
+agent_b_json="$(curl -fsS -X POST "$BASE/v1/agents" \
+  -H "Authorization: Bearer $user_key" \
+  -H "Content-Type: application/json" \
+  -d "$agent_b_body")"
+agent_b_id="$(echo "$agent_b_json" | jq -r .agent_id)"
+agent_b_key="$(echo "$agent_b_json" | jq -r .api_key)"
+
+echo "agent_a_id=$agent_a_id"
+echo "agent_b_id=$agent_b_id"
+echo "agent_a_onboarding_work_item_id=$agent_a_onb_work_item_id"
 
 echo "== poll onboarding offer =="
-poll_json="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_key")"
-work_item_id="$(echo "$poll_json" | jq -r --arg wid "$onb_work_item_id" ".offers[] | select(.work_item_id==\$wid) | .work_item_id" | head -n 1)"
+poll_json="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_a_key")"
+work_item_id="$(echo "$poll_json" | jq -r --arg wid "$agent_a_onb_work_item_id" '.offers[] | select(.work_item_id==$wid) | .work_item_id' | head -n 1)"
 if [[ -z "$work_item_id" ]]; then
   echo "onboarding offer not found in poll" >&2
   echo "$poll_json" | jq . >&2
   exit 1
 fi
 
-echo "== claim onboarding =="
-curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/claim" \
-  -H "Authorization: Bearer $agent_key" | jq .
+echo "== verify stage_context fields (onboarding) =="
+echo "$poll_json" | jq -e --arg wid "$work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.stage_description|type=="string")' >/dev/null
+echo "$poll_json" | jq -e --arg wid "$work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.expected_output|type=="object")' >/dev/null
+echo "$poll_json" | jq -e --arg wid "$work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.available_skills|type=="array")' >/dev/null
+echo "$poll_json" | jq -e --arg wid "$work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.previous_artifacts|type=="array")' >/dev/null
 
-echo "== complete onboarding =="
-curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/complete" \
-  -H "Authorization: Bearer $agent_key" | jq .
+echo "== claim + complete onboarding =="
+curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/claim" -H "Authorization: Bearer $agent_a_key" >/dev/null
+curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/complete" -H "Authorization: Bearer $agent_a_key" >/dev/null
 
 echo "== create run =="
+run_body="$(jq -nc '{goal:"Smoke: write a short sci-fi paragraph",constraints:"First-person POV. 120-200 words.",required_tags:["scifi"]}')"
 run_json="$(curl -fsS -X POST "$BASE/v1/runs" \
   -H "Authorization: Bearer $user_key" \
   -H "Content-Type: application/json" \
-  -d "{\"goal\":\"冒烟测试：写 200 字短文\",\"constraints\":\"第一人称\",\"required_tags\":[\"科幻创意\"]}")"
+  -d "$run_body")"
 run_id="$(echo "$run_json" | jq -r .run_id)"
 echo "run_id=$run_id"
 
 echo "== poll run offer =="
-poll2_json="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_key")"
-run_work_item_id="$(echo "$poll2_json" | jq -r --arg rid "$run_id" ".offers[] | select(.run_id==\$rid and .status==\"offered\") | .work_item_id" | head -n 1)"
-if [[ -z "$run_work_item_id" ]]; then
-  run_work_item_id="$(echo "$poll2_json" | jq -r --arg rid "$run_id" ".offers[] | select(.run_id==\$rid) | .work_item_id" | head -n 1)"
-fi
+poll2_json="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_a_key")"
+run_work_item_id="$(echo "$poll2_json" | jq -r --arg rid "$run_id" '.offers[] | select(.run_id==$rid and .status=="offered") | .work_item_id' | head -n 1)"
 if [[ -z "$run_work_item_id" ]]; then
   echo "run offer not found in poll" >&2
   echo "$poll2_json" | jq . >&2
   exit 1
 fi
 
+echo "== verify stage_context fields (run) =="
+echo "$poll2_json" | jq -e --arg wid "$run_work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.expected_output.length|type=="string")' >/dev/null
+echo "$poll2_json" | jq -e --arg wid "$run_work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.available_skills|type=="array")' >/dev/null
+echo "$poll2_json" | jq -e --arg wid "$run_work_item_id" '.offers[] | select(.work_item_id==$wid) | (.stage_context.previous_artifacts|type=="array")' >/dev/null
+
 echo "== claim run work item =="
-curl -fsS -X POST "$BASE/v1/gateway/work-items/$run_work_item_id/claim" \
-  -H "Authorization: Bearer $agent_key" | jq .
+claim_json="$(curl -fsS -X POST "$BASE/v1/gateway/work-items/$run_work_item_id/claim" -H "Authorization: Bearer $agent_a_key")"
+run_id_from_claim="$(echo "$claim_json" | jq -r .run_id)"
+if [[ "$run_id_from_claim" != "$run_id" ]]; then
+  echo "claim response run_id mismatch: $run_id_from_claim (expected $run_id)" >&2
+  exit 1
+fi
 
 echo "== emit events =="
 ev1="$(curl -fsS -X POST "$BASE/v1/gateway/runs/$run_id/events" \
-  -H "Authorization: Bearer $agent_key" \
+  -H "Authorization: Bearer $agent_a_key" \
   -H "Content-Type: application/json" \
-  -d "{\"kind\":\"message\",\"payload\":{\"text\":\"开始构思...\"}}")"
+  -d '{"kind":"message","payload":{"text":"starting..."}}')"
 ev2="$(curl -fsS -X POST "$BASE/v1/gateway/runs/$run_id/events" \
-  -H "Authorization: Bearer $agent_key" \
+  -H "Authorization: Bearer $agent_a_key" \
   -H "Content-Type: application/json" \
-  -d "{\"kind\":\"decision\",\"payload\":{\"text\":\"选用方向 A\"}}")"
+  -d '{"kind":"decision","payload":{"text":"direction A"}}')"
 seq2="$(echo "$ev2" | jq -r .seq)"
 persona="$(echo "$ev1" | jq -r .persona)"
 echo "persona=$persona seq_decision=$seq2"
 
 echo "== submit artifact =="
-content="$(printf "这是冒烟测试的最终作品。%.0s" {1..20})"
-curl -fsS -X POST "$BASE/v1/gateway/runs/$run_id/artifacts" \
-  -H "Authorization: Bearer $agent_key" \
+content="$(printf "This is smoke test output. %.0s" {1..20})"
+artifact_body="$(jq -nc --arg content "$content" --argjson seq "$seq2" '{kind:"final",content:$content,linked_event_seq:$seq}')"
+art_res="$(curl -fsS -X POST "$BASE/v1/gateway/runs/$run_id/artifacts" \
+  -H "Authorization: Bearer $agent_a_key" \
   -H "Content-Type: application/json" \
-  -d "{\"kind\":\"final\",\"content\":\"$content\",\"linked_event_seq\":$seq2}" | jq .
+  -d "$artifact_body")"
+artifact_id="$(echo "$art_res" | jq -r .artifact_id)"
+if [[ -z "$artifact_id" || "$artifact_id" == "null" ]]; then
+  echo "artifact_id missing from response" >&2
+  echo "$art_res" | jq . >&2
+  exit 1
+fi
+
+echo "== reviewer polls review work item =="
+poll_review="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_b_key")"
+review_work_item_id="$(echo "$poll_review" | jq -r --arg rid "$run_id" '.offers[] | select(.run_id==$rid and .kind=="review" and .status=="offered") | .work_item_id' | head -n 1)"
+if [[ -z "$review_work_item_id" ]]; then
+  echo "review work item not found in poll" >&2
+  echo "$poll_review" | jq . >&2
+  exit 1
+fi
+echo "$poll_review" | jq -e --arg wid "$review_work_item_id" --arg aid "$artifact_id" '.offers[] | select(.work_item_id==$wid) | (.review_context.target_artifact_id==$aid and (.review_context.review_criteria|type=="array"))' >/dev/null
+
+echo "== reviewer claims + emits feedback + completes =="
+curl -fsS -X POST "$BASE/v1/gateway/work-items/$review_work_item_id/claim" -H "Authorization: Bearer $agent_b_key" >/dev/null
+review_ev_body="$(jq -nc --arg aid "$artifact_id" '{kind:"summary",payload:{text:"Review: looks good. Consider tightening the ending.",target_artifact_id:$aid}}')"
+curl -fsS -X POST "$BASE/v1/gateway/runs/$run_id/events" \
+  -H "Authorization: Bearer $agent_b_key" \
+  -H "Content-Type: application/json" \
+  -d "$review_ev_body" | jq . >/dev/null
+curl -fsS -X POST "$BASE/v1/gateway/work-items/$review_work_item_id/complete" -H "Authorization: Bearer $agent_b_key" >/dev/null
 
 echo "== public checks =="
 curl -fsS "$BASE/v1/runs/$run_id" | jq . >/dev/null

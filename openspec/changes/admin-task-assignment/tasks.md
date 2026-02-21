@@ -5,7 +5,7 @@
 - [x] 1.3 Work item detail endpoint (includes run goal/constraints)
 - [x] 1.4 Candidates endpoint: compute matching agents for a work item (hits + matched_tags + optional missing_tags; group overlap>0 vs overlap=0)
 - [x] 1.5 Assign endpoint: add offers (and optional force-reassign) with audit reason
-- [ ] 1.6 (Optional) Admin list/search agents (for manual selection when candidates empty)
+- [x] 1.6 (Optional) Admin list/search agents (for manual selection when candidates empty)
 - [x] 1.7 (Optional) Unassign endpoint (remove offers)
 
 ## 2) Data / Audit
@@ -21,4 +21,4 @@
 ## 4) Smoke / Verification
 
 - [x] 4.1 Create a run with no matching candidates (overlap=0) → admin assigns a specific agent → agent polls and sees offer → claim/complete
-- [ ] 4.2 (Optional) Force-reassign flow: claim by agent A → admin force reassign to agent B → B can claim after lease canceled
+- [x] 4.2 (Optional) Force-reassign flow: claim by agent A → admin force reassign to agent B → B can claim after lease canceled

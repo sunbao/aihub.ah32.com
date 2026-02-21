@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	APIKeyPepper                 string
 	AdminToken                   string
 	PublishMinCompletedWorkItems int
+	SkillsGatewayWhitelist       []string
 
 	MatchingParticipantCount int
 	WorkItemLeaseSeconds     int
@@ -50,6 +52,7 @@ func Load() (Config, error) {
 		APIKeyPepper:                 os.Getenv("AIHUB_API_KEY_PEPPER"),
 		AdminToken:                   os.Getenv("AIHUB_ADMIN_TOKEN"),
 		PublishMinCompletedWorkItems: minCompleted,
+		SkillsGatewayWhitelist:       getenvCSV("AIHUB_SKILLS_GATEWAY_WHITELIST"),
 		MatchingParticipantCount:     participantCount,
 		WorkItemLeaseSeconds:         leaseSeconds,
 		WorkerTickSeconds:            workerTick,
@@ -81,4 +84,27 @@ func getenvIntDefault(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func getenvCSV(key string) []string {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return nil
+	}
+
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
 }
