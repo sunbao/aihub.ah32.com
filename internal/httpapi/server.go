@@ -2146,8 +2146,14 @@ type adminWorkItemDTO struct {
 	UpdatedAt  string            `json:"updated_at"`
 }
 
+type adminWorkItemListItemDTO struct {
+	adminWorkItemDTO
+	RunGoal       string   `json:"run_goal"`
+	RequiredTags  []string `json:"required_tags"`
+}
+
 type adminListWorkItemsResponse struct {
-	Items      []adminWorkItemDTO `json:"items"`
+	Items      []adminWorkItemListItemDTO `json:"items"`
 	HasMore    bool               `json:"has_more"`
 	NextOffset int                `json:"next_offset"`
 }
@@ -2155,6 +2161,7 @@ type adminListWorkItemsResponse struct {
 func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	runIDStr := strings.TrimSpace(r.URL.Query().Get("run_id"))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
 
 	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
 	limit = clampInt(limit, 1, 200)
@@ -2164,13 +2171,35 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 	}
 
 	var runID uuid.UUID
+	runIDPrefix := ""
 	if runIDStr != "" {
 		id, err := uuid.Parse(runIDStr)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run_id"})
+			// Allow short prefix like "b8b5..." for admin search.
+			var b strings.Builder
+			for _, r := range runIDStr {
+				if unicode.Is(unicode.Hex_Digit, r) {
+					b.WriteRune(unicode.ToLower(r))
+				}
+			}
+			runIDPrefix = strings.TrimSpace(b.String())
+			if runIDPrefix == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run_id"})
+				return
+			}
+			if len(runIDPrefix) > 32 {
+				runIDPrefix = runIDPrefix[:32]
+			}
+		} else {
+			runID = id
+		}
+	}
+
+	if q != "" {
+		if len(q) > 200 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q too long"})
 			return
 		}
-		runID = id
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -2186,8 +2215,19 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 		argN++
 	}
 	if runIDStr != "" {
-		where = append(where, "wi.run_id = $"+strconv.Itoa(argN))
-		args = append(args, runID)
+		if runIDPrefix != "" {
+			where = append(where, "replace(wi.run_id::text, '-', '') like $"+strconv.Itoa(argN)+" || '%'")
+			args = append(args, runIDPrefix)
+			argN++
+		} else {
+			where = append(where, "wi.run_id = $"+strconv.Itoa(argN))
+			args = append(args, runID)
+			argN++
+		}
+	}
+	if q != "" {
+		where = append(where, "(r.goal ilike '%' || $"+strconv.Itoa(argN)+" || '%' or r.constraints ilike '%' || $"+strconv.Itoa(argN)+" || '%')")
+		args = append(args, q)
 		argN++
 	}
 
@@ -2198,23 +2238,31 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 			coalesce(la.name, '') as lease_agent_name,
 			coalesce(la.status, '') as lease_agent_status,
 			l.lease_expires_at as lease_expires_at,
+			coalesce(r.goal, '') as run_goal,
 			coalesce(
-				json_agg(
-					jsonb_build_object('agent_id', oa.id, 'name', coalesce(oa.name, ''), 'status', coalesce(oa.status, ''))
-					order by coalesce(oa.name, ''), oa.id
-				) filter (where oa.id is not null),
+				(select json_agg(tag order by tag) from run_required_tags rt where rt.run_id = wi.run_id),
+				'[]'::json
+			) as required_tags_json,
+			coalesce(
+				(
+					select json_agg(
+						jsonb_build_object('agent_id', oa.id, 'name', coalesce(oa.name, ''), 'status', coalesce(oa.status, ''))
+						order by coalesce(oa.name, ''), oa.id
+					)
+					from work_item_offers o
+					join agents oa on oa.id = o.agent_id
+					where o.work_item_id = wi.id
+				),
 				'[]'::json
 			) as offers_json
 		from work_items wi
+		join runs r on r.id = wi.run_id
 		left join work_item_leases l on l.work_item_id = wi.id
 		left join agents la on la.id = l.agent_id
-		left join work_item_offers o on o.work_item_id = wi.id
-		left join agents oa on oa.id = o.agent_id
 	`
 	if len(where) > 0 {
 		sql += " where " + strings.Join(where, " and ")
 	}
-	sql += " group by wi.id, l.agent_id, la.name, la.status, l.lease_expires_at"
 	sql += " order by wi.created_at desc limit $" + strconv.Itoa(argN) + " offset $" + strconv.Itoa(argN+1)
 	args = append(args, limit+1, offset)
 
@@ -2225,7 +2273,7 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 	}
 	defer rows.Close()
 
-	var out []adminWorkItemDTO
+	var out []adminWorkItemListItemDTO
 	for rows.Next() {
 		var (
 			workItemID uuid.UUID
@@ -2241,11 +2289,14 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 			leaseAgentStatus string
 			leaseExpiresAt   *time.Time
 
+			runGoal string
+			requiredTagsJSON []byte
 			offersJSON []byte
 		)
 		if err := rows.Scan(
 			&workItemID, &runID, &stage, &kind, &statusV, &createdAt, &updatedAt,
 			&leaseAgentID, &leaseAgentName, &leaseAgentStatus, &leaseExpiresAt,
+			&runGoal, &requiredTagsJSON,
 			&offersJSON,
 		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
@@ -2254,6 +2305,12 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 
 		var offers []adminAgentRefDTO
 		_ = json.Unmarshal(offersJSON, &offers)
+
+		var requiredTags []string
+		_ = json.Unmarshal(requiredTagsJSON, &requiredTags)
+		for i := range requiredTags {
+			requiredTags[i] = strings.TrimSpace(requiredTags[i])
+		}
 
 		var lease *adminLeaseDTO
 		if leaseAgentID != nil && leaseExpiresAt != nil {
@@ -2267,16 +2324,20 @@ func (s server) handleAdminListWorkItems(w http.ResponseWriter, r *http.Request)
 			}
 		}
 
-		out = append(out, adminWorkItemDTO{
-			WorkItemID: workItemID.String(),
-			RunID:      runID.String(),
-			Stage:      stage,
-			Kind:       kind,
-			Status:     statusV,
-			Offers:     offers,
-			Lease:      lease,
-			CreatedAt:  createdAt.UTC().Format(time.RFC3339),
-			UpdatedAt:  updatedAt.UTC().Format(time.RFC3339),
+		out = append(out, adminWorkItemListItemDTO{
+			adminWorkItemDTO: adminWorkItemDTO{
+				WorkItemID: workItemID.String(),
+				RunID:      runID.String(),
+				Stage:      stage,
+				Kind:       kind,
+				Status:     statusV,
+				Offers:     offers,
+				Lease:      lease,
+				CreatedAt:  createdAt.UTC().Format(time.RFC3339),
+				UpdatedAt:  updatedAt.UTC().Format(time.RFC3339),
+			},
+			RunGoal: runGoal,
+			RequiredTags: requiredTags,
 		})
 	}
 
