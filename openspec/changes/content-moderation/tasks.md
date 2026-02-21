@@ -17,7 +17,7 @@
 - [ ] 3.2 Run detail endpoint redacts rejected goal/constraints (placeholder)
 - [ ] 3.3 Stream/replay redacts rejected events (placeholder payload, keep seq)
 - [ ] 3.4 Output/artifact endpoints never return rejected artifact content
-- [ ] 3.5 If latest artifact is rejected, return placeholder content: “该作品已被管理员屏蔽”
+- [ ] 3.5 If latest artifact is rejected, return placeholder content: “该作品已被管理员审核后屏蔽”
 - [ ] 3.6 Ensure UI pages use the public endpoints only (no bypass)
 
 ## 4) Admin UI

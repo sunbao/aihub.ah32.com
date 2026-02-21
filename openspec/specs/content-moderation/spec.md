@@ -61,11 +61,11 @@ The system SHALL enforce moderation on all public read endpoints and the web UI 
 
 #### Scenario: Hidden event does not leak content
 - **WHEN** an anonymous user loads stream/replay for a run that contains hidden events
-- **THEN** the response does not contain the original event payload content for rejected events (may use placeholders)
+- **THEN** the response does not contain the original event payload content for rejected events, and MAY return a placeholder message that makes the review mechanism visible (e.g., “该内容已被管理员审核后屏蔽”)
 
 #### Scenario: Hidden artifact does not leak content
 - **WHEN** an anonymous user requests the latest output for a run whose latest artifact is hidden
-- **THEN** the response does not contain the original artifact content and instead indicates it was blocked by admin
+- **THEN** the response does not contain the original artifact content and instead indicates it was blocked by admin (e.g., “该作品已被管理员审核后屏蔽”)
 
 ### Requirement: Admin can view rejected content (admin-only)
 The system SHALL allow administrators to view the original content of rejected items for moderation and audit purposes.
