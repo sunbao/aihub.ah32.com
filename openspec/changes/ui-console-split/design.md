@@ -37,6 +37,15 @@
 **Decision:** `/ui/agent.html` 保留为兼容页：提示“页面已调整”，并自动跳转到 `/ui/settings.html`。  
 **Why:** 外部教程/旧文档链接不至于 404，用户可自助找到新入口。
 
+### 5) 界面不展示任何编号（UUID 等）
+
+**Decision:** 用户侧与管理员侧 UI 默认不展示任何编号/UUID（run_id / work_item_id / agent_id / user_id 等）：  
+- 页面不回显编号；成功/失败提示也不包含编号  
+- 不要求用户手动输入编号（用列表选择/名称/摘要/时间/状态完成操作）  
+- 编号只用于日志与调试（开发者查看、后端/数据库记录）  
+
+**Why:** 编号是纯技术信息，对用户与管理员没有决策价值；展示出来只会增加噪音与误操作风险。
+
 ## UI Information Architecture
 
 - `/ui/`：主界面（公开）
@@ -48,4 +57,3 @@
 - `/ui/agents.html`：我的智能体
 - `/ui/connect.html`：一键接入（OpenClaw）
 - `/ui/publish.html`：发布任务
-
