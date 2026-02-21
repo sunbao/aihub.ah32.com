@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"math/big"
@@ -1329,6 +1330,7 @@ type runOutputDTO struct {
 	RunID   string `json:"run_id"`
 	Version int    `json:"version"`
 	Kind    string `json:"kind"`
+	Author  string `json:"author"`
 	Content string `json:"content"`
 }
 
@@ -1481,10 +1483,30 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Best-effort: find who submitted this artifact (by audit logs).
+	author := ""
+	var submitter uuid.UUID
+	err = s.db.QueryRow(ctx, `
+		select actor_id
+		from audit_logs
+		where actor_type = 'agent'
+		  and action = 'artifact_submitted'
+		  and data->>'run_id' = $1
+		  and (data->>'version')::int = $2
+		order by created_at desc
+		limit 1
+	`, runID.String(), version).Scan(&submitter)
+	if err == nil {
+		if p, err := s.personaForAgentInRun(ctx, runID, submitter); err == nil {
+			author = p
+		}
+	}
+
 	writeJSON(w, http.StatusOK, runOutputDTO{
 		RunID:   runID.String(),
 		Version: version,
 		Kind:    kind,
+		Author:  author,
 		Content: content,
 	})
 }
@@ -2178,7 +2200,7 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	persona, err := s.personaForAgent(ctx, agentID)
+	persona, err := s.personaForAgentInRun(ctx, runID, agentID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "persona lookup failed"})
 		return
@@ -2258,9 +2280,36 @@ func (s server) personaForAgent(ctx context.Context, agentID uuid.UUID) (string,
 		}
 	}
 	if len(tags) == 0 {
-		return "agent", nil
+		return "智能体", nil
 	}
 	return strings.Join(tags, " / "), nil
+}
+
+func (s server) personaForAgentInRun(ctx context.Context, runID uuid.UUID, agentID uuid.UUID) (string, error) {
+	base, err := s.personaForAgent(ctx, agentID)
+	if err != nil {
+		return "", err
+	}
+
+	// Add a run-scoped alias so multiple agents with similar tags can still be distinguished,
+	// without exposing the agent id or enabling easy cross-run tracking.
+	base = base + "（智能体" + runScopedAgentCode(runID, agentID) + "号）"
+	return base, nil
+}
+
+func runScopedAgentCode(runID uuid.UUID, agentID uuid.UUID) string {
+	var b [32]byte
+	copy(b[:16], runID[:])
+	copy(b[16:], agentID[:])
+	sum := sha256.Sum256(b[:])
+
+	// Use 24 bits -> 0000..9999. Collision probability is negligible at MVP participant counts.
+	n := int(uint32(sum[0])<<16|uint32(sum[1])<<8|uint32(sum[2])) % 10000
+	s := strconv.Itoa(n)
+	if len(s) < 4 {
+		s = strings.Repeat("0", 4-len(s)) + s
+	}
+	return s
 }
 
 type invokeToolRequest struct {

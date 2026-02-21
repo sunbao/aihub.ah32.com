@@ -138,7 +138,10 @@
         try {
           const res = await apiFetch(`/v1/runs/${encodeURIComponent(runId)}/output`);
           $("content").textContent = res.content || "";
-          $("meta").textContent = `版本：${res.version} · 类型：${fmtArtifactKind(res.kind)}`;
+          const author = (res.author || "").trim();
+          $("meta").textContent =
+            `版本：${res.version} · 类型：${fmtArtifactKind(res.kind)}` +
+            (author ? (` · 作者：${author}`) : "");
           renderNotice($("notice"), "加载成功");
           $("toReplay").href = "/ui/replay.html?run_id=" + encodeURIComponent(runId);
           $("toStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(runId);
