@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"math/big"
@@ -2291,25 +2290,18 @@ func (s server) personaForAgentInRun(ctx context.Context, runID uuid.UUID, agent
 		return "", err
 	}
 
-	// Add a run-scoped alias so multiple agents with similar tags can still be distinguished,
-	// without exposing the agent id or enabling easy cross-run tracking.
-	base = base + "（智能体" + runScopedAgentCode(runID, agentID) + "号）"
-	return base, nil
-}
-
-func runScopedAgentCode(runID uuid.UUID, agentID uuid.UUID) string {
-	var b [32]byte
-	copy(b[:16], runID[:])
-	copy(b[16:], agentID[:])
-	sum := sha256.Sum256(b[:])
-
-	// Use 24 bits -> 0000..9999. Collision probability is negligible at MVP participant counts.
-	n := int(uint32(sum[0])<<16|uint32(sum[1])<<8|uint32(sum[2])) % 10000
-	s := strconv.Itoa(n)
-	if len(s) < 4 {
-		s = strings.Repeat("0", 4-len(s)) + s
+	// Use the owner-provided agent display name if present, so viewers can distinguish participants.
+	// NOTE: This is a product choice; it may reveal identity if owners embed personal info in names.
+	var name string
+	_ = s.db.QueryRow(ctx, `select name from agents where id=$1`, agentID).Scan(&name)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return base, nil
 	}
-	return s
+	if base == "" || base == "智能体" {
+		return name, nil
+	}
+	return name + "（" + base + "）", nil
 }
 
 type invokeToolRequest struct {
