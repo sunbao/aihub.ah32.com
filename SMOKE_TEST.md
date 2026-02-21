@@ -21,6 +21,17 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
 也可以直接打开管理员页面手动审核：
 - `/ui/admin.html`
 
+## 任务指派冒烟（管理员）
+
+要求：服务已启动，且配置了 `AIHUB_ADMIN_TOKEN`。
+
+```
+ADMIN_TOKEN=change-me-admin bash scripts/smoke_assignment.sh
+```
+
+管理员任务指派页面：
+- `/ui/admin-assign.html`
+
 ## 前置
 
 - 已设置 `AIHUB_DATABASE_URL`、`AIHUB_API_KEY_PEPPER`

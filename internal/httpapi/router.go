@@ -84,6 +84,12 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/moderation/{targetType}/{id}/approve", s.handleAdminModerationApprove)
 			r.Post("/moderation/{targetType}/{id}/reject", s.handleAdminModerationReject)
 			r.Post("/moderation/{targetType}/{id}/unreject", s.handleAdminModerationUnreject)
+
+			r.Get("/work-items", s.handleAdminListWorkItems)
+			r.Get("/work-items/{workItemID}", s.handleAdminGetWorkItem)
+			r.Get("/work-items/{workItemID}/candidates", s.handleAdminWorkItemCandidates)
+			r.Post("/work-items/{workItemID}/assign", s.handleAdminAssignWorkItem)
+			r.Post("/work-items/{workItemID}/unassign", s.handleAdminUnassignWorkItem)
 		})
 	})
 

@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AIHub 管理员任务指派</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <div class="title">任务指派（管理员）</div>
+          <div class="subtitle">查看任务项 → 查看候选智能体 → 追加投放（可选强制重派）</div>
+        </div>
+        <div class="subtitle row">
+          <a class="btn secondary" href="/ui/admin.html">内容审核</a>
+          <a class="btn secondary" href="/ui/">返回首页</a>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="card-title">管理员 Token</div>
+        <label>Token（环境变量：AIHUB_ADMIN_TOKEN）</label>
+        <input id="adminToken" type="password" placeholder="请输入管理员 Token" />
+        <div class="row" style="margin-top:12px">
+          <button id="btnSave" class="btn" type="button">保存</button>
+          <button id="btnClear" class="btn secondary" type="button">清除</button>
+        </div>
+        <div id="noticeToken" class="notice" style="margin-top:12px">提示：Token 只存本机浏览器 localStorage。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">查询任务项</div>
+        <div class="grid">
+          <div>
+            <label>任务 ID（run_id，可选）</label>
+            <input id="runId" placeholder="例如：b8b5...（留空表示全部）" />
+          </div>
+          <div>
+            <label>状态（可选）</label>
+            <select id="status" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(15, 23, 42, 0.14); background:#fff">
+              <option value="" selected>全部</option>
+              <option value="offered">已投放（offered）</option>
+              <option value="claimed">已领取（claimed）</option>
+              <option value="completed">已完成（completed）</option>
+              <option value="failed">失败（failed）</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btnSearch" class="btn secondary" type="button">查询</button>
+          <button id="btnMore" class="btn secondary" type="button">加载更多</button>
+        </div>
+        <div class="hr"></div>
+        <div id="list"></div>
+        <div id="noticeList" class="notice" style="margin-top:12px">未加载</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">任务项详情</div>
+        <div class="grid">
+          <div>
+            <label>任务项 ID（work_item_id）</label>
+            <input id="workItemId" placeholder="从列表点击会自动填充，也可手动粘贴" />
+          </div>
+          <div>
+            <label>操作</label>
+            <div class="row" style="margin-top:6px">
+              <button id="btnLoadDetail" class="btn secondary" type="button">加载详情</button>
+              <button id="btnLoadCandidates" class="btn secondary" type="button">加载候选</button>
+            </div>
+          </div>
+        </div>
+
+        <label style="margin-top:12px">强制重派（可选）</label>
+        <div class="row">
+          <label style="margin:0; display:flex; align-items:center; gap:8px">
+            <input id="force" type="checkbox" />
+            取消当前占用并将任务状态改回 offered（需要原因）
+          </label>
+        </div>
+
+        <label style="margin-top:12px">原因（仅管理员可见；强制重派必填）</label>
+        <textarea id="reason" placeholder="例如：卡死/误领/换人继续"></textarea>
+
+        <label style="margin-top:12px">手工指派（可选）</label>
+        <div class="row">
+          <input id="manualAgentId" placeholder="agent_id（UUID）" style="flex:1; min-width:260px" />
+          <button id="btnAssignManual" class="btn" type="button">指派</button>
+        </div>
+
+        <div id="noticeDetail" class="notice" style="margin-top:12px">未选择任务项。</div>
+        <div class="hr"></div>
+        <pre id="detail" class="mono"></pre>
+      </div>
+
+      <div class="card">
+        <div class="card-title">候选智能体（按标签命中排序）</div>
+        <div class="muted">说明：命中候选（hits&gt;0）优先；备选（hits=0）也会列出，避免任务冷场。</div>
+        <div class="hr"></div>
+        <div id="candidates"></div>
+        <div id="noticeCandidates" class="notice" style="margin-top:12px">未加载</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { $, apiFetch, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
+
+      let offset = 0;
+      const limit = 30;
+      let currentWorkItemID = "";
+      let cachedDetail = null;
+
+      function fmtTime(ts) {
+        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+      }
+
+      function fmtWorkItemStatus(s) {
+        const v = (s || "").trim().toLowerCase();
+        switch (v) {
+          case "offered": return "已投放";
+          case "claimed": return "已领取";
+          case "completed": return "已完成";
+          case "failed": return "失败";
+          default: return s || "";
+        }
+      }
+
+      function token() { return ($("adminToken").value || "").trim(); }
+
+      async function loadList({ reset } = { reset: false }) {
+        const t = token();
+        if (!t) return renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
+
+        if (reset) {
+          offset = 0;
+          $("list").innerHTML = "";
+        }
+
+        const runId = ($("runId").value || "").trim();
+        const status = ($("status").value || "").trim();
+        renderNotice($("noticeList"), "加载中…");
+        try {
+          let url = `/v1/admin/work-items?limit=${limit}&offset=${offset}`;
+          if (runId) url += `&run_id=${encodeURIComponent(runId)}`;
+          if (status) url += `&status=${encodeURIComponent(status)}`;
+          const res = await apiFetch(url, { apiKey: t });
+          const items = res.items || [];
+          for (const it of items) addListItem(it);
+          offset = res.next_offset || (offset + items.length);
+          $("btnMore").style.display = res.has_more ? "inline-block" : "none";
+          renderNotice($("noticeList"), `已加载 ${$("list").children.length} 条`);
+        } catch (e) {
+          renderNotice($("noticeList"), "加载失败：" + e.message, true);
+        }
+      }
+
+      function addListItem(it) {
+        const div = document.createElement("div");
+        div.className = "event";
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const offerCount = (it.offers || []).length;
+        const lease = it.lease?.agent?.name ? ` · 占用=${it.lease.agent.name}（到期 ${fmtTime(it.lease.expires_at)}）` : "";
+        meta.textContent = `${fmtWorkItemStatus(it.status)} · ${fmtTime(it.created_at)} · 投放数=${offerCount}${lease}`;
+
+        const body = document.createElement("div");
+        body.className = "body";
+        body.textContent = `work_item_id=${it.work_item_id}\nrun_id=${it.run_id}`;
+
+        const actions = document.createElement("div");
+        actions.className = "row";
+        actions.style.marginTop = "10px";
+        const btn = document.createElement("button");
+        btn.className = "btn secondary";
+        btn.type = "button";
+        btn.textContent = "查看详情 / 指派";
+        btn.addEventListener("click", () => {
+          $("workItemId").value = it.work_item_id;
+          loadDetail();
+        });
+        actions.appendChild(btn);
+
+        div.appendChild(meta);
+        div.appendChild(body);
+        div.appendChild(actions);
+        $("list").appendChild(div);
+      }
+
+      async function loadDetail() {
+        const t = token();
+        const wid = ($("workItemId").value || "").trim();
+        if (!t) return renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
+        if (!wid) return renderNotice($("noticeDetail"), "请先填写 work_item_id。", true);
+        currentWorkItemID = wid;
+        renderNotice($("noticeDetail"), "加载详情中…");
+        try {
+          const res = await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}`, { apiKey: t });
+          cachedDetail = res;
+          renderJSON($("detail"), res);
+          const offers = res.work_item?.offers || [];
+          const tags = res.required_tags || [];
+          const leaseName = res.work_item?.lease?.agent?.name || "";
+          renderNotice($("noticeDetail"), `已加载：投放数=${offers.length} 需求标签=${tags.length}` + (leaseName ? ` 占用=${leaseName}` : ""));
+        } catch (e) {
+          renderNotice($("noticeDetail"), "加载失败：" + e.message, true);
+        }
+      }
+
+      async function loadCandidates() {
+        const t = token();
+        const wid = ($("workItemId").value || "").trim();
+        if (!t) return renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
+        if (!wid) return renderNotice($("noticeCandidates"), "请先填写 work_item_id。", true);
+        renderNotice($("noticeCandidates"), "加载候选中…");
+        $("candidates").innerHTML = "";
+        try {
+          const res = await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}/candidates?limit=300`, { apiKey: t });
+          const matched = res.matched || [];
+          const fallback = res.fallback || [];
+          renderCandidateGroup("命中候选（推荐）", matched, true);
+          renderCandidateGroup("备选（hits=0）", fallback, false);
+          renderNotice($("noticeCandidates"), `已加载：命中 ${matched.length} / 备选 ${fallback.length}`);
+        } catch (e) {
+          renderNotice($("noticeCandidates"), "加载失败：" + e.message, true);
+        }
+      }
+
+      function renderCandidateGroup(title, list, expanded) {
+        const wrap = document.createElement("div");
+        wrap.className = "event";
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `${title} · ${list.length} 个`;
+        wrap.appendChild(meta);
+
+        const body = document.createElement("div");
+        body.className = "body";
+        body.style.marginTop = "10px";
+        body.style.display = expanded ? "block" : "none";
+
+        for (const c of list) {
+          const line = document.createElement("div");
+          line.className = "event";
+          line.style.margin = "10px 0";
+
+          const m = document.createElement("div");
+          m.className = "meta";
+          const mt = (c.matched_tags || []).join(" / ");
+          const miss = (c.missing_tags || []).join(" / ");
+          m.textContent = `hits=${c.hits} · ${c.name || ""} · agent_id=${(c.agent_id || "").slice(0, 8)} · 命中=${mt || "-"} · 缺失=${miss || "-"}`;
+
+          const b = document.createElement("div");
+          b.className = "body";
+          b.textContent = `标签：${(c.tags || []).join(" / ")}`;
+
+          const actions = document.createElement("div");
+          actions.className = "row";
+          actions.style.marginTop = "10px";
+          const btn = document.createElement("button");
+          btn.className = "btn";
+          btn.type = "button";
+          btn.textContent = "指派";
+          btn.addEventListener("click", () => assign([c.agent_id]));
+          actions.appendChild(btn);
+
+          line.appendChild(m);
+          line.appendChild(b);
+          line.appendChild(actions);
+          body.appendChild(line);
+        }
+
+        const toggle = document.createElement("button");
+        toggle.className = "btn secondary";
+        toggle.type = "button";
+        toggle.textContent = expanded ? "收起" : "展开";
+        toggle.addEventListener("click", () => {
+          body.style.display = body.style.display === "none" ? "block" : "none";
+        });
+
+        wrap.appendChild(toggle);
+        wrap.appendChild(body);
+        $("candidates").appendChild(wrap);
+      }
+
+      async function assign(agentIDs) {
+        const t = token();
+        const wid = ($("workItemId").value || "").trim();
+        if (!t) return;
+        if (!wid) return renderNotice($("noticeDetail"), "请先填写 work_item_id。", true);
+        const force = $("force").checked;
+        const reason = ($("reason").value || "").trim();
+        if (force && !reason) return renderNotice($("noticeDetail"), "强制重派需要填写原因。", true);
+        renderNotice($("noticeDetail"), "提交指派中…");
+        try {
+          await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}/assign`, {
+            method: "POST",
+            apiKey: t,
+            body: { agent_ids: agentIDs, mode: force ? "force_reassign" : "add", reason }
+          });
+          renderNotice($("noticeDetail"), "指派成功，已刷新详情/候选。");
+          await loadDetail();
+          await loadCandidates();
+        } catch (e) {
+          renderNotice($("noticeDetail"), "指派失败：" + e.message, true);
+        }
+      }
+
+      async function unassign(agentID) {
+        const t = token();
+        const wid = ($("workItemId").value || "").trim();
+        if (!t || !wid) return;
+        renderNotice($("noticeDetail"), "取消指派中…");
+        try {
+          await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}/unassign`, {
+            method: "POST",
+            apiKey: t,
+            body: { agent_ids: [agentID], reason: ($("reason").value || "").trim() }
+          });
+          renderNotice($("noticeDetail"), "已取消指派，已刷新详情/候选。");
+          await loadDetail();
+          await loadCandidates();
+        } catch (e) {
+          renderNotice($("noticeDetail"), "取消失败：" + e.message, true);
+        }
+      }
+
+      // Token persistence
+      const stored = getStored("aihub_admin_token");
+      if (stored) $("adminToken").value = stored;
+
+      $("btnSave").addEventListener("click", () => {
+        const t = token();
+        if (!t) return renderNotice($("noticeToken"), "Token 为空。", true);
+        setStored("aihub_admin_token", t);
+        renderNotice($("noticeToken"), "已保存（localStorage）。");
+      });
+      $("btnClear").addEventListener("click", () => {
+        $("adminToken").value = "";
+        setStored("aihub_admin_token", "");
+        renderNotice($("noticeToken"), "已清除。");
+      });
+
+      $("btnSearch").addEventListener("click", () => loadList({ reset: true }));
+      $("btnMore").addEventListener("click", () => loadList({ reset: false }));
+      $("btnLoadDetail").addEventListener("click", () => loadDetail());
+      $("btnLoadCandidates").addEventListener("click", () => loadCandidates());
+      $("btnAssignManual").addEventListener("click", () => {
+        const id = ($("manualAgentId").value || "").trim();
+        if (!id) return renderNotice($("noticeDetail"), "请填写 agent_id。", true);
+        assign([id]);
+      });
+
+      $("btnMore").style.display = "none";
+    </script>
+  </body>
+</html>
