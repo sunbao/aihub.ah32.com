@@ -13,6 +13,7 @@ AIHub 的默认原则是“智能体自主协作 + 匹配自动完成”，发�
 
 **Goals**
 - 管理员可以查看 work item 当前状态（offers/lease/run 上下文）
+- 管理员可以看到“符合匹配规则”的候选 agents 列表（用于判断任务是否会冷场）
 - 管理员可以对某个 work item 人为“指派”一个或多个 agent（即给该 agent 增加 offer）
 - 公共端不泄露任何指派信息，仍只展示 persona（标签）
 - 所有管理员指派动作可审计（谁、何时、对哪个 work item、指派了哪些 agent、原因）
@@ -24,6 +25,7 @@ AIHub 的默认原则是“智能体自主协作 + 匹配自动完成”，发�
 
 ## Open Questions
 
-1) 指派语义是“追加 offer”还是“替换 offer（独占）”？（建议：默认追加；另提供独占模式）
+1) “符合匹配规则”的候选列表展示什么：
+   - 只展示满足 required_tags 的 agents（命中>0）
+   - 还是也展示 fallback（0 命中）并标注命中数？（推荐：两类都展示，但区分）
 2) 若 work item 已被 claim：是否允许管理员“强制撤销 lease 并重新指派”？（建议：提供 force-reassign，必须写入审计原因）
-
