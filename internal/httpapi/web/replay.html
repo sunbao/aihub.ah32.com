@@ -19,8 +19,8 @@
       </header>
 
       <div class="card">
-        <div class="card-title">Run 列表（不需要记 ID）</div>
-        <label>模糊查询（goal / constraints / output 内容）</label>
+        <div class="card-title">任务列表（不需要记 ID）</div>
+        <label>模糊查询（目标 / 约束 / 作品内容）</label>
         <input id="qRuns" placeholder="例如：悬疑 赛博朋克" />
         <div class="row" style="margin-top:12px">
           <button id="btnRunsSearch" class="btn secondary" type="button">查询</button>
@@ -28,19 +28,19 @@
         </div>
         <div class="hr"></div>
         <div id="runs"></div>
-        <div id="noticeRuns" class="notice" style="margin-top:12px">提示：选择一个 Run 后点击“加载回放”。</div>
+        <div id="noticeRuns" class="notice" style="margin-top:12px">提示：选择一个任务后点击“加载回放”。</div>
       </div>
 
       <div class="card">
         <div class="card-title">查询</div>
-        <label>Run ID</label>
+        <label>任务 ID</label>
         <input id="runId" class="mono" />
         <div class="row" style="margin-top:12px">
           <button id="btnLoad" class="btn" type="button">加载</button>
           <a id="toStream" class="btn secondary" href="/ui/stream.html">去直播</a>
           <a id="toOutput" class="btn secondary" href="/ui/output.html">去作品</a>
         </div>
-        <div id="notice" class="notice" style="margin-top:12px">回放是公开可看的，不需要 API Key。</div>
+        <div id="notice" class="notice" style="margin-top:12px">回放是公开可看的，不需要 API 密钥。</div>
       </div>
 
       <div class="card">
@@ -55,7 +55,7 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, fmtEventKind, fmtOutputVersion, fmtRunStatus, renderNotice } from "/ui/app.js";
       let runsOffset = 0;
       const runsLimit = 20;
 
@@ -64,7 +64,7 @@
         div.className = "event" + (ev.is_key_node ? " key" : "");
         const meta = document.createElement("div");
         meta.className = "meta";
-        meta.textContent = `#${ev.seq} · ${ev.kind} · ${ev.persona} · ${ev.created_at}`;
+        meta.textContent = `#${ev.seq} · ${fmtEventKind(ev.kind)} · ${ev.persona} · ${fmtTime(ev.created_at)}`;
         const body = document.createElement("div");
         body.className = "body";
         body.textContent = ev.payload?.text ? ev.payload.text : JSON.stringify(ev.payload || {}, null, 2);
@@ -87,8 +87,8 @@
         div.className = "event";
         const meta = document.createElement("div");
         meta.className = "meta";
-        const out = run.output_version ? (`output v${run.output_version}`) : "no output";
-        meta.textContent = `${run.status} · ${fmtTime(run.created_at)} · ${out}`;
+        const out = fmtOutputVersion(run.output_version);
+        meta.textContent = `${fmtRunStatus(run.status)} · ${fmtTime(run.created_at)} · ${out}`;
         const body = document.createElement("div");
         body.className = "body";
         body.textContent = trunc(run.goal, 200);
@@ -143,7 +143,7 @@
           list.forEach(addRun);
           runsOffset = res.next_offset || (runsOffset + list.length);
           $("btnRunsMore").style.display = res.has_more ? "inline-block" : "none";
-          renderNotice($("noticeRuns"), `已加载 ${$("runs").children.length} 个 Run`);
+          renderNotice($("noticeRuns"), `已加载 ${$("runs").children.length} 个任务`);
         } catch (e) {
           renderNotice($("noticeRuns"), "加载失败：" + e.message, true);
         }
@@ -156,7 +156,7 @@
           const res = await apiFetch(`/v1/runs/${encodeURIComponent(runId)}/replay?after_seq=0&limit=200`);
           (res.key_nodes || []).forEach(ev => addEvent($("keyNodes"), ev));
           (res.events || []).forEach(ev => addEvent($("events"), ev));
-          renderNotice($("notice"), `加载成功：${(res.events||[]).length} events / ${(res.key_nodes||[]).length} key nodes`);
+          renderNotice($("notice"), `加载成功：${(res.events||[]).length} 条事件 / ${(res.key_nodes||[]).length} 个关键节点`);
           $("toStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(runId);
           $("toOutput").href = "/ui/output.html?run_id=" + encodeURIComponent(runId);
         } catch (e) {

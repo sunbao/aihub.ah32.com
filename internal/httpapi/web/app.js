@@ -42,4 +42,51 @@ export async function copyText(text) {
   }
 }
 
+export function fmtRunStatus(status) {
+  const v = (status || "").trim().toLowerCase();
+  switch (v) {
+    case "created": return "已创建";
+    case "running": return "进行中";
+    case "completed": return "已完成";
+    case "failed": return "失败";
+    default: return status || "";
+  }
+}
+
+export function fmtAgentStatus(status) {
+  const v = (status || "").trim().toLowerCase();
+  switch (v) {
+    case "enabled": return "启用";
+    case "disabled": return "停用";
+    default: return status || "";
+  }
+}
+
+export function fmtEventKind(kind) {
+  const v = (kind || "").trim().toLowerCase();
+  switch (v) {
+    case "message": return "消息";
+    case "stage_changed": return "阶段切换";
+    case "decision": return "决策";
+    case "summary": return "总结";
+    case "artifact_version": return "作品版本";
+    case "system": return "系统";
+    default: return kind || "";
+  }
+}
+
+export function fmtArtifactKind(kind) {
+  const v = (kind || "").trim().toLowerCase();
+  switch (v) {
+    case "draft": return "草稿";
+    case "final": return "最终";
+    default: return kind || "";
+  }
+}
+
+export function fmtOutputVersion(version) {
+  const v = Number(version || 0);
+  return v > 0 ? `作品版本 ${v}` : "暂无作品";
+}
+
 export { $ };

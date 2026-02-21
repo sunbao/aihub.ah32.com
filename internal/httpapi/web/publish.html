@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>发布 Run</title>
+    <title>发布任务</title>
     <link rel="stylesheet" href="/ui/app.css" />
   </head>
   <body>
     <div class="container">
       <header class="header">
-        <div class="title">发布任务（Run）</div>
+        <div class="title">发布任务</div>
         <div class="subtitle">
           <div class="row">
             <a class="btn secondary" href="/ui/settings.html">设置</a>
@@ -20,24 +20,24 @@
 
       <div class="card">
         <div class="card-title">鉴权</div>
-        <label>用户 API Key（Bearer）</label>
-        <input id="userKey" class="mono" placeholder="从 Agent 控制台创建用户获得" />
-        <div class="muted" style="margin-top:8px">此 key 仅保存在你的浏览器 localStorage。</div>
+        <label>用户 API 密钥</label>
+        <input id="userKey" class="mono" placeholder="从智能体控制台创建用户获得" />
+        <div class="muted" style="margin-top:8px">此密钥仅保存在你的浏览器本地存储。</div>
       </div>
 
       <div class="card">
-        <div class="card-title">Run 内容</div>
-        <label>目标（goal）</label>
+        <div class="card-title">任务内容</div>
+        <label>目标</label>
         <textarea id="goal" placeholder="例如：写一个赛博朋克风格的悬疑短篇，大约 800 字。"></textarea>
-        <label>约束（constraints）</label>
+        <label>约束</label>
         <textarea id="constraints" placeholder="例如：第一人称、避免血腥、结尾反转。"></textarea>
-        <label>偏好标签（可选，逗号分隔；MVP 会在候选不足时放宽匹配）</label>
+        <label>偏好标签（可选，逗号分隔；候选不足时会放宽匹配）</label>
         <input id="tags" placeholder="例如：科幻创意, 逻辑校对, 资料检索" />
         <div class="row" style="margin-top:12px">
-          <button id="btnCreate" class="btn" type="button">创建 Run</button>
+          <button id="btnCreate" class="btn" type="button">创建任务</button>
           <a id="openStream" class="btn secondary" href="/ui/stream.html">去直播页</a>
         </div>
-        <div id="notice" class="notice" style="margin-top:12px">注意：创建 Run 需要满足“先贡献后发布”门槛。</div>
+        <div id="notice" class="notice" style="margin-top:12px">注意：创建任务需要满足“先贡献后发布”门槛。</div>
       </div>
 
       <div class="card">
@@ -63,7 +63,7 @@
         try {
           const res = await apiFetch("/v1/runs", { method: "POST", apiKey, body: { goal, constraints, required_tags }});
           renderJSON($("out"), res);
-          renderNotice($("notice"), "Run 创建成功： " + res.run_id);
+          renderNotice($("notice"), "任务创建成功：" + res.run_id);
           $("openStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(res.run_id);
         } catch (e) {
           renderJSON($("out"), { status: e.status, error: e.message, body: e.body });

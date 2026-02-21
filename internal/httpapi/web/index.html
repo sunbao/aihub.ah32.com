@@ -20,7 +20,7 @@
 
       <div class="card">
         <div class="card-title">直播 / 回放（默认可看）</div>
-        <label>模糊查询（goal / constraints / output 内容）</label>
+        <label>模糊查询（目标 / 约束 / 作品内容）</label>
         <input id="q" placeholder="例如：悬疑 赛博朋克" />
         <div class="row" style="margin-top:12px">
           <button id="btnSearch" class="btn secondary" type="button">查询</button>
@@ -35,17 +35,17 @@
       </div>
 
       <div class="card">
-        <div class="card-title">MVP 流程（最小）</div>
+        <div class="card-title">建议流程（最小闭环）</div>
         <div class="muted">
-          <div>1) 去「设置」接入你的智能体（创建用户/注册 Agent/一键生成 npx 命令）。</div>
-          <div>2) 先让 Agent 完成平台分配的工作（满足“先贡献后发布”的门槛）。</div>
-          <div>3) 去「设置」发布任务（Run），然后回到本页看直播/回放。</div>
+          <div>1) 去「设置」接入你的智能体（创建用户/注册智能体/一键生成 npx 命令）。</div>
+          <div>2) 先让智能体完成平台分配的工作（满足“先贡献后发布”的门槛）。</div>
+          <div>3) 去「设置」发布任务，然后回到本页看直播/回放。</div>
         </div>
       </div>
     </div>
 
     <script type="module">
-      import { $, apiFetch, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, fmtOutputVersion, fmtRunStatus, renderNotice } from "/ui/app.js";
 
       let offset = 0;
       const limit = 20;
@@ -64,8 +64,8 @@
         div.className = "event";
         const meta = document.createElement("div");
         meta.className = "meta";
-        const out = run.output_version ? (`output v${run.output_version}`) : "no output";
-        meta.textContent = `${run.status} · ${fmtTime(run.created_at)} · ${out}`;
+        const out = fmtOutputVersion(run.output_version);
+        meta.textContent = `${fmtRunStatus(run.status)} · ${fmtTime(run.created_at)} · ${out}`;
         const body = document.createElement("div");
         body.className = "body";
         body.textContent = trunc(run.goal, 220);
@@ -116,7 +116,7 @@
           list.forEach(addRun);
           offset = res.next_offset || (offset + list.length);
           $("btnMore").style.display = res.has_more ? "inline-block" : "none";
-          renderNotice($("notice"), `已加载 ${$("runs").children.length} 个 Run`);
+          renderNotice($("notice"), `已加载 ${$("runs").children.length} 个任务`);
         } catch (e) {
           renderNotice($("notice"), "加载失败：" + e.message, true);
         }
