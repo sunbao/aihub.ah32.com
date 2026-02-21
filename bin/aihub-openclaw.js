@@ -4,12 +4,20 @@ const path = require("path");
 const os = require("os");
 
 function parseArgs(argv) {
-  const out = { apiKey: "", baseUrl: "http://192.168.1.154:8080", skillsDir: "" };
+  const out = {
+    apiKey: "",
+    baseUrl: "http://192.168.1.154:8080",
+    skillsDir: "",
+    cron: "*/5 * * * *",  // default: every 5 minutes
+    cronEnabled: true
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--apiKey" || a === "--api-key") out.apiKey = argv[++i] || "";
     else if (a === "--baseUrl" || a === "--base-url") out.baseUrl = argv[++i] || out.baseUrl;
     else if (a === "--skillsDir" || a === "--skills-dir") out.skillsDir = argv[++i] || "";
+    else if (a === "--cron" || a === "--cron-expr") out.cron = argv[++i] || out.cron;
+    else if (a === "--no-cron") out.cronEnabled = false;
     else if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
@@ -68,10 +76,13 @@ function main() {
         "  --apiKey <key>           (required) AIHub Agent API key",
         "  --baseUrl <url>          (optional) default: http://192.168.1.154:8080",
         "  --skillsDir <dir>        (optional) override OpenClaw skills directory",
+        "  --cron <expr>            (optional) cron expression, default: */5 * * * * (every 5 min)",
+        "  --no-cron                 (optional) disable automatic cron job setup",
         "",
         "What it does:",
         "  - Installs skill to your OpenClaw workspace skills directory (auto-detected)",
         "  - Writes config to: %USERPROFILE%\\.openclaw\\openclaw.json",
+        "  - Creates a cron job to automatically poll AIHub for new tasks",
         ""
       ].join("\n")
     );
@@ -144,6 +155,51 @@ function main() {
   const backup = backupFile(cfgPath);
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
 
+  // Setup cron job for automatic polling
+  if (args.cronEnabled) {
+    const cronDir = path.join(home, ".openclaw", "cron");
+    const cronJobsFile = path.join(cronDir, "jobs.json");
+
+    let jobs = [];
+    if (fs.existsSync(cronJobsFile)) {
+      try {
+        jobs = JSON.parse(fs.readFileSync(cronJobsFile, "utf8"));
+      } catch (e) {
+        // ignore parse errors, start fresh
+      }
+    }
+
+    // Check if AIHub cron job already exists
+    const existingIndex = jobs.findIndex(j => j.name === "AIHub Poll");
+    const newJob = {
+      jobId: existingIndex >= 0 ? jobs[existingIndex].jobId : "aihub-" + Date.now(),
+      name: "AIHub Poll",
+      schedule: {
+        kind: "cron",
+        cron: args.cron
+      },
+      sessionTarget: "isolated",
+      payload: {
+        kind: "agentTurn",
+        message: "检查 AIHub 任务并执行。读取 SKILL.md 了解如何连接 AIHub。poll inbox, claim work, emit events, submit artifact, complete."
+      },
+      delivery: {
+        mode: "announce"
+      },
+      enabled: true,
+      deleteAfterRun: false
+    };
+
+    if (existingIndex >= 0) {
+      jobs[existingIndex] = newJob;
+    } else {
+      jobs.push(newJob);
+    }
+
+    fs.mkdirSync(cronDir, { recursive: true });
+    fs.writeFileSync(cronJobsFile, JSON.stringify(jobs, null, 2) + "\n", "utf8");
+  }
+
   process.stdout.write(
     [
       "OK: AIHub connector installed & configured.",
@@ -151,6 +207,7 @@ function main() {
       "Config: " + cfgPath,
       "Backup: " + backup,
       "BaseUrl: " + baseUrl,
+      args.cronEnabled ? "Cron: " + args.cron + " (auto-poll enabled)" : "Cron: disabled",
       "Next: restart OpenClaw / reload skills."
     ].join("\n") + "\n"
   );

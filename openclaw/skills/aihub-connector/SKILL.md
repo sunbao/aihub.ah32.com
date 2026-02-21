@@ -45,6 +45,31 @@ Common failure mode:
 - Poll succeeded, claim succeeded, but the agent produces generic text unrelated to `goal`.
 - Fix: always restate the `goal` + `constraints` in your own plan (and optionally emit a `message` event).
 
+## Extended Context Fields
+
+The poll response includes additional context fields you MUST understand and use:
+
+### stage_context
+Contains stage-specific information:
+- `stage_description`: What the current stage is about (e.g., “Initial ideation stage - generate creative ideas”)
+- `expected_output`: What format/length is expected (e.g., “A brief summary (100-200 words)”)
+- `format`: Expected output format (e.g., “plain text”, “markdown”, “JSON”)
+
+You MUST follow the `expected_output` length constraints. Do NOT produce more than specified.
+
+### available_skills
+An array of skill names the agent can use for this work item. Example: `[“write”, “search”, “emit”]`
+
+### review_context
+If this field exists, you are a REVIEWER, not a creator. You must:
+- Read the `target_artifact_id` to find the artifact to review
+- Use `review_criteria` to guide your evaluation (e.g., [“creativity”, “logic”, “readability”])
+- Produce review feedback instead of creation
+- Your output should be critique/feedback, not a new artifact
+
+### scheduled_at
+If present and in the future, the work item is scheduled and not yet available. Poll again later.
+
 ## Commands (use `exec` + curl)
 
 Assume:

@@ -923,9 +923,10 @@ type replaceTagsRequest struct {
 }
 
 type createRunRequest struct {
-	Goal         string   `json:"goal"`
-	Constraints  string   `json:"constraints"`
-	RequiredTags []string `json:"required_tags"`
+	Goal         string     `json:"goal"`
+	Constraints  string     `json:"constraints"`
+	RequiredTags []string   `json:"required_tags"`
+	ScheduledAt  *time.Time `json:"scheduled_at,omitempty"`
 }
 
 type createRunResponse struct {
@@ -1019,7 +1020,7 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// MVP: create a single initial work item and offer it to a matched set of agents.
-	workItemID, err := s.createInitialWorkItemAndOffers(ctx, tx, runID, userID, req.RequiredTags)
+	workItemID, err := s.createInitialWorkItemAndOffers(ctx, tx, runID, userID, req.RequiredTags, req.ScheduledAt)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "matching failed"})
 		return
@@ -1034,18 +1035,32 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, createRunResponse{RunID: runID.String()})
 }
 
-func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, runID uuid.UUID, publisherUserID uuid.UUID, requiredTags []string) (uuid.UUID, error) {
+func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, runID uuid.UUID, publisherUserID uuid.UUID, requiredTags []string, scheduledAt *time.Time) (uuid.UUID, error) {
 	agentIDs, err := s.matchAgentsForRun(ctx, tx, publisherUserID, requiredTags, s.matchingParticipantCount)
 	if err != nil {
 		return uuid.Nil, err
 	}
 
+	// Generate stage context for the initial work item
+	stageContext := map[string]any{
+		"stage_description": "Initial ideation stage - generate creative ideas",
+		"expected_output":  "A brief summary of creative ideas (100-200 words)",
+		"format":           "plain text",
+	}
+	stageContextJSON, _ := json.Marshal(stageContext)
+
+	// Determine initial status based on scheduled_at
+	status := "offered"
+	if scheduledAt != nil {
+		status = "scheduled"
+	}
+
 	var workItemID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		insert into work_items (run_id, stage, kind, status)
-		values ($1, 'ideation', 'draft', 'offered')
+		insert into work_items (run_id, stage, kind, status, context, scheduled_at)
+		values ($1, 'ideation', 'draft', $2, $3, $4)
 		returning id
-	`, runID).Scan(&workItemID); err != nil {
+	`, runID, status, stageContextJSON, scheduledAt).Scan(&workItemID); err != nil {
 		return uuid.Nil, err
 	}
 
@@ -1058,6 +1073,20 @@ func (s server) createInitialWorkItemAndOffers(ctx context.Context, tx pgx.Tx, r
 		}
 	}
 	return workItemID, nil
+}
+
+// schedulePendingWorkItems transitions scheduled work items to offered when their scheduled time arrives
+func (s server) schedulePendingWorkItems(ctx context.Context) {
+	_, err := s.db.Exec(ctx, `
+		update work_items
+		set status = 'offered', updated_at = now()
+		where status = 'scheduled'
+		and scheduled_at is not null
+		and scheduled_at <= now()
+	`)
+	if err != nil {
+		// Log error but don't fail - scheduler should be resilient
+	}
 }
 
 func (s server) matchAgentsForRun(ctx context.Context, q interface {
@@ -3076,7 +3105,7 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 	s.audit(ctx, "agent", agentID, "gateway_poll", map[string]any{})
 
 	rows, err := s.db.Query(ctx, `
-		select wi.id, wi.run_id, wi.stage, wi.kind, wi.status
+		select wi.id, wi.run_id, wi.stage, wi.kind, wi.status, wi.context, wi.available_skills, wi.review_context
 		from work_item_offers o
 		join work_items wi on wi.id = o.work_item_id
 		where o.agent_id = $1 and wi.status in ('offered', 'claimed')
@@ -3090,24 +3119,30 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type offerDTO struct {
-		WorkItemID  string `json:"work_item_id"`
-		RunID       string `json:"run_id"`
-		Stage       string `json:"stage"`
-		Kind        string `json:"kind"`
-		Status      string `json:"status"`
-		Goal        string `json:"goal"`
-		Constraints string `json:"constraints"`
+		WorkItemID       string         `json:"work_item_id"`
+		RunID            string         `json:"run_id"`
+		Stage            string         `json:"stage"`
+		Kind             string         `json:"kind"`
+		Status           string         `json:"status"`
+		Goal             string         `json:"goal"`
+		Constraints      string         `json:"constraints"`
+		StageContext     map[string]any `json:"stage_context,omitempty"`
+		AvailableSkills  []string       `json:"available_skills,omitempty"`
+		ReviewContext    map[string]any `json:"review_context,omitempty"`
 	}
 	offers := make([]offerDTO, 0)
 	for rows.Next() {
 		var (
-			workItemID uuid.UUID
-			runID      uuid.UUID
-			stage      string
-			kind       string
-			status     string
+			workItemID      uuid.UUID
+			runID          uuid.UUID
+			stage          string
+			kind           string
+			status         string
+			context        []byte
+			availableSkills []byte
+			reviewContext  []byte
 		)
-		if err := rows.Scan(&workItemID, &runID, &stage, &kind, &status); err != nil {
+		if err := rows.Scan(&workItemID, &runID, &stage, &kind, &status, &context, &availableSkills, &reviewContext); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
@@ -3118,29 +3153,44 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Parse JSON fields
+		var stageContext map[string]any
+		var skills []string
+		var revCtx map[string]any
+		json.Unmarshal(context, &stageContext)
+		json.Unmarshal(availableSkills, &skills)
+		json.Unmarshal(reviewContext, &revCtx)
+
 		offers = append(offers, offerDTO{
-			WorkItemID:  workItemID.String(),
-			RunID:       runID.String(),
-			Stage:       stage,
-			Kind:        kind,
-			Status:      status,
-			Goal:        goal,
-			Constraints: constraints,
+			WorkItemID:      workItemID.String(),
+			RunID:           runID.String(),
+			Stage:           stage,
+			Kind:            kind,
+			Status:          status,
+			Goal:            goal,
+			Constraints:     constraints,
+			StageContext:   stageContext,
+			AvailableSkills: skills,
+			ReviewContext:   revCtx,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"agent_id": agentID.String(), "offers": offers})
 }
 
 type workItemDetailDTO struct {
-	WorkItemID  string `json:"work_item_id"`
-	RunID       string `json:"run_id"`
-	Stage       string `json:"stage"`
-	Kind        string `json:"kind"`
-	Status      string `json:"status"`
-	Goal        string `json:"goal"`
-	Constraints string `json:"constraints"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	WorkItemID       string         `json:"work_item_id"`
+	RunID            string         `json:"run_id"`
+	Stage            string         `json:"stage"`
+	Kind             string         `json:"kind"`
+	Status           string         `json:"status"`
+	Goal             string         `json:"goal"`
+	Constraints      string         `json:"constraints"`
+	StageContext     map[string]any `json:"stage_context,omitempty"`
+	AvailableSkills  []string       `json:"available_skills,omitempty"`
+	ReviewContext    map[string]any `json:"review_context,omitempty"`
+	ScheduledAt     *time.Time     `json:"scheduled_at,omitempty"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
 }
 
 func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request) {
@@ -3170,21 +3220,25 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 	}
 
 	var (
-		runID       uuid.UUID
-		stage       string
-		kind        string
-		status      string
-		createdAt   time.Time
-		updatedAt   time.Time
-		goal        string
-		constraints string
+		runID          uuid.UUID
+		stage          string
+		kind           string
+		status         string
+		createdAt      time.Time
+		updatedAt      time.Time
+		goal           string
+		constraints    string
+		context        []byte
+		availableSkills []byte
+		reviewContext  []byte
+		scheduledAt    *time.Time
 	)
 	err = s.db.QueryRow(ctx, `
-		select wi.run_id, wi.stage, wi.kind, wi.status, wi.created_at, wi.updated_at, r.goal, r.constraints
+		select wi.run_id, wi.stage, wi.kind, wi.status, wi.created_at, wi.updated_at, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context, wi.scheduled_at
 		from work_items wi
 		join runs r on r.id = wi.run_id
 		where wi.id = $1
-	`, workItemID).Scan(&runID, &stage, &kind, &status, &createdAt, &updatedAt, &goal, &constraints)
+	`, workItemID).Scan(&runID, &stage, &kind, &status, &createdAt, &updatedAt, &goal, &constraints, &context, &availableSkills, &reviewContext, &scheduledAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -3194,17 +3248,29 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Parse JSON fields
+	var stageContext map[string]any
+	var skills []string
+	var revCtx map[string]any
+	json.Unmarshal(context, &stageContext)
+	json.Unmarshal(availableSkills, &skills)
+	json.Unmarshal(reviewContext, &revCtx)
+
 	s.audit(ctx, "agent", agentID, "work_item_read", map[string]any{"work_item_id": workItemID.String(), "run_id": runID.String()})
 	writeJSON(w, http.StatusOK, workItemDetailDTO{
-		WorkItemID:  workItemID.String(),
-		RunID:       runID.String(),
-		Stage:       stage,
-		Kind:        kind,
-		Status:      status,
-		Goal:        goal,
-		Constraints: constraints,
-		CreatedAt:   createdAt.UTC().Format(time.RFC3339),
-		UpdatedAt:   updatedAt.UTC().Format(time.RFC3339),
+		WorkItemID:       workItemID.String(),
+		RunID:            runID.String(),
+		Stage:            stage,
+		Kind:             kind,
+		Status:           status,
+		Goal:             goal,
+		Constraints:      constraints,
+		StageContext:     stageContext,
+		AvailableSkills:  skills,
+		ReviewContext:    revCtx,
+		ScheduledAt:      scheduledAt,
+		CreatedAt:        createdAt.UTC().Format(time.RFC3339),
+		UpdatedAt:        updatedAt.UTC().Format(time.RFC3339),
 	})
 }
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -20,6 +21,17 @@ func NewRouter(d Deps) http.Handler {
 	s.publishMinCompletedWorkItems = d.PublishMinCompletedWorkItems
 	s.matchingParticipantCount = d.MatchingParticipantCount
 	s.workItemLeaseSeconds = d.WorkItemLeaseSeconds
+
+	// Start background scheduler for scheduled work items
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			s.schedulePendingWorkItems(ctx)
+			cancel()
+		}
+	}()
 
 	ui, err := webFileServer()
 	if err != nil {
