@@ -1,13 +1,19 @@
 package httpapi
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"net/http"
 )
 
 type statusCapturingResponseWriter struct {
 	http.ResponseWriter
 	status int
+}
+
+func (w *statusCapturingResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func (w *statusCapturingResponseWriter) WriteHeader(status int) {
@@ -21,6 +27,30 @@ func (w *statusCapturingResponseWriter) Write(p []byte) (int, error) {
 		w.status = http.StatusOK
 	}
 	return w.ResponseWriter.Write(p)
+}
+
+func (w *statusCapturingResponseWriter) Flush() {
+	f, ok := w.ResponseWriter.(http.Flusher)
+	if !ok {
+		return
+	}
+	f.Flush()
+}
+
+func (w *statusCapturingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("hijacker not supported")
+	}
+	return h.Hijack()
+}
+
+func (w *statusCapturingResponseWriter) Push(target string, opts *http.PushOptions) error {
+	p, ok := w.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return p.Push(target, opts)
 }
 
 func serverErrorLoggerMiddleware(next http.Handler) http.Handler {
