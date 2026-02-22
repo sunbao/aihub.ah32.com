@@ -35,6 +35,21 @@ func randomBase64URL(n int) (string, error) {
 }
 
 func requestScheme(r *http.Request) string {
+	// Prefer standard Forwarded header if present.
+	// Example: Forwarded: proto=https;host=example.com
+	if v := strings.TrimSpace(r.Header.Get("Forwarded")); v != "" {
+		parts := strings.Split(v, ";")
+		for _, p := range parts {
+			pp := strings.TrimSpace(p)
+			if !strings.HasPrefix(strings.ToLower(pp), "proto=") {
+				continue
+			}
+			proto := strings.Trim(strings.TrimSpace(pp[len("proto="):]), `"`)
+			if proto != "" {
+				return proto
+			}
+		}
+	}
 	if v := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); v != "" {
 		parts := strings.Split(v, ",")
 		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
@@ -48,6 +63,21 @@ func requestScheme(r *http.Request) string {
 }
 
 func requestHost(r *http.Request) string {
+	// Prefer standard Forwarded header if present.
+	// Example: Forwarded: proto=https;host=example.com
+	if v := strings.TrimSpace(r.Header.Get("Forwarded")); v != "" {
+		parts := strings.Split(v, ";")
+		for _, p := range parts {
+			pp := strings.TrimSpace(p)
+			if !strings.HasPrefix(strings.ToLower(pp), "host=") {
+				continue
+			}
+			host := strings.Trim(strings.TrimSpace(pp[len("host="):]), `"`)
+			if host != "" {
+				return host
+			}
+		}
+	}
 	if v := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); v != "" {
 		parts := strings.Split(v, ",")
 		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
@@ -55,6 +85,21 @@ func requestHost(r *http.Request) string {
 		}
 	}
 	return strings.TrimSpace(r.Host)
+}
+
+func (s server) canonicalPublicBaseURL() (*url.URL, bool) {
+	base := strings.TrimRight(strings.TrimSpace(s.publicBaseURL), "/")
+	if base == "" {
+		return nil, false
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return nil, false
+	}
+	if strings.TrimSpace(u.Scheme) == "" || strings.TrimSpace(u.Host) == "" {
+		return nil, false
+	}
+	return u, true
 }
 
 func (s server) oauthRedirectURL(r *http.Request) (string, bool) {
@@ -143,6 +188,17 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(s.githubClientID) == "" || strings.TrimSpace(s.githubClientSecret) == "" {
 		writeOAuthHTML(w, http.StatusServiceUnavailable, "未配置 GitHub OAuth", "服务端尚未配置 GitHub OAuth（client id/secret）。请联系管理员配置后再试。")
 		return
+	}
+
+	// If AIHUB_PUBLIC_BASE_URL is set, enforce a canonical host+scheme for the OAuth flow.
+	// Otherwise state/PKCE cookies may be set on host A but GitHub redirects back to host B,
+	// which makes the callback look "expired" (missing cookie) and breaks login.
+	if pub, ok := s.canonicalPublicBaseURL(); ok {
+		reqBase := requestScheme(r) + "://" + requestHost(r)
+		if !strings.EqualFold(strings.TrimRight(reqBase, "/"), strings.TrimRight(pub.Scheme+"://"+pub.Host, "/")) {
+			http.Redirect(w, r, strings.TrimRight(pub.String(), "/")+"/v1/auth/github/start", http.StatusFound)
+			return
+		}
 	}
 
 	redirectURI, secure := s.oauthRedirectURL(r)
@@ -289,6 +345,21 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	if strings.TrimSpace(s.githubClientID) == "" || strings.TrimSpace(s.githubClientSecret) == "" {
 		writeOAuthHTML(w, http.StatusServiceUnavailable, "未配置 GitHub OAuth", "服务端尚未配置 GitHub OAuth（client id/secret）。请联系管理员配置后再试。")
 		return
+	}
+
+	// Defensive: if callback hits a non-canonical host while AIHUB_PUBLIC_BASE_URL is set,
+	// cookies/state are very likely missing. Ask the user to restart from the canonical URL.
+	if pub, ok := s.canonicalPublicBaseURL(); ok {
+		reqBase := requestScheme(r) + "://" + requestHost(r)
+		if !strings.EqualFold(strings.TrimRight(reqBase, "/"), strings.TrimRight(pub.Scheme+"://"+pub.Host, "/")) {
+			writeOAuthHTML(
+				w,
+				http.StatusBadRequest,
+				"登录失败",
+				"访问地址与系统配置不一致，请使用配置的公开地址打开控制台后重新登录：\n"+strings.TrimRight(pub.String(), "/")+"/ui/",
+			)
+			return
+		}
 	}
 
 	redirectURI, secure := s.oauthRedirectURL(r)
@@ -461,13 +532,21 @@ func writeOAuthSuccessPage(w http.ResponseWriter, apiKey, redirectTo string) {
     <div class="wrap">
       <div class="card">
         <div class="title">登录成功</div>
-        <div class="msg">正在返回控制台…</div>
+        <div id="msg" class="msg">正在返回控制台…</div>
       </div>
     </div>
     <script>
       (function() {
-        try { localStorage.setItem("aihub_user_api_key", %s); } catch (e) {}
-        location.replace(%s);
+        try {
+          localStorage.setItem("aihub_user_api_key", %s);
+          location.replace(%s);
+        } catch (e) {
+          console.warn("Failed to persist login into localStorage", e);
+          var el = document.getElementById("msg");
+          if (el) {
+            el.textContent = "登录成功，但浏览器未允许写入本地存储，无法保持登录状态。\\n\\n请检查：隐私模式/第三方 Cookie 与站点数据限制/浏览器扩展拦截，然后返回控制台重试。";
+          }
+        }
       })();
     </script>
   </body>

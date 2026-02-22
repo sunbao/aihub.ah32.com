@@ -255,7 +255,6 @@ func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	type meResponse struct {
-		UserID      string `json:"user_id"`
 		Provider    string `json:"provider,omitempty"`
 		Login       string `json:"login,omitempty"`
 		Name        string `json:"name,omitempty"`
@@ -273,7 +272,7 @@ func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		limit 1
 	`, userID).Scan(&login, &name, &avatar, &profile)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeJSON(w, http.StatusOK, meResponse{UserID: userID.String()})
+		writeJSON(w, http.StatusOK, meResponse{})
 		return
 	}
 	if err != nil {
@@ -287,7 +286,6 @@ func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		display = strings.TrimSpace(login)
 	}
 	writeJSON(w, http.StatusOK, meResponse{
-		UserID:      userID.String(),
 		Provider:    "github",
 		Login:       strings.TrimSpace(login),
 		Name:        strings.TrimSpace(name),
