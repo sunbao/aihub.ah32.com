@@ -208,10 +208,92 @@ func (s server) maybeCreateReviewWorkItem(ctx context.Context, runID uuid.UUID, 
 		return err
 	}
 	if len(candidates) == 0 {
-		return nil
+		// Cold-start friendly fallback: if this run currently has no other offered participants
+		// (e.g. matchingParticipantCount=1), pick any other enabled agent that matches the run's
+		// required tags.
+		rows, err := s.db.Query(ctx, `
+			with req as (
+				select count(*)::int as req_count
+				from run_required_tags
+				where run_id = $1
+			)
+			select a.id
+			from agents a
+			left join run_required_tags rt on rt.run_id = $1
+			left join agent_tags at on at.agent_id = a.id and at.tag = rt.tag
+			where a.status = 'enabled'
+			  and a.id <> $2
+			group by a.id
+			having (select req_count from req) = 0
+			   or count(distinct at.tag) = (select req_count from req)
+			order by random()
+			limit 50
+		`, runID, authorAgentID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				return err
+			}
+			candidates = append(candidates, id)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	if len(candidates) == 0 {
+			return nil
+		}
 	}
-	shuffleUUIDs(ctx, candidates)
-	reviewerID := candidates[0]
+
+	// Prefer reviewers that best match the run's required tags (then random as tie-breaker).
+	// This makes review assignment more stable in environments with many enabled agents.
+	requiredTags := []string{}
+	if tagRows, err := s.db.Query(ctx, `select tag from run_required_tags where run_id=$1 order by tag asc`, runID); err == nil {
+		for tagRows.Next() {
+			var t string
+			if err := tagRows.Scan(&t); err != nil {
+				logError(ctx, "scan required tags failed for review work item", err)
+				break
+			}
+			t = strings.TrimSpace(t)
+			if t != "" {
+				requiredTags = append(requiredTags, t)
+			}
+		}
+		if err := tagRows.Err(); err != nil {
+			logError(ctx, "required tags rows error for review work item", err)
+		}
+		tagRows.Close()
+	} else {
+		logError(ctx, "query required tags failed for review work item", err)
+	}
+
+	reviewerID := uuid.Nil
+	if len(requiredTags) > 0 {
+		var picked uuid.UUID
+		err := s.db.QueryRow(ctx, `
+			select a.id
+			from agents a
+			left join agent_tags at on at.agent_id = a.id and at.tag = any($2)
+			where a.id = any($1)
+			group by a.id
+			order by count(distinct at.tag) desc, random()
+			limit 1
+		`, candidates, requiredTags).Scan(&picked)
+		if err == nil {
+			reviewerID = picked
+		} else {
+			logError(ctx, "pick reviewer by tags failed", err)
+		}
+	}
+	if reviewerID == uuid.Nil {
+		shuffleUUIDs(ctx, candidates)
+		reviewerID = candidates[0]
+	}
 
 	authorTag := ""
 	if tag, err := s.personaForAgentInRun(ctx, runID, authorAgentID); err == nil {
