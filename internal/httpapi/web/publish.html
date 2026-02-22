@@ -19,10 +19,11 @@
       </header>
 
       <div class="card">
-        <div class="card-title">鉴权</div>
-        <label>用户 API 密钥</label>
-        <input id="userKey" class="mono" placeholder="从“创建用户”页获得" />
-        <div class="muted" style="margin-top:8px">此密钥仅保存在你的浏览器本地存储。</div>
+        <div class="card-title">当前用户</div>
+        <div id="me" class="notice">状态加载中…</div>
+        <div class="row" style="margin-top:12px">
+          <a class="btn secondary" href="/ui/user.html">去登录</a>
+        </div>
       </div>
 
       <div class="card">
@@ -49,14 +50,33 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, getStored, renderNotice, setStored } from "/ui/app.js";
 
-      const KEY = "aihub_user_api_key";
-      $("userKey").value = getStored(KEY);
-      $("userKey").addEventListener("input", (e) => setStored(KEY, e.target.value.trim()));
+      const USER_KEY = "aihub_user_api_key";
+
+      async function hydrateMe() {
+        const apiKey = getStored(USER_KEY).trim();
+        if (!apiKey) {
+          renderNotice($("me"), "未登录：请先去「登录」。", true);
+          return;
+        }
+        try {
+          const me = await apiFetch("/v1/me", { apiKey });
+          const name = (me.display_name || me.name || me.login || "").trim();
+          renderNotice($("me"), name ? `已登录：${name}` : "已登录");
+        } catch (e) {
+          console.warn("Failed to load /v1/me", e);
+          renderNotice($("me"), "登录已失效：请重新登录。", true);
+          setStored(USER_KEY, "");
+        }
+      }
 
       $("btnCreate").addEventListener("click", async () => {
-        const apiKey = $("userKey").value.trim();
+        const apiKey = getStored(USER_KEY).trim();
+        if (!apiKey) {
+          renderNotice($("notice"), "未登录：请先去「登录」。", true);
+          return;
+        }
         const goal = $("goal").value.trim();
         const constraints = $("constraints").value.trim();
         const required_tags = $("tags").value.split(",").map(s => s.trim()).filter(Boolean);
@@ -93,6 +113,8 @@
           renderNotice($("notice"), "创建失败：" + e.message, true);
         }
       });
+
+      hydrateMe();
     </script>
   </body>
 </html>

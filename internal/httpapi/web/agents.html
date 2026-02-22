@@ -23,14 +23,11 @@
       </header>
 
       <div class="card">
-        <div class="card-title">用户 API 密钥</div>
-        <label>用户 API 密钥（管理智能体需要）</label>
-        <input id="userKey" class="mono" placeholder="从“创建用户”页获得" />
+        <div class="card-title">当前用户</div>
+        <div id="me" class="notice">状态加载中…</div>
         <div class="row" style="margin-top:12px">
-          <button id="btnSaveUserKey" class="btn secondary" type="button">保存到浏览器</button>
-          <a class="btn secondary" href="/ui/user.html">去创建用户</a>
+          <a class="btn secondary" href="/ui/user.html">去登录</a>
         </div>
-        <div id="noticeUserKey" class="notice" style="margin-top:12px">提示：密钥只保存在你的浏览器本地存储。</div>
       </div>
 
       <div class="card">
@@ -132,19 +129,28 @@
         $("agentKey").value = id ? (getSavedAgentKey(id) || "") : "";
       }
 
-      $("userKey").value = getStored(USER_KEY);
       updateCurrent();
 
-      $("btnSaveUserKey").addEventListener("click", () => {
-        const v = ($("userKey").value || "").trim();
-        if (!v) return renderNotice($("noticeUserKey"), "密钥为空。", true);
-        setStored(USER_KEY, v);
-        renderNotice($("noticeUserKey"), "已保存到浏览器本地存储。");
-      });
+      async function hydrateMe() {
+        const apiKey = getStored(USER_KEY).trim();
+        if (!apiKey) {
+          renderNotice($("me"), "未登录：请先去「登录」。", true);
+          return;
+        }
+        try {
+          const me = await apiFetch("/v1/me", { apiKey });
+          const name = (me.display_name || me.name || me.login || "").trim();
+          renderNotice($("me"), name ? `已登录：${name}` : "已登录");
+        } catch (e) {
+          console.warn("Failed to load /v1/me", e);
+          renderNotice($("me"), "登录已失效：请重新登录。", true);
+          setStored(USER_KEY, "");
+        }
+      }
 
       async function listAgents() {
-        const apiKey = ($("userKey").value || "").trim();
-        if (!apiKey) return renderNotice($("noticeAgents"), "缺少用户 API 密钥。", true);
+        const apiKey = getStored(USER_KEY).trim();
+        if (!apiKey) return renderNotice($("noticeAgents"), "未登录：请先去「登录」。", true);
 
         renderNotice($("noticeAgents"), "加载中…");
         try {
@@ -247,8 +253,8 @@
       $("btnRefresh").addEventListener("click", listAgents);
 
       $("btnCreateAgent").addEventListener("click", async () => {
-        const apiKey = ($("userKey").value || "").trim();
-        if (!apiKey) return renderNotice($("noticeCreate"), "缺少用户 API 密钥。", true);
+        const apiKey = getStored(USER_KEY).trim();
+        if (!apiKey) return renderNotice($("noticeCreate"), "未登录：请先去「登录」。", true);
 
         const name = ($("agentName").value || "").trim();
         const description = ($("agentDesc").value || "").trim();
@@ -291,8 +297,8 @@
         renderNotice($("noticeCurrent"), ok ? "已复制智能体 API 密钥。" : "复制失败：请手动复制。", !ok);
       });
 
-      if ($("userKey").value.trim()) listAgents();
+      hydrateMe();
+      listAgents();
     </script>
   </body>
 </html>
-

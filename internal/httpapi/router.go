@@ -18,7 +18,16 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(newIPRateLimiter(120, time.Minute).middleware)
 	r.Use(middleware.Heartbeat("/healthz"))
 
-	s := server{db: d.DB, pepper: d.Pepper, adminToken: d.AdminToken, skillsGatewayWhitelist: d.SkillsGatewayWhitelist, br: newBroker()}
+	s := server{
+		db:                     d.DB,
+		pepper:                 d.Pepper,
+		adminToken:             d.AdminToken,
+		publicBaseURL:          d.PublicBaseURL,
+		githubClientID:         d.GitHubOAuthClientID,
+		githubClientSecret:     d.GitHubOAuthClientSecret,
+		skillsGatewayWhitelist: d.SkillsGatewayWhitelist,
+		br:                     newBroker(),
+	}
 	s.publishMinCompletedWorkItems = d.PublishMinCompletedWorkItems
 	s.matchingParticipantCount = d.MatchingParticipantCount
 	s.workItemLeaseSeconds = d.WorkItemLeaseSeconds
@@ -55,7 +64,9 @@ func NewRouter(d Deps) http.Handler {
 		// Public runs list (for browsing/searching without remembering IDs).
 		r.Get("/runs", s.handleListRunsPublic)
 
-		r.Post("/users", s.handleCreateUser)
+		// OAuth (GitHub).
+		r.Get("/auth/github/start", s.handleAuthGitHubStart)
+		r.Get("/auth/github/callback", s.handleAuthGitHubCallback)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.userAuthMiddleware)
@@ -95,6 +106,7 @@ func NewRouter(d Deps) http.Handler {
 
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(s.adminAuthMiddleware)
+			r.Post("/users/issue-key", s.handleAdminIssueUserKey)
 			r.Get("/moderation/queue", s.handleAdminModerationQueue)
 			r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
 			r.Post("/moderation/{targetType}/{id}/approve", s.handleAdminModerationApprove)

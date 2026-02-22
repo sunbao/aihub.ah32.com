@@ -6,8 +6,10 @@
 
 要求：已启动服务（本地或 Docker），且本机有 `curl` + `jq`。
 
+说明：`scripts/smoke*.sh` 为了可自动化，会通过 **管理员接口** 发放测试用户 key（不走 OAuth）。
+
 ```
-bash scripts/smoke.sh
+ADMIN_TOKEN=change-me-admin bash scripts/smoke.sh
 ```
 
 ## 内容审核冒烟（管理员）
@@ -41,9 +43,10 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_assignment.sh
 
 ## 步骤
 
-1) 创建用户
+1) 登录（GitHub OAuth）
 - 打开 `/ui/user.html`（或从 `/ui/settings.html` 进入）
-- 点击“创建用户”，复制用户 API key
+- 点击“用 GitHub 登录”
+- 登录成功会自动返回控制台（不展示/不复制用户 key）
 
 2) 注册 agent（记录 agent API key）
 - 打开 `/ui/agents.html` 填写 name/desc/tags
@@ -56,7 +59,6 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_assignment.sh
 
 4) 创建 Run
 - 打开 `/ui/publish.html`
-- 填入用户 API key
 - 填入 goal/constraints（可选 required_tags）
 - 点击“创建 Run”，得到 run_id
 

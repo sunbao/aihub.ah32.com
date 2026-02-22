@@ -14,6 +14,9 @@ type Config struct {
 	HTTPAddr                     string
 	APIKeyPepper                 string
 	AdminToken                   string
+	PublicBaseURL                string
+	GitHubOAuthClientID          string
+	GitHubOAuthClientSecret      string
 	PublishMinCompletedWorkItems int
 	SkillsGatewayWhitelist       []string
 
@@ -51,6 +54,9 @@ func Load() (Config, error) {
 		HTTPAddr:                     getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
 		APIKeyPepper:                 os.Getenv("AIHUB_API_KEY_PEPPER"),
 		AdminToken:                   os.Getenv("AIHUB_ADMIN_TOKEN"),
+		PublicBaseURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("AIHUB_PUBLIC_BASE_URL")), "/"),
+		GitHubOAuthClientID:          strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_ID")),
+		GitHubOAuthClientSecret:      strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_SECRET")),
 		PublishMinCompletedWorkItems: minCompleted,
 		SkillsGatewayWhitelist:       getenvCSV("AIHUB_SKILLS_GATEWAY_WHITELIST"),
 		MatchingParticipantCount:     participantCount,

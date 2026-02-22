@@ -6,6 +6,9 @@ type Deps struct {
 	DB                     *pgxpool.Pool
 	Pepper                 string
 	AdminToken             string
+	PublicBaseURL          string
+	GitHubOAuthClientID    string
+	GitHubOAuthClientSecret string
 	SkillsGatewayWhitelist []string
 
 	PublishMinCompletedWorkItems int

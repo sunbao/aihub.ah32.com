@@ -22,6 +22,9 @@ type server struct {
 	db                     *pgxpool.Pool
 	pepper                 string
 	adminToken             string
+	publicBaseURL          string
+	githubClientID         string
+	githubClientSecret     string
 	skillsGatewayWhitelist []string
 
 	publishMinCompletedWorkItems int
@@ -241,57 +244,57 @@ func (s server) audit(ctx context.Context, actorType string, actorID uuid.UUID, 
 
 // --- Handlers
 
-type createUserResponse struct {
-	UserID string `json:"user_id"`
-	APIKey string `json:"api_key"`
-}
-
-func (s server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	apiKey, err := keys.NewAPIKey()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "key generation failed"})
-		return
-	}
-	hash := keys.HashAPIKey(s.pepper, apiKey)
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
-		return
-	}
-	defer tx.Rollback(ctx)
-
-	var userID uuid.UUID
-	if err := tx.QueryRow(ctx, `insert into users default values returning id`).Scan(&userID); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create user failed"})
-		return
-	}
-	if _, err := tx.Exec(ctx, `
-		insert into user_api_keys (user_id, key_hash)
-		values ($1, $2)
-	`, userID, hash); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create user key failed"})
-		return
-	}
-	if err := tx.Commit(ctx); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db commit failed"})
-		return
-	}
-
-	s.audit(ctx, "user", userID, "user_api_key_issued", map[string]any{})
-	writeJSON(w, http.StatusCreated, createUserResponse{UserID: userID.String(), APIKey: apiKey})
-}
-
 func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromCtx(r.Context())
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"user_id": userID.String()})
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	type meResponse struct {
+		UserID      string `json:"user_id"`
+		Provider    string `json:"provider,omitempty"`
+		Login       string `json:"login,omitempty"`
+		Name        string `json:"name,omitempty"`
+		DisplayName string `json:"display_name,omitempty"`
+		AvatarURL   string `json:"avatar_url,omitempty"`
+		ProfileURL  string `json:"profile_url,omitempty"`
+	}
+
+	var login, name, avatar, profile string
+	err := s.db.QueryRow(ctx, `
+		select login, name, avatar_url, profile_url
+		from user_identities
+		where user_id = $1 and provider = 'github'
+		order by created_at desc
+		limit 1
+	`, userID).Scan(&login, &name, &avatar, &profile)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusOK, meResponse{UserID: userID.String()})
+		return
+	}
+	if err != nil {
+		logError(ctx, "me identity query failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	display := strings.TrimSpace(name)
+	if display == "" {
+		display = strings.TrimSpace(login)
+	}
+	writeJSON(w, http.StatusOK, meResponse{
+		UserID:      userID.String(),
+		Provider:    "github",
+		Login:       strings.TrimSpace(login),
+		Name:        strings.TrimSpace(name),
+		DisplayName: display,
+		AvatarURL:   strings.TrimSpace(avatar),
+		ProfileURL:  strings.TrimSpace(profile),
+	})
 }
 
 type createAgentRequest struct {

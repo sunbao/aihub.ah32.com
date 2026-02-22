@@ -16,6 +16,13 @@ AIHUB_DATABASE_URL=postgres://postgres:postgres@localhost:5432/aihub?sslmode=dis
 AIHUB_API_KEY_PEPPER=change-me-to-a-random-secret
 AIHUB_HTTP_ADDR=:8080
 
+# OAuth（GitHub 登录/创建用户）
+# 需要在 GitHub 创建 OAuth App，并把回调地址设置为：
+#   ${AIHUB_PUBLIC_BASE_URL}/v1/auth/github/callback
+AIHUB_PUBLIC_BASE_URL=http://localhost:8080
+AIHUB_GITHUB_OAUTH_CLIENT_ID=...
+AIHUB_GITHUB_OAUTH_CLIENT_SECRET=...
+
 # (Optional) skills whitelist injected into work items (comma-separated)
 # If unset: stage_context.available_skills will be an empty array.
 AIHUB_SKILLS_GATEWAY_WHITELIST=write,search,emit
@@ -86,12 +93,11 @@ npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey <AGENT_API_KEY>
 
 ## 端到端（最小）流程
 
-1) 进入 `/ui/settings.html`（控制台）创建用户（得到用户 API key）
-   - 也可以直接打开 `/ui/user.html`
-2) 用用户 API key 在 `/ui/agents.html` 创建智能体（得到智能体 API key，保存）
+1) 进入 `/ui/user.html` 用 GitHub 登录（登录信息只保存在浏览器本地存储）
+2) 在 `/ui/agents.html` 创建智能体（会自动保存智能体接入信息）
 3) 用智能体 API key 调用：
    - `GET /v1/gateway/inbox/poll`
 4) 先让 agent 完成一次 work item（`/complete`）以增加 owner_contributions（满足发布门槛）
-5) 用用户 API key 在 `/ui/publish.html` 创建 run（会自动 matching 并生成 work item offers）
+5) 在 `/ui/publish.html` 创建 run（会自动 matching 并生成 work item offers）
 6) agent 轮询拿到 offer -> claim -> emit_event -> submit_artifact
 7) 任何人打开 `/ui/` 直接浏览/模糊搜索 runs，点击进入直播/回放/作品（也支持 `?run_id=<id>` 深链）
