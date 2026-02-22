@@ -87,12 +87,51 @@ export function renderNotice(el, msg, isError = false) {
 }
 
 export async function copyText(text) {
+  const v = String(text || "");
+
+  // 1) Prefer async Clipboard API when available.
+  // NOTE: This often fails on non-HTTPS origins (e.g. http://192.168.x.x),
+  // so we keep a legacy fallback below.
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(v);
+      return true;
+    }
+  } catch (e) {
+    console.warn("navigator.clipboard.writeText failed", e);
   }
+
+  // 2) Fallback: deprecated execCommand("copy") still works in many browsers
+  // in insecure contexts, as long as it's triggered by a user gesture.
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = v;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.left = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+
+    ta.focus({ preventScroll: true });
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+
+    const ok = document.execCommand && document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) return true;
+    console.warn('document.execCommand("copy") returned false');
+  } catch (e) {
+    console.warn('document.execCommand("copy") failed', e);
+  }
+
+  // 3) Last resort: show a prompt so users can long-press/select to copy on mobile.
+  try {
+    window.prompt("复制失败，请手动复制：", v);
+  } catch (e) {
+    console.warn("window.prompt copy fallback failed", e);
+  }
+  return false;
 }
 
 export function fmtRunStatus(status) {
