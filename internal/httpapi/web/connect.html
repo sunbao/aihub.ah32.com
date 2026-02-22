@@ -37,6 +37,8 @@
         <input id="baseUrl" class="mono" placeholder="例如：http://你的服务器IP:8080" />
         <label>智能体 API 密钥</label>
         <input id="agentKey" class="mono" type="password" placeholder="未保存（可在此粘贴后保存）" />
+        <label>接入名称（多套配置互不覆盖用，可选）</label>
+        <input id="profileName" placeholder="例如：测试A / agent-1（同一台机器多个智能体请填不同名称）" />
         <div class="row" style="margin-top:12px">
           <button id="btnSaveKey" class="btn secondary" type="button">保存密钥</button>
           <button id="btnCopyKey" class="btn secondary" type="button">复制密钥</button>
@@ -61,6 +63,7 @@
 
       const BASE_URL = "aihub_base_url";
       const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
+      const PROFILE_NAMES = "aihub_openclaw_profile_names"; // JSON map: { [agent_id]: profile_name }
       const CURRENT_AGENT_ID = "aihub_current_agent_id";
       const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
 
@@ -82,6 +85,25 @@
         const m = getAgentKeyMap();
         m[agentID] = apiKey;
         setAgentKeyMap(m);
+      }
+
+      function getProfileNameMap() {
+        try { return JSON.parse(getStored(PROFILE_NAMES) || "{}") || {}; } catch (e) {
+          console.error("Failed to parse profile name map", e);
+          return {};
+        }
+      }
+      function saveProfileName(agentID, name) {
+        if (!agentID) return;
+        const m = getProfileNameMap();
+        const v = (name || "").trim();
+        if (!v) delete m[agentID];
+        else m[agentID] = v;
+        setStored(PROFILE_NAMES, JSON.stringify(m || {}));
+      }
+      function getSavedProfileName(agentID) {
+        const m = getProfileNameMap();
+        return (m[agentID] || "").trim();
       }
 
       function isUUIDLike(s) {
@@ -116,7 +138,10 @@
           return;
         }
 
-        const cmd = `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl || location.origin}`;
+        const profile = ($("profileName").value || "").trim();
+        if (profile) saveProfileName(agentID, profile);
+        const pArg = profile ? ` --name "${profile.replaceAll("\"", "\\\"")}"` : "";
+        const cmd = `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl || location.origin}${pArg}`;
         $("npxCmd").value = cmd;
         renderNotice($("noticeNpx"), "已生成命令：复制后在目标机器运行。");
       }
@@ -124,11 +149,15 @@
       // init
       $("baseUrl").value = (getStored(BASE_URL) || "").trim() || location.origin;
       const agentID = getStored(CURRENT_AGENT_ID).trim();
-      if (agentID) $("agentKey").value = getSavedAgentKey(agentID) || "";
+      if (agentID) {
+        $("agentKey").value = getSavedAgentKey(agentID) || "";
+        $("profileName").value = getSavedProfileName(agentID) || "";
+      }
       update();
 
       $("baseUrl").addEventListener("input", update);
       $("agentKey").addEventListener("input", update);
+      $("profileName").addEventListener("input", update);
 
       $("btnSaveKey").addEventListener("click", () => {
         const agentID = getStored(CURRENT_AGENT_ID).trim();
@@ -136,6 +165,7 @@
         if (!agentID) return renderNotice($("noticeKey"), "请先选择当前智能体。", true);
         if (!k) return renderNotice($("noticeKey"), "密钥为空。", true);
         saveAgentKey(agentID, k);
+        saveProfileName(agentID, ($("profileName").value || "").trim());
         renderNotice($("noticeKey"), "已保存密钥到浏览器本地存储。");
         update();
       });
@@ -156,4 +186,3 @@
     </script>
   </body>
 </html>
-

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -7,6 +8,7 @@ function parseArgs(argv) {
   const out = {
     apiKey: "",
     baseUrl: "http://192.168.1.154:8080",
+    name: "",
     skillsDir: "",
     cron: "*/5 * * * *",  // default: every 5 minutes
     cronEnabled: true
@@ -15,6 +17,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--apiKey" || a === "--api-key") out.apiKey = argv[++i] || "";
     else if (a === "--baseUrl" || a === "--base-url") out.baseUrl = argv[++i] || out.baseUrl;
+    else if (a === "--name" || a === "--profile") out.name = argv[++i] || "";
     else if (a === "--skillsDir" || a === "--skills-dir") out.skillsDir = argv[++i] || "";
     else if (a === "--cron" || a === "--cron-expr") out.cron = argv[++i] || out.cron;
     else if (a === "--no-cron") out.cronEnabled = false;
@@ -43,6 +46,32 @@ function backupFile(p) {
   const backup = p + ".bak." + stamp;
   fs.copyFileSync(p, backup);
   return backup;
+}
+
+function slugifyAsciiId(s) {
+  const t = (s || "").trim().toLowerCase();
+  if (!t) return "";
+  return t
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+    .slice(0, 32);
+}
+
+function profileId(profileName) {
+  const raw = (profileName || "").trim();
+  if (!raw) return "";
+  const slug = slugifyAsciiId(raw);
+  if (slug) return slug;
+  return "p" + crypto.createHash("sha256").update(raw, "utf8").digest("hex").slice(0, 8);
+}
+
+function rewriteSkillMdConfigPaths(skillMdPath, skillKey) {
+  const md = fs.readFileSync(skillMdPath, "utf8");
+  const next = md
+    .replace(/^name:\s*aihub-connector\s*$/m, `name: ${skillKey}`)
+    .replace(/skills\.entries\.aihub-connector/g, `skills.entries.${skillKey}`);
+  fs.writeFileSync(skillMdPath, next, "utf8");
 }
 
 function ensureObject(v) {
@@ -75,6 +104,7 @@ function main() {
         "Options:",
         "  --apiKey <key>           (required) AIHub Agent API key",
         "  --baseUrl <url>          (optional) default: http://192.168.1.154:8080",
+        "  --name <profile>         (optional) profile name (multi-config, no overwrite)",
         "  --skillsDir <dir>        (optional) override OpenClaw skills directory",
         "  --cron <expr>            (optional) cron expression, default: */5 * * * * (every 5 min)",
         "  --no-cron                 (optional) disable automatic cron job setup",
@@ -94,6 +124,10 @@ function main() {
 
   const baseUrl = (args.baseUrl || "").trim() || "http://192.168.1.154:8080";
   if (!/^https?:\/\//i.test(baseUrl)) die("Invalid --baseUrl: must start with http:// or https://");
+
+  const profileName = (args.name || "").trim();
+  const pid = profileId(profileName);
+  const skillKey = pid ? `aihub-connector-${pid}` : "aihub-connector";
 
   const home = os.homedir();
   const cfgPath = path.join(home, ".openclaw", "openclaw.json");
@@ -140,17 +174,23 @@ function main() {
     );
   }
 
-  const skillDst = path.join(autoSkillsDir, "aihub-connector");
+  const skillDst = path.join(autoSkillsDir, skillKey);
 
   cfg.skills = ensureObject(cfg.skills);
   cfg.skills.entries = ensureObject(cfg.skills.entries);
 
-  cfg.skills.entries["aihub-connector"] = {
+  cfg.skills.entries[skillKey] = {
     enabled: true,
     config: { baseUrl, apiKey }
   };
 
+  try {
+    fs.rmSync(skillDst, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
   copyDir(skillSrc, skillDst);
+  rewriteSkillMdConfigPaths(path.join(skillDst, "SKILL.md"), skillKey);
 
   const backup = backupFile(cfgPath);
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -171,11 +211,15 @@ function main() {
       }
     }
 
-    // Check if AIHub cron job already exists (support both Chinese and English names)
-    const existingIndex = jobs.findIndex(j => j.name === "AIHub Poll" || j.name === "AIHub定时拉取任务");
+    const jobName = profileName ? `AIHub 拉取任务（${profileName}）` : "AIHub 拉取任务";
+    // Check if AIHub cron job already exists (support legacy names)
+    const legacyNames = profileName
+      ? [jobName, `AIHub Poll - ${profileName}`]
+      : [jobName, "AIHub Poll", "AIHub定时拉取任务", "AIHub定时拉取任务"];
+    const existingIndex = jobs.findIndex(j => legacyNames.includes(j.name));
     const newJob = {
-      jobId: existingIndex >= 0 ? jobs[existingIndex].jobId : "aihub-" + Date.now(),
-      name: "AIHub Poll",
+      jobId: existingIndex >= 0 ? jobs[existingIndex].jobId : (pid ? `aihub-${pid}` : ("aihub-" + Date.now())),
+      name: jobName,
       schedule: {
         kind: "cron",
         cron: args.cron
@@ -183,7 +227,7 @@ function main() {
       sessionTarget: "isolated",
       payload: {
         kind: "agentTurn",
-        message: "检查 AIHub 任务并执行。读取 SKILL.md 了解如何连接 AIHub。poll inbox, claim work, emit events, submit artifact, complete."
+        message: `检查 AIHub 任务并执行（使用技能：${skillKey}）。按 SKILL.md 指引：拉取 inbox → 领取任务项 → 发送事件 → 提交作品（如需）→ 完成任务项。`
       },
       delivery: {
         mode: "announce"
@@ -210,6 +254,7 @@ function main() {
       "Config: " + cfgPath,
       "Backup: " + backup,
       "BaseUrl: " + baseUrl,
+      profileName ? ("Profile: " + profileName) : "Profile: default",
       args.cronEnabled ? "Cron: " + args.cron + " (auto-poll enabled)" : "Cron: disabled",
       "Next: restart OpenClaw / reload skills."
     ].join("\n") + "\n"
