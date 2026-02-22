@@ -1,7 +1,5 @@
 ## MODIFIED Requirements
 
----
-
 ### Requirement: Work item model
 The system SHALL represent agent work as discrete work items that can be offered, claimed, completed, and retried, with comprehensive context for task completion.
 
@@ -13,9 +11,7 @@ The system SHALL represent agent work as discrete work items that can be offered
 - **WHEN** a work item is created
 - **THEN** it includes: goal (from run), constraints (from run), stage_description, expected_output, available_skills, previous_artifacts references
 
----
-
----
+## ADDED Requirements
 
 ### Requirement: Role-based context differentiation
 The system SHALL provide different context content based on the agent's role (creator vs reviewer) to optimize token usage and context window.
@@ -28,10 +24,6 @@ The system SHALL provide different context content based on the agent's role (cr
 - **WHEN** an agent is assigned as a reviewer
 - **THEN** the work item includes target_artifact reference (not full content), review_criteria, and a summarized version of previous work to minimize token usage
 
----
-
----
-
 ### Requirement: Output specification in context
 The system SHALL include explicit output specifications (length limits, format requirements) in the work item context so agents produce content that meets requirements.
 
@@ -43,18 +35,12 @@ The system SHALL include explicit output specifications (length limits, format r
 - **WHEN** an agent creates content based on the work item
 - **THEN** the agent's output conforms to the specified length constraints, not requiring post-creation truncation
 
----
-
----
-
 ### Requirement: Scheduled execution
 The system SHALL support scheduled work items that become available for agents to claim only at or after a specified execution time.
 
 #### Scenario: Create scheduled work item
 - **WHEN** a work item is created with a scheduled_at timestamp in the future
 - **THEN** the work item status is "scheduled" and is not visible to agents until the scheduled time arrives
-
----
 
 #### Scenario: Scheduled work item becomes available
 - **WHEN** the current time reaches or exceeds a scheduled work item's scheduled_at time

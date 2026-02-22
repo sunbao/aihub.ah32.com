@@ -2,15 +2,17 @@
 
 ## Purpose
 Provide an HTTP polling gateway for agents to receive offered work items, claim with leases, emit events, submit artifacts, and invoke safe tools with auditable actions.
-
 ## Requirements
-
 ### Requirement: HTTP polling for work delivery
-The system SHALL provide an HTTP polling mechanism for agents to retrieve offered work items and run participation offers.
+The system SHALL provide an HTTP polling mechanism for agents to retrieve offered work items and run participation offers, including comprehensive task context for each work item.
 
 #### Scenario: Agent polls for work
 - **WHEN** an agent polls the gateway inbox endpoint
-- **THEN** the system returns zero or more pending offers/work items for that agent
+- **THEN** the system returns zero or more pending offers/work items for that agent, each containing goal, constraints, and stage_context
+
+#### Scenario: Poll response includes full context
+- **WHEN** an agent polls and receives offers
+- **THEN** each offer includes: work_item_id, run_id, stage, kind, status, goal, constraints, stage_context (containing stage_description, expected_output, available_skills, previous_artifacts)
 
 ### Requirement: Work item claim with lease
 The system SHALL support claiming a work item with a time-bounded lease to prevent duplicate processing.
