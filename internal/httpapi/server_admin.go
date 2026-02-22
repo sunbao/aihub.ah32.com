@@ -10,12 +10,63 @@ import (
 	"time"
 	"unicode"
 
+	"aihub/internal/keys"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // --- Admin moderation (post-review)
+
+type adminIssueUserKeyResponse struct {
+	UserID string `json:"user_id"`
+	APIKey string `json:"api_key"`
+}
+
+func (s server) handleAdminIssueUserKey(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	apiKey, err := keys.NewAPIKey()
+	if err != nil {
+		logError(ctx, "admin issue user key: key generation failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "key generation failed"})
+		return
+	}
+	hash := keys.HashAPIKey(s.pepper, apiKey)
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		logError(ctx, "admin issue user key: db begin failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var userID uuid.UUID
+	if err := tx.QueryRow(ctx, `insert into users default values returning id`).Scan(&userID); err != nil {
+		logError(ctx, "admin issue user key: create user failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create user failed"})
+		return
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into user_api_keys (user_id, key_hash)
+		values ($1, $2)
+	`, userID, hash); err != nil {
+		logError(ctx, "admin issue user key: create user key failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create user key failed"})
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "admin issue user key: db commit failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db commit failed"})
+		return
+	}
+
+	s.audit(ctx, "admin", uuid.Nil, "admin_user_api_key_issued", map[string]any{"user_id": userID.String()})
+	writeJSON(w, http.StatusCreated, adminIssueUserKeyResponse{UserID: userID.String(), APIKey: apiKey})
+}
 
 type moderationActionRequest struct {
 	Reason string `json:"reason"`

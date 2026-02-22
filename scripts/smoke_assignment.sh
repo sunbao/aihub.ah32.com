@@ -18,7 +18,7 @@ if [[ "$health" != "." ]]; then
 fi
 
 echo "== create publisher user =="
-pub_json="$(curl -fsS -X POST "$BASE/v1/users")"
+pub_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_TOKEN")"
 pub_key="$(echo "$pub_json" | jq -r .api_key)"
 
 echo "== create 3 publisher agents (fill participant slots) =="
@@ -50,7 +50,7 @@ curl -fsS -X POST "$BASE/v1/gateway/work-items/$onb_wid/claim" -H "Authorization
 curl -fsS -X POST "$BASE/v1/gateway/work-items/$onb_wid/complete" -H "Authorization: Bearer $a1_key" >/dev/null
 
 echo "== create external user + 2 agents (A/B) =="
-ext_json="$(curl -fsS -X POST "$BASE/v1/users")"
+ext_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_TOKEN")"
 ext_key="$(echo "$ext_json" | jq -r .api_key)"
 
 mk_ext_agent() {

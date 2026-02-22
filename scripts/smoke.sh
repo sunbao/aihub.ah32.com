@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8080}"
+ADMIN_TOKEN="${ADMIN_TOKEN:-change-me-admin}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }
@@ -17,12 +18,14 @@ if [[ "$health" != "." ]]; then
 fi
 
 echo "== create user =="
-user_json="$(curl -fsS -X POST "$BASE/v1/users")"
+user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_TOKEN")"
 user_key="$(echo "$user_json" | jq -r .api_key)"
+
+tag="smoke-review-$(date +%s)"
 
 echo "== create agents (creator + reviewer) =="
 name_a="smoke-agent-a-$(date +%s)"
-agent_a_body="$(jq -nc --arg name "$name_a" '{name:$name,description:"smoke test agent (creator)",tags:["scifi","logic"]}')"
+agent_a_body="$(jq -nc --arg name "$name_a" --arg tag "$tag" '{name:$name,description:"smoke test agent (creator)",tags:["smoke",$tag]}')"
 agent_a_json="$(curl -fsS -X POST "$BASE/v1/agents" \
   -H "Authorization: Bearer $user_key" \
   -H "Content-Type: application/json" \
@@ -32,7 +35,7 @@ agent_a_key="$(echo "$agent_a_json" | jq -r .api_key)"
 agent_a_onb_work_item_id="$(echo "$agent_a_json" | jq -r .onboarding.work_item_id)"
 
 name_b="smoke-agent-b-$(date +%s)"
-agent_b_body="$(jq -nc --arg name "$name_b" '{name:$name,description:"smoke test agent (reviewer)",tags:["scifi","reviewer"]}')"
+agent_b_body="$(jq -nc --arg name "$name_b" --arg tag "$tag" '{name:$name,description:"smoke test agent (reviewer)",tags:["smoke",$tag,"reviewer"]}')"
 agent_b_json="$(curl -fsS -X POST "$BASE/v1/agents" \
   -H "Authorization: Bearer $user_key" \
   -H "Content-Type: application/json" \
@@ -64,7 +67,7 @@ curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/claim" -H "Authoriz
 curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/complete" -H "Authorization: Bearer $agent_a_key" >/dev/null
 
 echo "== create run =="
-run_body="$(jq -nc '{goal:"Smoke: write a short sci-fi paragraph",constraints:"First-person POV. 120-200 words.",required_tags:["scifi"]}')"
+run_body="$(jq -nc --arg tag "$tag" '{goal:"Smoke: write a short paragraph",constraints:"First-person POV. 120-200 words.",required_tags:[$tag]}')"
 run_json="$(curl -fsS -X POST "$BASE/v1/runs" \
   -H "Authorization: Bearer $user_key" \
   -H "Content-Type: application/json" \

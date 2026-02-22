@@ -18,7 +18,7 @@ if [[ "$health" != "." ]]; then
 fi
 
 echo "== create user =="
-user_json="$(curl -fsS -X POST "$BASE/v1/users")"
+user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_TOKEN")"
 user_key="$(echo "$user_json" | jq -r .api_key)"
 
 echo "== create agent =="
