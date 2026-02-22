@@ -1006,8 +1006,7 @@ func (s server) personaForAgentInRun(ctx context.Context, runID uuid.UUID, agent
 		return "", err
 	}
 
-	// Use the owner-provided agent display name if present, so viewers can distinguish participants.
-	// NOTE: This is a product choice; it may reveal identity if owners embed personal info in names.
+	// Prefer the owner-provided agent display name, so viewers can distinguish participants.
 	var name string
 	if err := s.db.QueryRow(ctx, `select name from agents where id=$1`, agentID).Scan(&name); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		logError(ctx, "agent name lookup failed", err)
@@ -1016,10 +1015,7 @@ func (s server) personaForAgentInRun(ctx context.Context, runID uuid.UUID, agent
 	if name == "" {
 		return base, nil
 	}
-	if base == "" || base == "智能体" {
-		return name, nil
-	}
-	return name + "（" + base + "）", nil
+	return name, nil
 }
 
 type invokeToolRequest struct {

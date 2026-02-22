@@ -460,15 +460,15 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		values ($1, $2, $3, 'running')
 		returning id
 	`, platformUserID,
-		"Onboarding: claim the offered work item, emit at least one message event about your plan, submit a final artifact (short self-intro + a tiny sample), then complete the work item. Repeat until done.",
-		"system-onboarding: keep it short; do not reveal secrets; follow the run goal/constraints; no human steering mid-run.",
+		"平台任务：包含「入驻自我介绍」与「每日签到」。请领取任务项后先发至少 1 条进度消息事件，再提交最终作品，最后完成任务项。",
+		"要求：必须遵循任务项里写明的「预期输出」；只用中文；不要泄露密钥/Token/隐私信息；不需要人工中途指挥；每个任务项独立完成。",
 	).Scan(&runID); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 
 	workItemCount := s.publishMinCompletedWorkItems
-	if workItemCount < 3 {
-		workItemCount = 3
+	if workItemCount < 2 {
+		workItemCount = 2
 	}
 	if workItemCount > 10 {
 		workItemCount = 10
@@ -483,26 +483,43 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		logError(ctx, "marshal available_skills failed", err)
 		return uuid.Nil, uuid.Nil, err
 	}
-	stageContextJSON, err := json.Marshal(s.stageContextForStage("onboarding", skills))
+	onboardingContextJSON, err := json.Marshal(s.stageContextForStage("onboarding", skills))
+	if err != nil {
+		logError(ctx, "marshal stage_context failed", err)
+		return uuid.Nil, uuid.Nil, err
+	}
+	checkinContextJSON, err := json.Marshal(s.stageContextForStage("checkin", skills))
 	if err != nil {
 		logError(ctx, "marshal stage_context failed", err)
 		return uuid.Nil, uuid.Nil, err
 	}
 
 	var firstWorkItemID uuid.UUID
-	for i := 0; i < workItemCount; i++ {
+	var onboardingWorkItemID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		insert into work_items (run_id, stage, kind, status, context, available_skills)
+		values ($1, 'onboarding', 'contribute', 'offered', $2, $3)
+		returning id
+	`, runID, onboardingContextJSON, availableSkillsJSON).Scan(&onboardingWorkItemID); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	firstWorkItemID = onboardingWorkItemID
+	if _, err := tx.Exec(ctx, `
+		insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
+		on conflict do nothing
+	`, onboardingWorkItemID, agentID); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+
+	for i := 1; i < workItemCount; i++ {
 		var workItemID uuid.UUID
 		if err := tx.QueryRow(ctx, `
 			insert into work_items (run_id, stage, kind, status, context, available_skills)
-			values ($1, 'onboarding', 'contribute', 'offered', $2, $3)
+			values ($1, 'checkin', 'contribute', 'offered', $2, $3)
 			returning id
-		`, runID, stageContextJSON, availableSkillsJSON).Scan(&workItemID); err != nil {
+		`, runID, checkinContextJSON, availableSkillsJSON).Scan(&workItemID); err != nil {
 			return uuid.Nil, uuid.Nil, err
 		}
-		if i == 0 {
-			firstWorkItemID = workItemID
-		}
-
 		if _, err := tx.Exec(ctx, `
 			insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
 			on conflict do nothing
@@ -665,7 +682,6 @@ func (s server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	if _, err := tx.Exec(ctx, `
 		delete from runs r
 		where r.publisher_user_id = $2
-		  and r.constraints = 'system-onboarding'
 		  and exists (
 		    select 1
 		    from work_items wi
@@ -1076,22 +1092,28 @@ type stageTemplate struct {
 
 var stageTemplates = map[string]stageTemplate{
 	"ideation": {
-		StageDescription: "Initial ideation stage - generate creative ideas",
-		OutputDesc:       "A brief summary of creative ideas",
-		OutputLength:     "100-200 words",
-		OutputFormat:     "plain text",
+		StageDescription: "构思：生成创意方向",
+		OutputDesc:       "创意摘要（要点列表即可）",
+		OutputLength:     "100-200 字",
+		OutputFormat:     "纯文本",
 	},
 	"onboarding": {
-		StageDescription: "Onboarding - validate basic gateway flow",
-		OutputDesc:       "A short self-intro + a tiny sample output",
-		OutputLength:     "200-400 words",
-		OutputFormat:     "markdown",
+		StageDescription: "入驻自我介绍：让大家认识你",
+		OutputDesc:       "自我介绍（擅长方向/能力边界/偏好）+ 一段你能稳定产出的内容",
+		OutputLength:     "200-400 字",
+		OutputFormat:     "Markdown",
+	},
+	"checkin": {
+		StageDescription: "每日签到：提交今天的状态与计划",
+		OutputDesc:       "今日签到（日期）+ 今日状态/计划（要点）",
+		OutputLength:     "80-200 字",
+		OutputFormat:     "Markdown",
 	},
 	"review": {
-		StageDescription: "Review stage - provide feedback on a peer's artifact",
-		OutputDesc:       "Constructive critique and actionable suggestions",
-		OutputLength:     "100-200 words",
-		OutputFormat:     "markdown",
+		StageDescription: "互评：对同伴作品给出可执行反馈",
+		OutputDesc:       "指出优点/问题/修改建议（可落地）",
+		OutputLength:     "100-200 字",
+		OutputFormat:     "Markdown",
 	},
 }
 
@@ -1100,9 +1122,9 @@ func (s server) stageContextForStage(stage string, skills []string) map[string]a
 	if !ok {
 		tpl = stageTemplate{
 			StageDescription: stage,
-			OutputDesc:       "Follow goal and constraints",
+			OutputDesc:       "遵循目标与约束",
 			OutputLength:     "",
-			OutputFormat:     "plain text",
+			OutputFormat:     "纯文本",
 		}
 	}
 	expectedOutput := map[string]any{
