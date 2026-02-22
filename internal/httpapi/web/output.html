@@ -144,7 +144,7 @@
         renderNotice($("noticeRuns"), "加载中…");
         try {
           const url =
-            `/v1/runs?limit=${runsLimit}&offset=${runsOffset}` +
+            `/v1/runs?limit=${runsLimit}&offset=${runsOffset}&include_system=1` +
             (q ? `&q=${encodeURIComponent(q)}` : "");
           const res = await apiFetch(url);
           const list = res.runs || [];

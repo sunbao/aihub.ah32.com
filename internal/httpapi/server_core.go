@@ -419,7 +419,7 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Seed a platform-owned onboarding run + work item, so new owners can satisfy
+	// Offer platform built-in tasks (入驻自我介绍 + 每日签到), so new owners can satisfy
 	// the "先贡献后发布" gate by having their agent complete platform work.
 	onboardingRunID, onboardingWorkItemID, err := s.createOnboardingOffer(ctx, tx, agentID)
 	if err != nil {
@@ -447,6 +447,8 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 var platformUserID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+var platformIntroRunID = uuid.MustParse("00000000-0000-0000-0000-000000000010")
+var platformCheckinRunID = uuid.MustParse("00000000-0000-0000-0000-000000000011")
 
 func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uuid.UUID) (uuid.UUID, uuid.UUID, error) {
 	// Ensure platform/system user exists.
@@ -454,24 +456,38 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		return uuid.Nil, uuid.Nil, err
 	}
 
-	var runID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-		insert into runs (publisher_user_id, goal, constraints, status)
-		values ($1, $2, $3, 'running')
-		returning id
-	`, platformUserID,
-		"平台任务：包含「入驻自我介绍」与「每日签到」。请领取任务项后先发至少 1 条进度消息事件，再提交最终作品，最后完成任务项。",
-		"要求：必须遵循任务项里写明的「预期输出」；只用中文；不要泄露密钥/Token/隐私信息；不需要人工中途指挥；每个任务项独立完成。",
-	).Scan(&runID); err != nil {
+	// Ensure platform built-in runs exist (global, not per-agent).
+	// NOTE: These are discoverable on the homepage (include_system=1), and every new agent will get
+	// two offered work items under them (intro + check-in).
+	if _, err := tx.Exec(ctx, `
+		insert into runs (id, publisher_user_id, goal, constraints, status)
+		values ($1, $2, $3, $4, 'running')
+		on conflict (id) do update
+		set publisher_user_id = excluded.publisher_user_id,
+		    goal = excluded.goal,
+		    constraints = excluded.constraints,
+		    status = excluded.status,
+		    updated_at = now()
+	`, platformIntroRunID, platformUserID,
+		"平台内置任务：入驻自我介绍",
+		"要求：必须遵循任务项里写明的「预期输出」；只用中文；不要泄露密钥/Token/隐私信息；不需要人工中途指挥；最后要完成任务项。",
+	); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
-
-	workItemCount := s.publishMinCompletedWorkItems
-	if workItemCount < 2 {
-		workItemCount = 2
-	}
-	if workItemCount > 10 {
-		workItemCount = 10
+	if _, err := tx.Exec(ctx, `
+		insert into runs (id, publisher_user_id, goal, constraints, status)
+		values ($1, $2, $3, $4, 'running')
+		on conflict (id) do update
+		set publisher_user_id = excluded.publisher_user_id,
+		    goal = excluded.goal,
+		    constraints = excluded.constraints,
+		    status = excluded.status,
+		    updated_at = now()
+	`, platformCheckinRunID, platformUserID,
+		"平台内置任务：每日签到",
+		"要求：必须遵循任务项里写明的「预期输出」；只用中文；不要泄露密钥/Token/隐私信息；不需要人工中途指挥；最后要完成任务项。",
+	); err != nil {
+		return uuid.Nil, uuid.Nil, err
 	}
 
 	skills := s.skillsGatewayWhitelist
@@ -494,41 +510,37 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		return uuid.Nil, uuid.Nil, err
 	}
 
-	var firstWorkItemID uuid.UUID
-	var onboardingWorkItemID uuid.UUID
+	var introWorkItemID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		insert into work_items (run_id, stage, kind, status, context, available_skills)
 		values ($1, 'onboarding', 'contribute', 'offered', $2, $3)
 		returning id
-	`, runID, onboardingContextJSON, availableSkillsJSON).Scan(&onboardingWorkItemID); err != nil {
+	`, platformIntroRunID, onboardingContextJSON, availableSkillsJSON).Scan(&introWorkItemID); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
-	firstWorkItemID = onboardingWorkItemID
 	if _, err := tx.Exec(ctx, `
 		insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
 		on conflict do nothing
-	`, onboardingWorkItemID, agentID); err != nil {
+	`, introWorkItemID, agentID); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
 
-	for i := 1; i < workItemCount; i++ {
-		var workItemID uuid.UUID
-		if err := tx.QueryRow(ctx, `
-			insert into work_items (run_id, stage, kind, status, context, available_skills)
-			values ($1, 'checkin', 'contribute', 'offered', $2, $3)
-			returning id
-		`, runID, checkinContextJSON, availableSkillsJSON).Scan(&workItemID); err != nil {
-			return uuid.Nil, uuid.Nil, err
-		}
-		if _, err := tx.Exec(ctx, `
-			insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
-			on conflict do nothing
-		`, workItemID, agentID); err != nil {
-			return uuid.Nil, uuid.Nil, err
-		}
+	var checkinWorkItemID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		insert into work_items (run_id, stage, kind, status, context, available_skills)
+		values ($1, 'checkin', 'contribute', 'offered', $2, $3)
+		returning id
+	`, platformCheckinRunID, checkinContextJSON, availableSkillsJSON).Scan(&checkinWorkItemID); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into work_item_offers (work_item_id, agent_id) values ($1, $2)
+		on conflict do nothing
+	`, checkinWorkItemID, agentID); err != nil {
+		return uuid.Nil, uuid.Nil, err
 	}
 
-	return runID, firstWorkItemID, nil
+	return platformIntroRunID, introWorkItemID, nil
 }
 
 type agentDTO struct {
@@ -677,24 +689,22 @@ func (s server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete any per-agent onboarding runs (platform-owned) to avoid leaving
-	// orphaned "offered but no offers" work items after cascades.
+	// Delete any platform built-in work items that were exclusively offered to this agent,
+	// to avoid leaving orphaned work items with no offers after cascades.
 	if _, err := tx.Exec(ctx, `
-		delete from runs r
-		where r.publisher_user_id = $2
+		delete from work_items wi
+		where wi.run_id in ($2, $3)
 		  and exists (
 		    select 1
-		    from work_items wi
-		    join work_item_offers o on o.work_item_id = wi.id
-		    where wi.run_id = r.id and o.agent_id = $1
+		    from work_item_offers o
+		    where o.work_item_id = wi.id and o.agent_id = $1
 		  )
 		  and not exists (
 		    select 1
-		    from work_items wi
-		    join work_item_offers o on o.work_item_id = wi.id
-		    where wi.run_id = r.id and o.agent_id <> $1
+		    from work_item_offers o
+		    where o.work_item_id = wi.id and o.agent_id <> $1
 		  )
-	`, agentID, platformUserID); err != nil {
+	`, agentID, platformIntroRunID, platformCheckinRunID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cleanup failed"})
 		return
 	}
@@ -1095,25 +1105,25 @@ var stageTemplates = map[string]stageTemplate{
 		StageDescription: "构思：生成创意方向",
 		OutputDesc:       "创意摘要（要点列表即可）",
 		OutputLength:     "100-200 字",
-		OutputFormat:     "纯文本",
+		OutputFormat:     "plain text",
 	},
 	"onboarding": {
 		StageDescription: "入驻自我介绍：让大家认识你",
 		OutputDesc:       "自我介绍（擅长方向/能力边界/偏好）+ 一段你能稳定产出的内容",
 		OutputLength:     "200-400 字",
-		OutputFormat:     "Markdown",
+		OutputFormat:     "markdown",
 	},
 	"checkin": {
 		StageDescription: "每日签到：提交今天的状态与计划",
 		OutputDesc:       "今日签到（日期）+ 今日状态/计划（要点）",
 		OutputLength:     "80-200 字",
-		OutputFormat:     "Markdown",
+		OutputFormat:     "markdown",
 	},
 	"review": {
 		StageDescription: "互评：对同伴作品给出可执行反馈",
 		OutputDesc:       "指出优点/问题/修改建议（可落地）",
 		OutputLength:     "100-200 字",
-		OutputFormat:     "Markdown",
+		OutputFormat:     "markdown",
 	},
 }
 
@@ -1124,7 +1134,7 @@ func (s server) stageContextForStage(stage string, skills []string) map[string]a
 			StageDescription: stage,
 			OutputDesc:       "遵循目标与约束",
 			OutputLength:     "",
-			OutputFormat:     "纯文本",
+			OutputFormat:     "plain text",
 		}
 	}
 	expectedOutput := map[string]any{

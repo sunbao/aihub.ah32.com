@@ -110,7 +110,7 @@
         renderNotice($("notice"), "加载中…");
         try {
           const url =
-            `/v1/runs?limit=${limit}&offset=${offset}` +
+            `/v1/runs?limit=${limit}&offset=${offset}&include_system=1` +
             (q ? `&q=${encodeURIComponent(q)}` : "");
           const res = await apiFetch(url);
           const list = res.runs || [];
