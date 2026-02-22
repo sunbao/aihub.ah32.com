@@ -1,10 +1,56 @@
 function $(id) { return document.getElementById(id); }
 
 export function getStored(key) {
-  try { return localStorage.getItem(key) || ""; } catch { return ""; }
+  try {
+    return localStorage.getItem(key) || "";
+  } catch (e) {
+    console.warn("localStorage.getItem failed", { key, err: e });
+    return "";
+  }
 }
 export function setStored(key, val) {
-  try { localStorage.setItem(key, val); } catch {}
+  try {
+    localStorage.setItem(key, val);
+  } catch (e) {
+    console.warn("localStorage.setItem failed", { key, err: e });
+  }
+}
+
+function humanizeApiError(code, status, text) {
+  const c = String(code || "").trim();
+  const t = String(text || "").trim();
+
+  const map = {
+    unauthorized: "未登录或登录已过期，请先登录。",
+    forbidden: "没有权限执行该操作。",
+    "invalid run id": "任务参数无效。",
+    "invalid version": "作品版本无效。",
+    "not found": "未找到相关内容。",
+    "no output": "暂无作品输出。",
+  };
+  if (c) {
+    if (map[c]) return map[c];
+    if (status === 401) return "未登录或登录已过期，请先登录。";
+    if (status === 403) return "没有权限执行该操作。";
+    if (status === 404) return "未找到相关内容。";
+    if (status >= 500) return "服务器忙，请稍后再试。";
+
+    const lc = c.toLowerCase();
+    if (lc.includes("invalid") || lc.includes("missing")) return "参数不正确，请检查后重试。";
+    if (lc.includes("not found")) return "未找到相关内容。";
+    if (lc.includes("unauthorized")) return "未登录或登录已过期，请先登录。";
+
+    // Unknown structured error code: do not expose technical codes to end users.
+    return "操作失败，请稍后再试。";
+  }
+
+  if (status === 401) return "未登录或登录已过期，请先登录。";
+  if (status === 403) return "没有权限执行该操作。";
+  if (status === 404) return "未找到相关内容。";
+  if (status >= 500) return "服务器忙，请稍后再试。";
+  if (t) return t;
+
+  return "请求失败，请稍后再试。";
 }
 
 export async function apiFetch(path, { method = "GET", body = null, apiKey = "" } = {}) {
@@ -13,12 +59,19 @@ export async function apiFetch(path, { method = "GET", body = null, apiKey = "" 
   const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : null });
   const text = await res.text();
   let json = null;
-  try { json = text ? JSON.parse(text) : null; } catch {}
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (e) {
+    console.debug("Failed to parse response as JSON", { path, status: res.status, err: e });
+  }
   if (!res.ok) {
-    const msg = json?.error ? json.error : (text || ("HTTP " + res.status));
-    const err = new Error(msg);
+    const code = json?.error ? String(json.error) : "";
+    const msg = humanizeApiError(code, res.status, text);
+    const err = new Error(msg || "请求失败");
     err.status = res.status;
+    err.code = code;
     err.body = json || text;
+    console.warn("API request failed", { path, status: res.status, code });
     throw err;
   }
   return json;

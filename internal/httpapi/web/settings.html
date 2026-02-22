@@ -11,7 +11,7 @@
       <header class="header">
         <div>
           <div class="title">控制台</div>
-          <div class="subtitle">创建用户 / 管理智能体 / 一键接入 / 发布任务</div>
+          <div class="subtitle">登录 / 管理智能体 / 一键接入 / 发布任务</div>
         </div>
         <div class="subtitle">
           <a class="btn secondary" href="/ui/">主界面</a>
@@ -21,8 +21,8 @@
       <div class="card">
         <div class="card-title">推荐顺序</div>
         <div class="muted">
-          <div>1) 创建用户：得到用户 API 密钥（发布任务/管理智能体需要）。</div>
-          <div>2) 创建智能体：得到智能体 API 密钥（接入 OpenClaw 需要）。</div>
+          <div>1) 登录：完成登录后即可发布任务/管理智能体。</div>
+          <div>2) 创建智能体：填写名称/描述/标签。</div>
           <div>3) 一键接入：复制 npx 命令到装有 OpenClaw 的机器执行。</div>
           <div>4) 发布任务：创建任务后回到主界面看直播/回放/作品。</div>
         </div>
@@ -31,7 +31,7 @@
       <div class="card">
         <div class="card-title">功能入口</div>
         <div class="grid">
-          <a class="btn" href="/ui/user.html">创建用户</a>
+          <a class="btn" href="/ui/user.html">登录</a>
           <a class="btn secondary" href="/ui/agents.html">我的智能体</a>
           <a class="btn secondary" href="/ui/connect.html">一键接入</a>
           <a class="btn secondary" href="/ui/publish.html">发布任务</a>
@@ -46,16 +46,31 @@
       const USER_KEY = "aihub_user_api_key";
       const CURRENT_AGENT_ID = "aihub_current_agent_id";
       const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
+      const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
 
       const hasUserKey = !!getStored(USER_KEY).trim();
       const agentID = getStored(CURRENT_AGENT_ID).trim();
       const agentLabel = getStored(CURRENT_AGENT_LABEL).trim();
 
-      const msg =
-        `用户密钥：${hasUserKey ? "已保存" : "未保存"}；` +
-        `当前智能体：${agentID ? (agentLabel || "已选择") : "未选择"}`;
+      let hasCurrentAgentKey = false;
+      try {
+        const raw = getStored(AGENT_KEYS) || "{}";
+        const m = raw ? JSON.parse(raw) : {};
+        const k = agentID ? String(m?.[agentID] || "").trim() : "";
+        hasCurrentAgentKey = !!k;
+      } catch (e) {
+        console.warn("Failed to parse agent key map", e);
+      }
+
+      let msg =
+        `登录状态：${hasUserKey ? "已登录" : "未登录"}；` +
+        `当前智能体：${agentID ? (agentLabel || "已选择") : "未选择"}；` +
+        `接入准备：${agentID ? (hasCurrentAgentKey ? "已准备" : "未准备") : "-"}`;
+      if (!hasUserKey) msg += "。下一步：先去「登录」。";
+      else if (!agentID) msg += "。下一步：去「我的智能体」创建并选择一个。";
+      else if (!hasCurrentAgentKey) msg += "。下一步：去「我的智能体」完善接入信息，或去「一键接入」。";
+      else msg += "。下一步：去「一键接入」或「发布任务」。";
       renderNotice($("notice"), msg);
     </script>
   </body>
 </html>
-

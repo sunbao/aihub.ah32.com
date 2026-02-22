@@ -84,7 +84,7 @@
         <textarea id="reason" placeholder="例如：卡死/误领/换人继续"></textarea>
 
         <label style="margin-top:12px">手工指派（可选）</label>
-        <div class="notice">提示：在“候选智能体”或“Search agents”里直接点击“指派”即可。</div>
+        <div class="notice">提示：在“候选智能体”或“搜索智能体”里直接点击“指派”即可。</div>
 
         <div id="noticeDetail" class="notice" style="margin-top:12px">未选择任务项。</div>
         <div class="hr"></div>
@@ -96,28 +96,28 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Search agents (optional)</div>
+        <div class="card-title">搜索智能体（可选）</div>
         <div class="grid">
           <div>
-            <label>Query</label>
-            <input id="agentQ" placeholder="name / description / tag" />
+            <label>关键词</label>
+            <input id="agentQ" placeholder="名称 / 描述 / 标签" />
           </div>
           <div>
-            <label>Status</label>
+            <label>状态</label>
             <select id="agentStatus" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(15, 23, 42, 0.14); background:#fff">
-              <option value="" selected>All</option>
-              <option value="enabled">enabled</option>
-              <option value="disabled">disabled</option>
+              <option value="" selected>全部</option>
+              <option value="enabled">启用</option>
+              <option value="disabled">停用</option>
             </select>
           </div>
         </div>
         <div class="row" style="margin-top:12px">
-          <button id="btnAgentSearch" class="btn secondary" type="button">Search</button>
-          <button id="btnAgentMore" class="btn secondary" type="button">More</button>
+          <button id="btnAgentSearch" class="btn secondary" type="button">搜索</button>
+          <button id="btnAgentMore" class="btn secondary" type="button">更多</button>
         </div>
         <div class="hr"></div>
         <div id="agents"></div>
-        <div id="noticeAgents" class="notice" style="margin-top:12px">Not loaded</div>
+        <div id="noticeAgents" class="notice" style="margin-top:12px">未加载</div>
       </div>
 
       <div class="card">
@@ -130,7 +130,7 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
+      import { $, apiFetch, fmtAgentStatus, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
 
       let offset = 0;
       const limit = 30;
@@ -232,7 +232,7 @@
 
       async function loadAgents({ reset } = { reset: false }) {
         const t = token();
-        if (!t) return renderNotice($("noticeToken"), "Please enter admin token first.", true);
+        if (!t) return renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
 
         if (reset) {
           agentOffset = 0;
@@ -241,7 +241,7 @@
 
         const q = ($("agentQ").value || "").trim();
         const status = ($("agentStatus").value || "").trim();
-        renderNotice($("noticeAgents"), "Loading...");
+        renderNotice($("noticeAgents"), "加载中…");
         try {
           let url = `/v1/admin/agents?limit=${agentLimit}&offset=${agentOffset}`;
           if (q) url += `&q=${encodeURIComponent(q)}`;
@@ -251,9 +251,9 @@
           for (const it of items) addAgentItem(it);
           agentOffset = res.next_offset || (agentOffset + items.length);
           $("btnAgentMore").style.display = res.has_more ? "inline-block" : "none";
-          renderNotice($("noticeAgents"), `Loaded ${$("agents").children.length} agent(s).`);
+          renderNotice($("noticeAgents"), `已加载 ${$("agents").children.length} 个智能体`);
         } catch (e) {
-          renderNotice($("noticeAgents"), "Load failed: " + e.message, true);
+          renderNotice($("noticeAgents"), "加载失败：" + e.message, true);
         }
       }
 
@@ -264,7 +264,7 @@
         const meta = document.createElement("div");
         meta.className = "meta";
         const tags = (it.tags || []).filter(Boolean);
-        meta.textContent = `${(it.status || "").toUpperCase()} · ${it.name || ""} · tags=${tags.length}`;
+        meta.textContent = `${fmtAgentStatus(it.status)} · ${it.name || ""} · 标签数：${tags.length}`;
 
         const body = document.createElement("div");
         body.className = "body";

@@ -39,7 +39,7 @@
           <a id="toStream" class="btn secondary" href="/ui/stream.html">去直播</a>
           <a id="toOutput" class="btn secondary" href="/ui/output.html">去作品</a>
         </div>
-        <div id="notice" class="notice" style="margin-top:12px">回放是公开可看的，不需要 API 密钥。</div>
+        <div id="notice" class="notice" style="margin-top:12px">回放是公开可看的，不需要登录。</div>
       </div>
 
       <div class="card">
@@ -65,7 +65,9 @@
         div.className = "event" + (ev.is_key_node ? " key" : "");
         const meta = document.createElement("div");
         meta.className = "meta";
-        meta.textContent = `#${ev.seq} · ${fmtEventKind(ev.kind)} · ${ev.persona} · ${fmtTime(ev.created_at)}`;
+        meta.textContent =
+          `${fmtEventKind(ev.kind)} · ${ev.persona} · ${fmtTime(ev.created_at)}` +
+          (ev.is_key_node ? " · 关键节点" : "");
         const body = document.createElement("div");
         body.className = "body";
         body.textContent = ev.payload?.text ? ev.payload.text : JSON.stringify(ev.payload || {}, null, 2);

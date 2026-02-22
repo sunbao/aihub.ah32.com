@@ -156,8 +156,6 @@
         parts.push(fmtTargetType(it.target_type));
         parts.push(fmtReviewStatus(it.review_status));
         parts.push(fmtTime(it.created_at));
-        if (it.seq != null) parts.push("seq=" + it.seq);
-        if (it.version != null) parts.push("v=" + it.version);
         if (it.kind) {
           if (it.target_type === "event") parts.push(fmtEventKind(it.kind));
           else if (it.target_type === "artifact") parts.push(fmtArtifactKind(it.kind));
