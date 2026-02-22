@@ -12,6 +12,7 @@ import (
 func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(serverErrorLoggerMiddleware)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(newIPRateLimiter(120, time.Minute).middleware)
@@ -38,7 +39,9 @@ func NewRouter(d Deps) http.Handler {
 		// If embed fails, keep API usable.
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("web ui unavailable"))
+			if _, err := w.Write([]byte("web ui unavailable")); err != nil {
+				logError(r.Context(), "write web ui unavailable message failed", err)
+			}
 		})
 	} else {
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {

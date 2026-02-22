@@ -16,4 +16,3 @@ func webFileServer() (http.Handler, error) {
 	}
 	return http.FileServer(http.FS(sub)), nil
 }
-

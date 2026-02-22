@@ -34,10 +34,6 @@
         <div class="card-title">查询任务项</div>
         <div class="grid">
           <div>
-            <label>任务编号（可选）</label>
-            <input id="runId" placeholder="例如：0da431e1…（支持前 8 位；留空表示全部）" />
-          </div>
-          <div>
             <label>状态（可选）</label>
             <select id="status" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(15, 23, 42, 0.14); background:#fff">
               <option value="" selected>全部</option>
@@ -63,8 +59,9 @@
         <div class="card-title">任务项详情</div>
         <div class="grid">
           <div>
-            <label>任务项编号</label>
-            <input id="workItemId" placeholder="建议从列表点击自动填充（也可手动粘贴完整编号）" />
+            <label>当前任务项</label>
+            <input id="workItemLabel" class="mono" readonly placeholder="未选择（请从上方列表点击“查看 / 指派”）" />
+            <input id="workItemId" type="hidden" />
           </div>
           <div>
             <label>操作</label>
@@ -87,15 +84,12 @@
         <textarea id="reason" placeholder="例如：卡死/误领/换人继续"></textarea>
 
         <label style="margin-top:12px">手工指派（可选）</label>
-        <div class="row">
-          <input id="manualAgentId" placeholder="智能体编号（完整 UUID，尽量别手填）" style="flex:1; min-width:260px" />
-          <button id="btnAssignManual" class="btn" type="button">指派</button>
-        </div>
+        <div class="notice">提示：在“候选智能体”或“Search agents”里直接点击“指派”即可。</div>
 
         <div id="noticeDetail" class="notice" style="margin-top:12px">未选择任务项。</div>
         <div class="hr"></div>
         <div class="row" style="margin-bottom:10px">
-          <button id="btnToggleRaw" class="btn secondary" type="button">显示原始数据</button>
+          <button id="btnToggleRaw" class="btn secondary" type="button">显示原始数据（调试）</button>
         </div>
         <div id="detailSummary" class="muted"></div>
         <pre id="detail" class="mono" style="display:none"></pre>
@@ -136,7 +130,7 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, copyText, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
+      import { $, apiFetch, getStored, setStored, renderNotice, renderJSON } from "/ui/app.js";
 
       let offset = 0;
       const limit = 30;
@@ -147,7 +141,10 @@
       let showRaw = false;
 
       function fmtTime(ts) {
-        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+        try { return new Date(ts).toLocaleString(); } catch (e) {
+          console.debug("Invalid timestamp", ts, e);
+          return ts || "";
+        }
       }
 
       function fmtWorkItemStatus(s) {
@@ -180,11 +177,6 @@
         }
       }
 
-      function shortID(id) {
-        const s = (id || "").trim();
-        return s ? s.slice(0, 8) : "";
-      }
-
       function trunc(s, n) {
         const t = (s || "").trim();
         if (!t) return "";
@@ -192,6 +184,24 @@
       }
 
       function token() { return ($("adminToken").value || "").trim(); }
+
+      function setCurrentWorkItem(it) {
+        const wid = (it?.work_item_id || "").trim();
+        currentWorkItemID = wid;
+        $("workItemId").value = wid;
+        const stage = it?.stage ? fmtStage(it.stage) : "";
+        const kind = it?.kind ? fmtKind(it.kind) : "";
+        const status = it?.status ? fmtWorkItemStatus(it.status) : "";
+        const ts = it?.created_at ? fmtTime(it.created_at) : "";
+        const parts = [status, stage, kind, ts].filter(Boolean);
+        $("workItemLabel").value = parts.length ? parts.join(" · ") : "已选择";
+      }
+
+      function requireWorkItemSelected() {
+        if (currentWorkItemID) return true;
+        renderNotice($("noticeDetail"), "请先从上方列表选择一个任务项。", true);
+        return false;
+      }
 
       async function loadList({ reset } = { reset: false }) {
         const t = token();
@@ -202,13 +212,11 @@
           $("list").innerHTML = "";
         }
 
-        const runId = ($("runId").value || "").trim();
         const status = ($("status").value || "").trim();
         const q = ($("q").value || "").trim();
         renderNotice($("noticeList"), "加载中…");
         try {
           let url = `/v1/admin/work-items?limit=${limit}&offset=${offset}`;
-          if (runId) url += `&run_id=${encodeURIComponent(runId)}`;
           if (status) url += `&status=${encodeURIComponent(status)}`;
           if (q) url += `&q=${encodeURIComponent(q)}`;
           const res = await apiFetch(url, { apiKey: t });
@@ -256,14 +264,13 @@
         const meta = document.createElement("div");
         meta.className = "meta";
         const tags = (it.tags || []).filter(Boolean);
-        meta.textContent = `${(it.status || "").toUpperCase()} · ${it.name || ""} · AGENT-${shortID(it.agent_id)} · tags=${tags.length}`;
+        meta.textContent = `${(it.status || "").toUpperCase()} · ${it.name || ""} · tags=${tags.length}`;
 
         const body = document.createElement("div");
         body.className = "body";
         body.textContent =
-          `agent_id: ${it.agent_id || ""}\n` +
-          `owner_id: ${it.owner_id || ""}\n` +
-          `tags: ${tags.length ? tags.join(" / ") : "-"}`;
+          `${(it.description || "").trim()}\n` +
+          `标签：${tags.length ? tags.join(" / ") : "-"}`;
 
         const actions = document.createElement("div");
         actions.className = "row";
@@ -272,22 +279,12 @@
         const btnUse = document.createElement("button");
         btnUse.className = "btn";
         btnUse.type = "button";
-        btnUse.textContent = "Use";
+        btnUse.textContent = "指派";
         btnUse.addEventListener("click", () => {
-          $("manualAgentId").value = it.agent_id || "";
-          renderNotice($("noticeDetail"), "Agent selected. You can click Assign.", false);
+          if (!requireWorkItemSelected()) return;
+          assign([it.agent_id]);
         });
         actions.appendChild(btnUse);
-
-        const btnCopy = document.createElement("button");
-        btnCopy.className = "btn secondary";
-        btnCopy.type = "button";
-        btnCopy.textContent = "Copy agent_id";
-        btnCopy.addEventListener("click", async () => {
-          const ok = await copyText(it.agent_id || "");
-          renderNotice($("noticeAgents"), ok ? "Copied." : "Copy failed.", !ok);
-        });
-        actions.appendChild(btnCopy);
 
         div.appendChild(meta);
         div.appendChild(body);
@@ -324,30 +321,10 @@
         btn.type = "button";
         btn.textContent = "查看 / 指派";
         btn.addEventListener("click", () => {
-          $("workItemId").value = it.work_item_id;
+          setCurrentWorkItem(it);
           loadDetail();
         });
         actions.appendChild(btn);
-
-        const btnCopyWI = document.createElement("button");
-        btnCopyWI.className = "btn secondary";
-        btnCopyWI.type = "button";
-        btnCopyWI.textContent = `复制任务项编号（WI-${shortID(it.work_item_id)}）`;
-        btnCopyWI.addEventListener("click", async () => {
-          const ok = await copyText(it.work_item_id || "");
-          renderNotice($("noticeList"), ok ? "已复制任务项编号。" : "复制失败：请手动复制。", !ok);
-        });
-        actions.appendChild(btnCopyWI);
-
-        const btnCopyRun = document.createElement("button");
-        btnCopyRun.className = "btn secondary";
-        btnCopyRun.type = "button";
-        btnCopyRun.textContent = `复制任务编号（RUN-${shortID(it.run_id)}）`;
-        btnCopyRun.addEventListener("click", async () => {
-          const ok = await copyText(it.run_id || "");
-          renderNotice($("noticeList"), ok ? "已复制任务编号。" : "复制失败：请手动复制。", !ok);
-        });
-        actions.appendChild(btnCopyRun);
 
         div.appendChild(meta);
         div.appendChild(body);
@@ -360,29 +337,30 @@
         const tags = (res?.required_tags || []).filter(Boolean);
         const goal = (res?.run_goal || "").trim();
         const constraints = (res?.run_constraints || "").trim();
-        const runID = (wi.run_id || "").trim();
-        const wiID = (wi.work_item_id || "").trim();
 
         const lines = [];
         if (goal) lines.push(`任务：${trunc(goal, 240)}`);
         if (constraints) lines.push(`约束：${trunc(constraints, 240)}`);
         lines.push(`阶段：${fmtStage(wi.stage)} · 类型：${fmtKind(wi.kind)} · 状态：${fmtWorkItemStatus(wi.status)}`);
         lines.push(`标签：${tags.length ? tags.join("，") : "无"}`);
-        if (runID || wiID) lines.push(`任务编号：RUN-${shortID(runID)} · 任务项编号：WI-${shortID(wiID)}`);
+
+        const offers = (wi.offers || []).map(o => (o?.name || "").trim()).filter(Boolean);
+        if (offers.length) lines.push(`投放给：${offers.join("，")}`);
+        const leaseName = (wi.lease?.agent?.name || "").trim();
+        if (leaseName) lines.push(`当前占用：${leaseName}（到期 ${fmtTime(wi.lease?.expires_at)}）`);
         $("detailSummary").textContent = lines.join("\n");
       }
 
       async function loadDetail() {
         const t = token();
-        const wid = ($("workItemId").value || "").trim();
         if (!t) return renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
-        if (!wid) return renderNotice($("noticeDetail"), "请先填写任务项编号。", true);
-        currentWorkItemID = wid;
+        if (!requireWorkItemSelected()) return;
         renderNotice($("noticeDetail"), "加载详情中…");
         try {
-          const res = await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}`, { apiKey: t });
+          const res = await apiFetch(`/v1/admin/work-items/${encodeURIComponent(currentWorkItemID)}`, { apiKey: t });
           cachedDetail = res;
-          renderJSON($("detail"), res);
+          if (showRaw) renderJSON($("detail"), res);
+          else $("detail").textContent = "";
           renderDetailSummary(res);
           const offers = res.work_item?.offers || [];
           const tags = res.required_tags || [];
@@ -395,13 +373,12 @@
 
       async function loadCandidates() {
         const t = token();
-        const wid = ($("workItemId").value || "").trim();
         if (!t) return renderNotice($("noticeToken"), "请先输入并保存管理员 Token。", true);
-        if (!wid) return renderNotice($("noticeCandidates"), "请先填写任务项编号。", true);
+        if (!requireWorkItemSelected()) return;
         renderNotice($("noticeCandidates"), "加载候选中…");
         $("candidates").innerHTML = "";
         try {
-          const res = await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}/candidates?limit=300`, { apiKey: t });
+          const res = await apiFetch(`/v1/admin/work-items/${encodeURIComponent(currentWorkItemID)}/candidates?limit=300`, { apiKey: t });
           const matched = res.matched || [];
           const fallback = res.fallback || [];
           renderCandidateGroup("命中候选（推荐）", matched, true);
@@ -435,7 +412,7 @@
           m.className = "meta";
           const mt = (c.matched_tags || []).join(" / ");
           const miss = (c.missing_tags || []).join(" / ");
-          m.textContent = `命中=${c.hits} · ${c.name || ""} · 编号=${shortID(c.agent_id)} · 命中标签=${mt || "-"} · 缺失标签=${miss || "-"}`;
+          m.textContent = `命中=${c.hits} · ${c.name || ""} · 命中标签=${mt || "-"} · 缺失标签=${miss || "-"}`;
 
           const b = document.createElement("div");
           b.className = "body";
@@ -472,15 +449,14 @@
 
       async function assign(agentIDs) {
         const t = token();
-        const wid = ($("workItemId").value || "").trim();
         if (!t) return;
-        if (!wid) return renderNotice($("noticeDetail"), "请先填写任务项编号。", true);
+        if (!requireWorkItemSelected()) return;
         const force = $("force").checked;
         const reason = ($("reason").value || "").trim();
         if (force && !reason) return renderNotice($("noticeDetail"), "强制重派需要填写原因。", true);
         renderNotice($("noticeDetail"), "提交指派中…");
         try {
-          await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}/assign`, {
+          await apiFetch(`/v1/admin/work-items/${encodeURIComponent(currentWorkItemID)}/assign`, {
             method: "POST",
             apiKey: t,
             body: { agent_ids: agentIDs, mode: force ? "force_reassign" : "add", reason }
@@ -495,11 +471,11 @@
 
       async function unassign(agentID) {
         const t = token();
-        const wid = ($("workItemId").value || "").trim();
-        if (!t || !wid) return;
+        if (!t) return;
+        if (!requireWorkItemSelected()) return;
         renderNotice($("noticeDetail"), "取消指派中…");
         try {
-          await apiFetch(`/v1/admin/work-items/${encodeURIComponent(wid)}/unassign`, {
+          await apiFetch(`/v1/admin/work-items/${encodeURIComponent(currentWorkItemID)}/unassign`, {
             method: "POST",
             apiKey: t,
             body: { agent_ids: [agentID], reason: ($("reason").value || "").trim() }
@@ -532,20 +508,20 @@
       $("btnMore").addEventListener("click", () => loadList({ reset: false }));
       $("btnLoadDetail").addEventListener("click", () => loadDetail());
       $("btnLoadCandidates").addEventListener("click", () => loadCandidates());
-      $("btnAssignManual").addEventListener("click", () => {
-        const id = ($("manualAgentId").value || "").trim();
-        if (!id) return renderNotice($("noticeDetail"), "请填写智能体编号。", true);
-        assign([id]);
-      });
 
       $("btnToggleRaw").addEventListener("click", () => {
         showRaw = !showRaw;
         $("detail").style.display = showRaw ? "block" : "none";
-        $("btnToggleRaw").textContent = showRaw ? "隐藏原始数据" : "显示原始数据";
+        $("btnToggleRaw").textContent = showRaw ? "隐藏原始数据（调试）" : "显示原始数据（调试）";
+        if (!showRaw) {
+          $("detail").textContent = "";
+          return;
+        }
+        if (cachedDetail) renderJSON($("detail"), cachedDetail);
+        else $("detail").textContent = "";
       });
 
       $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadList({ reset: true }); });
-      $("runId").addEventListener("keydown", (e) => { if (e.key === "Enter") loadList({ reset: true }); });
 
       $("btnAgentSearch").addEventListener("click", () => loadAgents({ reset: true }));
       $("btnAgentMore").addEventListener("click", () => loadAgents({ reset: false }));

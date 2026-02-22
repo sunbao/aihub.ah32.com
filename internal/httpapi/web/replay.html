@@ -33,8 +33,7 @@
 
       <div class="card">
         <div class="card-title">查询</div>
-        <label>任务 ID</label>
-        <input id="runId" class="mono" />
+        <div id="currentRun" class="notice">未选择任务：请先从上方列表选择一个任务。</div>
         <div class="row" style="margin-top:12px">
           <button id="btnLoad" class="btn" type="button">加载</button>
           <a id="toStream" class="btn secondary" href="/ui/stream.html">去直播</a>
@@ -58,6 +57,8 @@
       import { $, apiFetch, fmtEventKind, fmtOutputVersion, fmtRunStatus, renderNotice } from "/ui/app.js";
       let runsOffset = 0;
       const runsLimit = 20;
+      let selectedRunId = "";
+      let selectedRunLabel = "";
 
       function addEvent(container, ev) {
         const div = document.createElement("div");
@@ -74,12 +75,36 @@
       }
 
       function fmtTime(ts) {
-        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+        try { return new Date(ts).toLocaleString(); } catch (e) {
+          console.debug("Invalid timestamp", ts, e);
+          return ts || "";
+        }
       }
       function trunc(s, n) {
         const t = (s || "").trim();
         if (!t) return "";
         return t.length > n ? (t.slice(0, n) + "…") : t;
+      }
+
+      function setSelectedRun(runId, label = "") {
+        selectedRunId = (runId || "").trim();
+        selectedRunLabel = (label || "").trim();
+        if (!selectedRunId) {
+          renderNotice($("currentRun"), "未选择任务：请先从上方列表选择一个任务。", true);
+          return;
+        }
+        renderNotice($("currentRun"), "当前任务：" + (selectedRunLabel || "已选择"));
+      }
+
+      async function hydrateSelectedRunLabel(runId) {
+        const rid = (runId || "").trim();
+        if (!rid) return;
+        try {
+          const run = await apiFetch(`/v1/runs/${encodeURIComponent(rid)}`);
+          setSelectedRun(rid, trunc(run.goal, 80));
+        } catch (e) {
+          console.warn("Failed to load run summary", e);
+        }
       }
 
       function addRun(run) {
@@ -106,7 +131,7 @@
         btn.type = "button";
         btn.textContent = "加载回放";
         btn.onclick = () => {
-          $("runId").value = rid;
+          setSelectedRun(rid, trunc(run.goal, 80));
           load(rid);
         };
 
@@ -159,6 +184,7 @@
           renderNotice($("notice"), `加载成功：${(res.events||[]).length} 条事件 / ${(res.key_nodes||[]).length} 个关键节点`);
           $("toStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(runId);
           $("toOutput").href = "/ui/output.html?run_id=" + encodeURIComponent(runId);
+          if (!selectedRunLabel) hydrateSelectedRunLabel(runId);
         } catch (e) {
           renderNotice($("notice"), "加载失败：" + e.message, true);
         }
@@ -166,8 +192,10 @@
 
       const params = new URLSearchParams(location.search);
       const rid = params.get("run_id") || "";
-      $("runId").value = rid;
-      if (rid) load(rid);
+      if (rid) {
+        setSelectedRun(rid, "");
+        load(rid);
+      }
 
       $("qRuns").value = params.get("q") || "";
       loadRuns({ reset: true });
@@ -176,9 +204,8 @@
       $("qRuns").addEventListener("keydown", (e) => { if (e.key === "Enter") loadRuns({ reset: true }); });
 
       $("btnLoad").addEventListener("click", () => {
-        const runId = $("runId").value.trim();
-        if (!runId) return;
-        load(runId);
+        if (!selectedRunId) return renderNotice($("notice"), "请先从上方任务列表选择一个任务。", true);
+        load(selectedRunId);
       });
     </script>
   </body>

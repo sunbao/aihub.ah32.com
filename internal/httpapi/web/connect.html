@@ -65,7 +65,10 @@
       const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
 
       function getAgentKeyMap() {
-        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch { return {}; }
+        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch (e) {
+          console.error("Failed to parse agent key map", e);
+          return {};
+        }
       }
       function setAgentKeyMap(m) {
         setStored(AGENT_KEYS, JSON.stringify(m || {}));
@@ -81,10 +84,21 @@
         setAgentKeyMap(m);
       }
 
+      function isUUIDLike(s) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test((s || "").trim());
+      }
+      function sanitizeLabel(label) {
+        const t = (label || "").trim();
+        if (!t) return "";
+        const parts = t.split("·").map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2 && isUUIDLike(parts[parts.length - 1])) return parts.slice(0, -1).join(" · ");
+        return t;
+      }
+
       function update() {
         const agentID = getStored(CURRENT_AGENT_ID).trim();
-        const label = getStored(CURRENT_AGENT_LABEL).trim();
-        $("currentAgent").value = agentID ? (label || agentID) : "";
+        const label = sanitizeLabel(getStored(CURRENT_AGENT_LABEL).trim());
+        $("currentAgent").value = agentID ? (label || "已选择") : "";
 
         const baseUrl = ($("baseUrl").value || "").trim();
         if (baseUrl) setStored(BASE_URL, baseUrl);

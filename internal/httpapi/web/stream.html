@@ -33,8 +33,7 @@
 
       <div class="card">
         <div class="card-title">连接</div>
-        <label>任务 ID</label>
-        <input id="runId" class="mono" placeholder="例如：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+        <div id="currentRun" class="notice">未选择任务：请先从上方列表选择一个任务。</div>
         <div class="row" style="margin-top:12px">
           <button id="btnConnect" class="btn" type="button">连接</button>
           <button id="btnClose" class="btn secondary" type="button">断开</button>
@@ -57,6 +56,8 @@
       let lastSeq = 0;
       let runsOffset = 0;
       const runsLimit = 20;
+      let selectedRunId = "";
+      let selectedRunLabel = "";
 
       function addEvent(ev) {
         lastSeq = Math.max(lastSeq, ev.seq || 0);
@@ -74,12 +75,36 @@
       }
 
       function fmtTime(ts) {
-        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+        try { return new Date(ts).toLocaleString(); } catch (e) {
+          console.debug("Invalid timestamp", ts, e);
+          return ts || "";
+        }
       }
       function trunc(s, n) {
         const t = (s || "").trim();
         if (!t) return "";
         return t.length > n ? (t.slice(0, n) + "…") : t;
+      }
+
+      function setSelectedRun(runId, label = "") {
+        selectedRunId = (runId || "").trim();
+        selectedRunLabel = (label || "").trim();
+        if (!selectedRunId) {
+          renderNotice($("currentRun"), "未选择任务：请先从上方列表选择一个任务。", true);
+          return;
+        }
+        renderNotice($("currentRun"), "当前任务：" + (selectedRunLabel || "已选择"));
+      }
+
+      async function hydrateSelectedRunLabel(runId) {
+        const rid = (runId || "").trim();
+        if (!rid) return;
+        try {
+          const run = await apiFetch(`/v1/runs/${encodeURIComponent(rid)}`);
+          setSelectedRun(rid, trunc(run.goal, 80));
+        } catch (e) {
+          console.warn("Failed to load run summary", e);
+        }
       }
 
       function addRun(run) {
@@ -106,7 +131,7 @@
         btn.type = "button";
         btn.textContent = "连接直播";
         btn.onclick = () => {
-          $("runId").value = rid;
+          setSelectedRun(rid, trunc(run.goal, 80));
           connect(rid);
         };
 
@@ -156,20 +181,25 @@
         const url = `/v1/runs/${encodeURIComponent(runId)}/stream?after_seq=0`;
         es = new EventSource(url);
         es.addEventListener("event", (msg) => {
-          try { addEvent(JSON.parse(msg.data)); } catch {}
+          try { addEvent(JSON.parse(msg.data)); } catch (e) {
+            console.error("Failed to parse SSE event", e, msg.data);
+          }
         });
         es.addEventListener("error", () => {
           renderNotice($("notice"), "连接异常/已断开（可重连）", true);
         });
-        renderNotice($("notice"), "已连接任务：" + runId);
+        renderNotice($("notice"), "已连接直播。");
         $("toReplay").href = "/ui/replay.html?run_id=" + encodeURIComponent(runId);
         $("toOutput").href = "/ui/output.html?run_id=" + encodeURIComponent(runId);
+        if (!selectedRunLabel) hydrateSelectedRunLabel(runId);
       }
 
       const params = new URLSearchParams(location.search);
       const rid = params.get("run_id") || "";
-      $("runId").value = rid;
-      if (rid) connect(rid);
+      if (rid) {
+        setSelectedRun(rid, "");
+        connect(rid);
+      }
 
       $("qRuns").value = params.get("q") || "";
       loadRuns({ reset: true });
@@ -178,9 +208,8 @@
       $("qRuns").addEventListener("keydown", (e) => { if (e.key === "Enter") loadRuns({ reset: true }); });
 
       $("btnConnect").addEventListener("click", () => {
-        const runId = $("runId").value.trim();
-        if (!runId) return;
-        connect(runId);
+        if (!selectedRunId) return renderNotice($("notice"), "请先从上方任务列表选择一个任务。", true);
+        connect(selectedRunId);
       });
       $("btnClose").addEventListener("click", () => {
         if (es) es.close();

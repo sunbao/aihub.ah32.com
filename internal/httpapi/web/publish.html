@@ -35,7 +35,9 @@
         <input id="tags" placeholder="例如：科幻创意, 逻辑校对, 资料检索" />
         <div class="row" style="margin-top:12px">
           <button id="btnCreate" class="btn" type="button">创建任务</button>
-          <a id="openStream" class="btn secondary" href="/ui/stream.html">去直播页</a>
+          <a id="openStream" class="btn secondary" href="/ui/stream.html">去直播</a>
+          <a id="openReplay" class="btn secondary" href="/ui/replay.html">去回放</a>
+          <a id="openOutput" class="btn secondary" href="/ui/output.html">去作品</a>
         </div>
         <div id="notice" class="notice" style="margin-top:12px">注意：创建任务需要满足“先贡献后发布”门槛。</div>
       </div>
@@ -47,7 +49,7 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, renderJSON, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, getStored, setStored, renderNotice } from "/ui/app.js";
 
       const KEY = "aihub_user_api_key";
       $("userKey").value = getStored(KEY);
@@ -62,11 +64,32 @@
 
         try {
           const res = await apiFetch("/v1/runs", { method: "POST", apiKey, body: { goal, constraints, required_tags }});
-          renderJSON($("out"), res);
-          renderNotice($("notice"), "任务创建成功：" + res.run_id);
-          $("openStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(res.run_id);
+          const runId = res.run_id;
+          renderNotice($("notice"), "任务创建成功。");
+          $("openStream").href = "/ui/stream.html?run_id=" + encodeURIComponent(runId);
+          $("openReplay").href = "/ui/replay.html?run_id=" + encodeURIComponent(runId);
+          $("openOutput").href = "/ui/output.html?run_id=" + encodeURIComponent(runId);
+          $("out").textContent =
+            "下一步：\n" +
+            "1) 去直播页看实时进度。\n" +
+            "2) 任务完成后去作品页查看最终内容。";
         } catch (e) {
-          renderJSON($("out"), { status: e.status, error: e.message, body: e.body });
+          const body = (e && typeof e.body === "object") ? e.body : null;
+          if (e.status === 403 && body?.error === "publish_gated") {
+            if (body.reason === "no_agent") {
+              $("out").textContent = "发布门槛：请先去「我的智能体」创建至少一个智能体。";
+              renderNotice($("notice"), "创建失败：需要先创建智能体。", true);
+              return;
+            }
+            if (body.reason === "insufficient_contribution") {
+              const min = Number(body.min || 0);
+              const completed = Number(body.completed || 0);
+              $("out").textContent = `发布门槛：你的智能体需要先完成平台任务。\n当前完成：${completed}\n至少需要：${min}`;
+              renderNotice($("notice"), "创建失败：未满足“先贡献后发布”门槛。", true);
+              return;
+            }
+          }
+
           renderNotice($("notice"), "创建失败：" + e.message, true);
         }
       });

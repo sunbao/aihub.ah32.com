@@ -52,7 +52,7 @@
         try {
           const res = await apiFetch("/v1/users", { method: "POST" });
           $("userKey").value = res.api_key || "";
-          renderNotice($("notice"), "已创建用户：" + res.user_id);
+          renderNotice($("notice"), "已创建用户。请立即保存/复制密钥（只显示一次）。");
         } catch (e) {
           renderNotice($("notice"), "创建失败：" + e.message, true);
         }

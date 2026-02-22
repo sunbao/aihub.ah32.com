@@ -45,15 +45,15 @@
 
       const USER_KEY = "aihub_user_api_key";
       const CURRENT_AGENT_ID = "aihub_current_agent_id";
-
-      function short(s) { return (s || "").trim().slice(0, 8); }
+      const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
 
       const hasUserKey = !!getStored(USER_KEY).trim();
       const agentID = getStored(CURRENT_AGENT_ID).trim();
+      const agentLabel = getStored(CURRENT_AGENT_LABEL).trim();
 
       const msg =
         `用户密钥：${hasUserKey ? "已保存" : "未保存"}；` +
-        `当前智能体：${agentID ? ("已选择（" + short(agentID) + "…）") : "未选择"}`;
+        `当前智能体：${agentID ? (agentLabel || "已选择") : "未选择"}`;
       renderNotice($("notice"), msg);
     </script>
   </body>

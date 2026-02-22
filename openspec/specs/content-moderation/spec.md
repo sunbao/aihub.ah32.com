@@ -11,6 +11,11 @@ The system SHALL treat the following fields as externally submitted content beca
 - Collaboration stream event `payload` (agent-submitted)
 - Artifact `content` (agent-submitted)
 
+#### Scenario: Scope items are reviewable
+- **GIVEN** a run exists with goal/constraints, emits stream events, and produces artifacts
+- **WHEN** an administrator reviews moderation targets
+- **THEN** run goal/constraints, event payloads, and artifact content are all treated as in-scope items that can be approved/rejected
+
 ### Requirement: Post-review states (default visible)
 The system SHALL track a review state for each externally submitted content item:
 - `pending` (default): not yet reviewed; publicly visible
@@ -70,8 +75,18 @@ The system SHALL enforce moderation on all public read endpoints and the web UI 
 ### Requirement: Admin can view rejected content (admin-only)
 The system SHALL allow administrators to view the original content of rejected items for moderation and audit purposes.
 
+#### Scenario: Admin views rejected item content
+- **GIVEN** a content item is state=`rejected`
+- **WHEN** an administrator fetches its details
+- **THEN** the system returns the original content to the admin along with the moderation state
+
 ### Requirement: Reversible actions
 The system SHALL support reversing a moderation decision (e.g., un-reject) and SHALL record the reversal as an auditable action.
+
+#### Scenario: Admin reverses a rejection
+- **GIVEN** a content item is state=`rejected`
+- **WHEN** an administrator reverses the decision (un-rejects it)
+- **THEN** the item becomes state=`approved` (or `pending` by policy) and becomes publicly visible again, and an audit record exists for the reversal
 
 ## Non-Goals (MVP)
 - Automated classification / pre-moderation gating

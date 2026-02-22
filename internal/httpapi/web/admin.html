@@ -75,12 +75,12 @@
         </div>
         <div id="noticeAction" class="notice" style="margin-top:12px">请选择一条队列内容查看详情。</div>
         <div class="hr"></div>
-        <pre id="detail" class="mono"></pre>
+        <pre id="detail" class="mono" style="white-space:pre-wrap;margin:0"></pre>
       </div>
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, fmtEventKind, fmtArtifactKind, renderNotice, renderJSON } from "/ui/app.js";
+      import { $, apiFetch, getStored, setStored, fmtEventKind, fmtArtifactKind, renderNotice } from "/ui/app.js";
 
       let offset = 0;
       const limit = 30;
@@ -88,7 +88,15 @@
       let allItems = [];
 
       function fmtTime(ts) {
-        try { return new Date(ts).toLocaleString(); } catch { return ts || ""; }
+        try { return new Date(ts).toLocaleString(); } catch (e) {
+          console.debug("Invalid timestamp", ts, e);
+          return ts || "";
+        }
+      }
+      function trunc(s, n) {
+        const t = (s || "").trim();
+        if (!t) return "";
+        return t.length > n ? (t.slice(0, n) + "…") : t;
       }
 
       function fmtTargetType(t) {
@@ -126,7 +134,7 @@
       function applyClientFilter(items) {
         const q = ($("q").value || "").trim();
         if (!q) return items;
-        return items.filter(it => (it.summary || "").includes(q) || (it.run_id || "").includes(q));
+        return items.filter(it => (it.summary || "").includes(q));
       }
 
       function renderQueue(items) {
@@ -148,7 +156,6 @@
         parts.push(fmtTargetType(it.target_type));
         parts.push(fmtReviewStatus(it.review_status));
         parts.push(fmtTime(it.created_at));
-        if (it.run_id) parts.push("run=" + it.run_id.slice(0, 8));
         if (it.seq != null) parts.push("seq=" + it.seq);
         if (it.version != null) parts.push("v=" + it.version);
         if (it.kind) {
@@ -205,10 +212,63 @@
           allItems = allItems.concat(items);
           renderQueue(allItems);
           offset = res.next_offset || (offset + items.length);
-          $("btnMore").style.display = res.has_more ? "inline-block" : "none";
-        } catch (e) {
-          renderNotice($("noticeQueue"), "加载失败：" + e.message, true);
+        $("btnMore").style.display = res.has_more ? "inline-block" : "none";
+      } catch (e) {
+        renderNotice($("noticeQueue"), "加载失败：" + e.message, true);
+      }
+    }
+
+      function describePayload(payload) {
+        if (!payload || typeof payload !== "object") return "";
+        const text = (payload.text || "").trim();
+        if (text) return text;
+        const keys = Object.keys(payload);
+        if (!keys.length) return "（无可展示内容）";
+        return `（结构化内容）字段：${keys.slice(0, 20).join("，")}${keys.length > 20 ? "…" : ""}`;
+      }
+
+      function formatDetail(res) {
+        const targetType = (res?.target_type || "").trim();
+        const detail = res?.detail || {};
+        const actions = res?.actions || [];
+
+        const lines = [];
+        if (targetType === "run") {
+          lines.push("【任务】");
+          if (detail.goal) lines.push("\n目标：\n" + String(detail.goal).trim());
+          if (detail.constraints) lines.push("\n约束：\n" + String(detail.constraints).trim());
+          const tags = Array.isArray(detail.required_tags) ? detail.required_tags.filter(Boolean) : [];
+          lines.push("\n状态：" + (detail.status || "-") + " · 审核：" + (detail.review_status || "-"));
+          lines.push("标签：" + (tags.length ? tags.join("，") : "无"));
+          lines.push("创建时间：" + fmtTime(detail.created_at));
+          lines.push("更新时间：" + fmtTime(detail.updated_at));
+        } else if (targetType === "event") {
+          lines.push("【事件】");
+          lines.push("类型：" + fmtEventKind(detail.kind));
+          if (detail.persona) lines.push("角色：" + detail.persona);
+          lines.push("时间：" + fmtTime(detail.created_at));
+          const p = describePayload(detail.payload);
+          if (p) lines.push("\n内容：\n" + p);
+        } else if (targetType === "artifact") {
+          lines.push("【作品】");
+          lines.push("类型：" + fmtArtifactKind(detail.kind) + " · 版本：" + (detail.version ?? "-"));
+          lines.push("时间：" + fmtTime(detail.created_at));
+          const c = (detail.content || "").trim();
+          if (c) lines.push("\n内容：\n" + c);
+        } else {
+          lines.push("【未知类型】");
         }
+
+        if (actions.length) {
+          lines.push("\n---\n审核记录（最近在前）：");
+          for (const a of actions) {
+            const reason = (a.reason || "").trim();
+            const who = (a.actor_type || "").trim();
+            lines.push(`- ${fmtTime(a.created_at)} · ${a.action || "-"}${who ? (" · " + who) : ""}${reason ? (" · 原因：" + trunc(reason, 120)) : ""}`);
+          }
+        }
+
+        return lines.join("\n");
       }
 
       async function loadDetail(targetType, id) {
@@ -218,8 +278,8 @@
         renderNotice($("noticeAction"), "加载详情中…");
         try {
           const res = await apiFetch(`/v1/admin/moderation/${encodeURIComponent(targetType)}/${encodeURIComponent(id)}`, { apiKey: token });
-          renderJSON($("detail"), res);
-          renderNotice($("noticeAction"), `已选择：${fmtTargetType(targetType)} / ${id}`);
+          $("detail").textContent = formatDetail(res);
+          renderNotice($("noticeAction"), `已选择：${fmtTargetType(targetType)}`);
         } catch (e) {
           renderNotice($("noticeAction"), "加载详情失败：" + e.message, true);
         }

@@ -70,7 +70,7 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, copyText, fmtAgentStatus, getStored, renderJSON, renderNotice, setStored } from "/ui/app.js";
+      import { $, apiFetch, copyText, fmtAgentStatus, getStored, renderNotice, setStored } from "/ui/app.js";
 
       const USER_KEY = "aihub_user_api_key";
       const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
@@ -78,7 +78,10 @@
       const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
 
       function getAgentKeyMap() {
-        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch { return {}; }
+        try { return JSON.parse(getStored(AGENT_KEYS) || "{}") || {}; } catch (e) {
+          console.error("Failed to parse agent key map", e);
+          return {};
+        }
       }
       function setAgentKeyMap(m) {
         setStored(AGENT_KEYS, JSON.stringify(m || {}));
@@ -107,14 +110,25 @@
           return;
         }
         setStored(CURRENT_AGENT_ID, agent.id);
-        setStored(CURRENT_AGENT_LABEL, `${agent.name || ""} · ${agent.id}`);
+        setStored(CURRENT_AGENT_LABEL, `${agent.name || ""}`);
         updateCurrent();
+      }
+
+      function isUUIDLike(s) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test((s || "").trim());
+      }
+      function sanitizeLabel(label) {
+        const t = (label || "").trim();
+        if (!t) return "";
+        const parts = t.split("·").map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2 && isUUIDLike(parts[parts.length - 1])) return parts.slice(0, -1).join(" · ");
+        return t;
       }
 
       function updateCurrent() {
         const id = getStored(CURRENT_AGENT_ID).trim();
-        const label = getStored(CURRENT_AGENT_LABEL).trim();
-        $("currentAgent").value = id ? (label || id) : "";
+        const label = sanitizeLabel(getStored(CURRENT_AGENT_LABEL).trim());
+        $("currentAgent").value = id ? (label || "已选择") : "";
         $("agentKey").value = id ? (getSavedAgentKey(id) || "") : "";
       }
 
@@ -148,7 +162,7 @@
             meta.className = "meta";
             const isCurrent = a.id === currentID;
             const hasKey = !!getSavedAgentKey(a.id);
-            meta.textContent = `${a.id} · ${fmtAgentStatus(a.status)} · ${hasKey ? "已保存密钥" : "未保存密钥"}${isCurrent ? " · 当前" : ""}`;
+            meta.textContent = `${fmtAgentStatus(a.status)} · ${hasKey ? "已保存密钥" : "未保存密钥"}${isCurrent ? " · 当前" : ""}`;
 
             const body = document.createElement("div");
             body.className = "body";
@@ -200,7 +214,7 @@
             btnDelete.type = "button";
             btnDelete.textContent = "删除";
             btnDelete.onclick = async () => {
-              const ok = confirm(`确认删除智能体？\n\n${a.name}\n${a.id}\n\n删除后不可恢复。`);
+              const ok = confirm(`确认删除智能体？\n\n${a.name}\n${a.description || ""}\n标签：${(a.tags || []).join("，")}\n\n删除后不可恢复。`);
               if (!ok) return;
               try {
                 await apiFetch(`/v1/agents/${a.id}`, { method: "DELETE", apiKey });
@@ -244,17 +258,18 @@
         renderNotice($("noticeCreate"), "创建中…");
         try {
           const res = await apiFetch("/v1/agents", { method: "POST", apiKey, body: { name, description, tags }});
-          renderJSON($("outCreate"), res);
           if (res.agent_id && res.api_key) {
             saveAgentKey(res.agent_id, res.api_key);
             setCurrentAgent({ id: res.agent_id, name, description, tags, status: "enabled" });
             renderNotice($("noticeCreate"), "创建成功：已把智能体密钥保存到本浏览器（建议你也单独备份）。");
+            $("outCreate").textContent = `智能体 API 密钥（只显示一次，请立即保存）：\n${res.api_key}`;
           } else {
             renderNotice($("noticeCreate"), "创建成功。");
           }
           await listAgents();
         } catch (e) {
-          renderJSON($("outCreate"), { status: e.status, error: e.message, body: e.body });
+          console.error("Create agent failed", e);
+          $("outCreate").textContent = "";
           renderNotice($("noticeCreate"), "创建失败：" + e.message, true);
         }
       });
