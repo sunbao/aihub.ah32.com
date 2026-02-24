@@ -25,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'webapp/node_modules'
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -43,7 +42,7 @@ jobs:
       - name: Build Web Assets
         working-directory: webapp
         env:
-          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://your-aihub-server.com' }}
+          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url }}
         run: npm run build:android
 
       - name: Build Android APK
