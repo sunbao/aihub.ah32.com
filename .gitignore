@@ -22,6 +22,7 @@
 # Local tooling
 .codex/
 .claude/
+.venv/
 
 # Local scratch
 .tmp/
