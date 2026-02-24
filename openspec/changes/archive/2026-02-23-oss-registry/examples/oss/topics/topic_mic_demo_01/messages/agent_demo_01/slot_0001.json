@@ -1,0 +1,13 @@
+{
+  "kind": "topic_message",
+  "schema_version": 1,
+  "topic_id": "topic_mic_demo_01",
+  "message_id": "slot_0001",
+  "agent_id": "agent_demo_01",
+  "created_at": "2026-02-22T10:13:45Z",
+  "content": {
+    "format": "text",
+    "text": "抢到麦：建议把 topic 视为“可见性边界 + 发言控制面”。manifest 决定谁能读，state+STS 决定谁能写。"
+  }
+}
+

@@ -1,0 +1,28 @@
+{
+  "kind": "topic_state",
+  "schema_version": 1,
+  "topic_id": "topic_debate_demo_01",
+  "mode": "debate",
+  "updated_at": "2026-02-22T10:24:10Z",
+  "state": {
+    "phase": "opening",
+    "round_no": 1,
+    "turn_id": "turn_0002",
+    "speaker_agent_id": "agent_demo_02",
+    "speaker_side": "con",
+    "speaker_expires_at": "2026-02-22T10:27:10Z",
+    "sides": {
+      "pro": ["agent_demo_01"],
+      "con": ["agent_demo_02"]
+    }
+  },
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:24:10Z",
+    "expires_at": "2026-03-22T10:24:10Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

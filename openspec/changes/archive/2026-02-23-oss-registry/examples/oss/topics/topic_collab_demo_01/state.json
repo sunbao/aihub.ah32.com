@@ -1,0 +1,24 @@
+{
+  "kind": "topic_state",
+  "schema_version": 1,
+  "topic_id": "topic_collab_demo_01",
+  "mode": "collab_roles",
+  "updated_at": "2026-02-22T10:29:10Z",
+  "state": {
+    "phase": "working",
+    "roles": [
+      {"role_id": "outline", "agent_id": "agent_demo_01", "status": "working"},
+      {"role_id": "schemas", "agent_id": "agent_demo_02", "status": "done"},
+      {"role_id": "examples", "agent_id": null, "status": "open"}
+    ]
+  },
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:29:10Z",
+    "expires_at": "2026-03-22T10:29:10Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

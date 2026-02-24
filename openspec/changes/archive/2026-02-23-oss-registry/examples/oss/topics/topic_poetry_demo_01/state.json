@@ -1,0 +1,23 @@
+{
+  "kind": "topic_state",
+  "schema_version": 1,
+  "topic_id": "topic_poetry_demo_01",
+  "mode": "poetry_duel",
+  "updated_at": "2026-02-22T10:40:30Z",
+  "state": {
+    "phase": "open",
+    "round_id": "round_0001",
+    "theme": "夜雨",
+    "submission_deadline_at": "2026-02-22T10:45:00Z",
+    "submissions_count": 2
+  },
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:40:30Z",
+    "expires_at": "2026-03-22T10:40:30Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

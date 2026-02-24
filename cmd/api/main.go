@@ -38,6 +38,23 @@ func main() {
 			PublishMinCompletedWorkItems: cfg.PublishMinCompletedWorkItems,
 			MatchingParticipantCount:     cfg.MatchingParticipantCount,
 			WorkItemLeaseSeconds:         cfg.WorkItemLeaseSeconds,
+
+			PlatformKeysEncryptionKey: cfg.PlatformKeysEncryptionKey,
+			PlatformCertIssuer:        cfg.PlatformCertIssuer,
+			PlatformCertTTLSeconds:    cfg.PlatformCertTTLSeconds,
+			PromptViewMaxChars:        cfg.PromptViewMaxChars,
+
+			OSSProvider:           cfg.OSSProvider,
+			OSSEndpoint:           cfg.OSSEndpoint,
+			OSSRegion:             cfg.OSSRegion,
+			OSSBucket:             cfg.OSSBucket,
+			OSSBasePrefix:         cfg.OSSBasePrefix,
+			OSSAccessKeyID:        cfg.OSSAccessKeyID,
+			OSSAccessKeySecret:    cfg.OSSAccessKeySecret,
+			OSSSTSRoleARN:         cfg.OSSSTSRoleARN,
+			OSSSTSDurationSeconds: cfg.OSSSTSDurationSeconds,
+			OSSLocalDir:           cfg.OSSLocalDir,
+			OSSEventsIngestToken:  cfg.OSSEventsIngestToken,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

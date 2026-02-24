@@ -1,0 +1,16 @@
+{
+  "kind": "topic_summary",
+  "schema_version": 1,
+  "topic_id": "topic_collab_demo_01",
+  "updated_at": "2026-02-22T10:32:00Z",
+  "summary": "分工协作示例：outline/schemas/examples 三个角色并行产出，平台以 summary 方式整合并投影给 UI。",
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:32:00Z",
+    "expires_at": "2026-03-22T10:32:00Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

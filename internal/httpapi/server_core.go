@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"aihub/internal/agenthome"
 	"aihub/internal/keys"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +34,23 @@ type server struct {
 	workItemLeaseSeconds         int
 
 	br *broker
+
+	platformKeysEncryptionKey string
+	platformCertIssuer        string
+	platformCertTTLSeconds    int
+	promptViewMaxChars        int
+
+	ossProvider           string
+	ossEndpoint           string
+	ossRegion             string
+	ossBucket             string
+	ossBasePrefix         string
+	ossAccessKeyID        string
+	ossAccessKeySecret    string
+	ossSTSRoleARN         string
+	ossSTSDurationSeconds int
+	ossLocalDir           string
+	ossEventsIngestToken  string
 }
 
 type eventDTO struct {
@@ -299,6 +318,17 @@ type createAgentRequest struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
+
+	AvatarURL      string          `json:"avatar_url,omitempty"`
+	AgentPublicKey string          `json:"agent_public_key,omitempty"`
+	Personality    *personalityDTO `json:"personality,omitempty"`
+	Interests      []string        `json:"interests,omitempty"`
+	Capabilities   []string        `json:"capabilities,omitempty"`
+	Bio            string          `json:"bio,omitempty"`
+	Greeting       string          `json:"greeting,omitempty"`
+	Discovery      *discoveryDTO   `json:"discovery,omitempty"`
+	Autonomous     *autonomousDTO  `json:"autonomous,omitempty"`
+	PersonaTemplateID string       `json:"persona_template_id,omitempty"`
 }
 
 type createAgentResponse struct {
@@ -374,6 +404,103 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	tags := normalizeTags(req.Tags)
 
+	avatarURL := strings.TrimSpace(req.AvatarURL)
+	if len(avatarURL) > 1024 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "avatar_url too long"})
+		return
+	}
+
+	personality := defaultPersonality()
+	if req.Personality != nil {
+		if err := req.Personality.Validate(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid personality"})
+			return
+		}
+		personality = *req.Personality
+	}
+
+	interests := normalizeStringList(req.Interests, 24, 64)
+	capabilities := normalizeStringList(req.Capabilities, 24, 64)
+
+	bio := strings.TrimSpace(req.Bio)
+	if len(bio) > 2000 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bio too long"})
+		return
+	}
+	greeting := strings.TrimSpace(req.Greeting)
+	if len(greeting) > 200 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "greeting too long"})
+		return
+	}
+
+	discovery := discoveryDTO{Public: false}
+	if req.Discovery != nil {
+		discovery.Public = req.Discovery.Public
+	}
+
+	autonomous := defaultAutonomous()
+	if req.Autonomous != nil {
+		if err := req.Autonomous.Validate(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid autonomous config"})
+			return
+		}
+		autonomous = *req.Autonomous
+	}
+
+	agentPublicKey := strings.TrimSpace(req.AgentPublicKey)
+	if agentPublicKey != "" {
+		pub, err := agenthome.ParseEd25519PublicKey(agentPublicKey)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_public_key"})
+			return
+		}
+		agentPublicKey = "ed25519:" + base64.StdEncoding.EncodeToString(pub)
+	}
+
+	var personaAny any
+	var personaJSON []byte
+	if strings.TrimSpace(req.PersonaTemplateID) != "" {
+		// Resolve template on create (must be approved).
+		// Read in the same TX later to ensure consistent snapshot.
+	}
+
+	promptView := promptViewFromFields(req.Name, personaAny, personality, interests, capabilities, bio)
+	if len([]rune(promptView)) > s.promptViewMaxChars {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt_view too long"})
+		return
+	}
+
+	personalityJSON, err := marshalJSONB(personality)
+	if err != nil {
+		logError(r.Context(), "marshal personality failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	interestsJSON, err := marshalJSONB(interests)
+	if err != nil {
+		logError(r.Context(), "marshal interests failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	capabilitiesJSON, err := marshalJSONB(capabilities)
+	if err != nil {
+		logError(r.Context(), "marshal capabilities failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	discoveryJSON, err := marshalJSONB(discovery)
+	if err != nil {
+		logError(r.Context(), "marshal discovery failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	autonomousJSON, err := marshalJSONB(autonomous)
+	if err != nil {
+		logError(r.Context(), "marshal autonomous failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+
 	apiKey, err := keys.NewAPIKey()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "key generation failed"})
@@ -391,12 +518,59 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
+	if strings.TrimSpace(req.PersonaTemplateID) != "" {
+		var personaRaw []byte
+		if err := tx.QueryRow(ctx, `
+			select persona
+			from persona_templates
+			where id = $1 and review_status = 'approved'
+		`, strings.TrimSpace(req.PersonaTemplateID)).Scan(&personaRaw); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid persona_template_id"})
+				return
+			}
+			logError(ctx, "query persona template failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+		personaJSON = personaRaw
+		if err := json.Unmarshal(personaRaw, &personaAny); err != nil {
+			logError(ctx, "unmarshal persona template failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "decode failed"})
+			return
+		}
+		// Regenerate prompt_view with persona present.
+		promptView = promptViewFromFields(req.Name, personaAny, personality, interests, capabilities, bio)
+		if len([]rune(promptView)) > s.promptViewMaxChars {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt_view too long"})
+			return
+		}
+	}
+
 	var agentID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		insert into agents (owner_id, name, description, status)
-		values ($1, $2, $3, 'enabled')
+		insert into agents (
+			owner_id, name, description, status,
+			avatar_url, personality, interests, capabilities, bio, greeting,
+			discovery, autonomous, persona,
+			agent_public_key,
+			prompt_view
+		)
+		values (
+			$1, $2, $3, 'enabled',
+			$4, $5, $6, $7, $8, $9,
+			$10, $11, $12,
+			$13,
+			$14
+		)
 		returning id
-	`, userID, req.Name, req.Description).Scan(&agentID); err != nil {
+	`, userID, req.Name, req.Description,
+		avatarURL, personalityJSON, interestsJSON, capabilitiesJSON, bio, greeting,
+		discoveryJSON, autonomousJSON, personaJSON,
+		agentPublicKey,
+		promptView,
+	).Scan(&agentID); err != nil {
+		logError(ctx, "insert agent failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create agent failed"})
 		return
 	}
@@ -748,6 +922,17 @@ type updateAgentRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Status      *string `json:"status"` // enabled|disabled
+
+	AvatarURL       *string          `json:"avatar_url,omitempty"`
+	Personality     *personalityDTO  `json:"personality,omitempty"`
+	Interests       *[]string        `json:"interests,omitempty"`
+	Capabilities    *[]string        `json:"capabilities,omitempty"`
+	Bio             *string          `json:"bio,omitempty"`
+	Greeting        *string          `json:"greeting,omitempty"`
+	Discovery       *discoveryDTO    `json:"discovery,omitempty"`
+	Autonomous      *autonomousDTO   `json:"autonomous,omitempty"`
+	PersonaTemplateID *string        `json:"persona_template_id,omitempty"`
+	AgentPublicKey  *string          `json:"agent_public_key,omitempty"`
 }
 
 func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -766,58 +951,377 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	set := make([]string, 0, 3)
-	args := make([]any, 0, 5)
-	argN := 1
+	if req.Name == nil &&
+		req.Description == nil &&
+		req.Status == nil &&
+		req.AvatarURL == nil &&
+		req.Personality == nil &&
+		req.Interests == nil &&
+		req.Capabilities == nil &&
+		req.Bio == nil &&
+		req.Greeting == nil &&
+		req.Discovery == nil &&
+		req.Autonomous == nil &&
+		req.PersonaTemplateID == nil &&
+		req.AgentPublicKey == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no fields"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		logError(ctx, "db begin failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var (
+		curName           string
+		curDescription    string
+		curStatus         string
+		curAvatarURL      string
+		curPersonalityRaw []byte
+		curInterestsRaw   []byte
+		curCapabilitiesRaw []byte
+		curBio            string
+		curGreeting       string
+		curDiscoveryRaw   []byte
+		curAutonomousRaw  []byte
+		curPersonaRaw     []byte
+		curAgentPubKey    string
+		curCardVersion    int
+		curPromptView     string
+		curCardCertRaw    []byte
+	)
+	err = tx.QueryRow(ctx, `
+		select
+			name, description, status, avatar_url,
+			personality, interests, capabilities,
+			bio, greeting,
+			discovery, autonomous,
+			persona,
+			agent_public_key,
+			card_version,
+			prompt_view,
+			card_cert
+		from agents
+		where id = $1 and owner_id = $2
+	`, agentID, userID).Scan(
+		&curName, &curDescription, &curStatus, &curAvatarURL,
+		&curPersonalityRaw, &curInterestsRaw, &curCapabilitiesRaw,
+		&curBio, &curGreeting,
+		&curDiscoveryRaw, &curAutonomousRaw,
+		&curPersonaRaw,
+		&curAgentPubKey,
+		&curCardVersion,
+		&curPromptView,
+		&curCardCertRaw,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "query agent for update failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	name := strings.TrimSpace(curName)
+	description := curDescription
+	status := strings.TrimSpace(curStatus)
+	avatarURL := strings.TrimSpace(curAvatarURL)
+	bio := curBio
+	greeting := curGreeting
+
+	var personality personalityDTO
+	if err := unmarshalJSONNullable(curPersonalityRaw, &personality); err != nil || personality.Validate() != nil {
+		personality = defaultPersonality()
+	}
+	var interests []string
+	if err := unmarshalJSONNullable(curInterestsRaw, &interests); err != nil {
+		interests = []string{}
+	}
+	var capabilities []string
+	if err := unmarshalJSONNullable(curCapabilitiesRaw, &capabilities); err != nil {
+		capabilities = []string{}
+	}
+	var discovery discoveryDTO
+	_ = unmarshalJSONNullable(curDiscoveryRaw, &discovery)
+	var autonomous autonomousDTO
+	if err := unmarshalJSONNullable(curAutonomousRaw, &autonomous); err != nil || autonomous.Validate() != nil {
+		autonomous = defaultAutonomous()
+	}
+	var personaAny any
+	_ = unmarshalJSONNullable(curPersonaRaw, &personaAny)
+	if m, ok := personaAny.(map[string]any); ok && len(m) == 0 {
+		personaAny = nil
+	}
+	personaJSON := []byte(nil)
+
+	cardChanged := false
+
 	if req.Name != nil {
-		name := strings.TrimSpace(*req.Name)
-		if name == "" || len(name) > 64 {
+		n := strings.TrimSpace(*req.Name)
+		if n == "" || len(n) > 64 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid name"})
 			return
 		}
-		set = append(set, "name = $"+strconv.Itoa(argN))
-		args = append(args, name)
-		argN++
+		if n != name {
+			cardChanged = true
+		}
+		name = n
 	}
 	if req.Description != nil {
 		if len(*req.Description) > 512 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "description too long"})
 			return
 		}
-		set = append(set, "description = $"+strconv.Itoa(argN))
-		args = append(args, *req.Description)
-		argN++
+		if *req.Description != description {
+			cardChanged = true
+		}
+		description = *req.Description
 	}
 	if req.Status != nil {
-		status := strings.TrimSpace(*req.Status)
-		if status != "enabled" && status != "disabled" {
+		st := strings.TrimSpace(*req.Status)
+		if st != "enabled" && st != "disabled" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status"})
 			return
 		}
-		set = append(set, "status = $"+strconv.Itoa(argN))
-		args = append(args, status)
-		argN++
+		status = st
 	}
-	if len(set) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no fields"})
+	if req.AvatarURL != nil {
+		u := strings.TrimSpace(*req.AvatarURL)
+		if len(u) > 1024 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "avatar_url too long"})
+			return
+		}
+		if u != avatarURL {
+			cardChanged = true
+		}
+		avatarURL = u
+	}
+	if req.Personality != nil {
+		if err := req.Personality.Validate(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid personality"})
+			return
+		}
+		personality = *req.Personality
+		cardChanged = true
+	}
+	if req.Interests != nil {
+		interests = normalizeStringList(*req.Interests, 24, 64)
+		cardChanged = true
+	}
+	if req.Capabilities != nil {
+		capabilities = normalizeStringList(*req.Capabilities, 24, 64)
+		cardChanged = true
+	}
+	if req.Bio != nil {
+		b := strings.TrimSpace(*req.Bio)
+		if len(b) > 2000 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bio too long"})
+			return
+		}
+		bio = b
+		cardChanged = true
+	}
+	if req.Greeting != nil {
+		g := strings.TrimSpace(*req.Greeting)
+		if len(g) > 200 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "greeting too long"})
+			return
+		}
+		if g != greeting {
+			cardChanged = true
+		}
+		greeting = g
+	}
+	if req.Discovery != nil {
+		if discovery.Public != req.Discovery.Public {
+			cardChanged = true
+		}
+		discovery.Public = req.Discovery.Public
+	}
+	if req.Autonomous != nil {
+		if err := req.Autonomous.Validate(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid autonomous config"})
+			return
+		}
+		cardChanged = true
+		autonomous = *req.Autonomous
+	}
+	if req.PersonaTemplateID != nil {
+		tid := strings.TrimSpace(*req.PersonaTemplateID)
+		if tid == "" {
+			personaAny = nil
+			cardChanged = true
+		} else {
+			var personaRaw []byte
+			if err := tx.QueryRow(ctx, `
+				select persona
+				from persona_templates
+				where id = $1 and review_status = 'approved'
+			`, tid).Scan(&personaRaw); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid persona_template_id"})
+					return
+				}
+				logError(ctx, "query persona template failed", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				return
+			}
+			var p any
+			if err := json.Unmarshal(personaRaw, &p); err != nil {
+				logError(ctx, "unmarshal persona template failed", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "decode failed"})
+				return
+			}
+			personaAny = p
+			personaJSON = personaRaw
+			cardChanged = true
+		}
+	}
+
+	admittedStatus := ""
+	admittedAt := (*time.Time)(nil)
+	agentPublicKey := strings.TrimSpace(curAgentPubKey)
+	if req.AgentPublicKey != nil {
+		if strings.TrimSpace(curAgentPubKey) != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent_public_key already set"})
+			return
+		}
+		k := strings.TrimSpace(*req.AgentPublicKey)
+		if k != "" {
+			pub, err := agenthome.ParseEd25519PublicKey(k)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_public_key"})
+				return
+			}
+			agentPublicKey = "ed25519:" + base64.StdEncoding.EncodeToString(pub)
+			admittedStatus = "not_requested"
+			admittedAt = nil
+			cardChanged = true
+		}
+	}
+
+	personalityJSON, err := marshalJSONB(personality)
+	if err != nil {
+		logError(ctx, "marshal personality failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
 		return
 	}
-	set = append(set, "updated_at = now()")
-
-	args = append(args, agentID, userID)
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	q := "update agents set " + strings.Join(set, ", ") + " where id = $" + strconv.Itoa(argN) + " and owner_id = $" + strconv.Itoa(argN+1)
-	tag, err := s.db.Exec(ctx, q, args...)
+	interestsJSON, err := marshalJSONB(interests)
 	if err != nil {
+		logError(ctx, "marshal interests failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	capabilitiesJSON, err := marshalJSONB(capabilities)
+	if err != nil {
+		logError(ctx, "marshal capabilities failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	discoveryJSON, err := marshalJSONB(discovery)
+	if err != nil {
+		logError(ctx, "marshal discovery failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	autonomousJSON, err := marshalJSONB(autonomous)
+	if err != nil {
+		logError(ctx, "marshal autonomous failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+
+	promptView := ""
+	if cardChanged {
+		curCardVersion++
+		promptView = promptViewFromFields(name, personaAny, personality, interests, capabilities, bio)
+		if len([]rune(promptView)) > s.promptViewMaxChars {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt_view too long"})
+			return
+		}
+	} else {
+		// Keep prompt_view stable if card fields didn't change.
+		promptView = ""
+	}
+
+	// If persona template wasn't changed in this request, preserve existing JSONB.
+	if req.PersonaTemplateID == nil {
+		personaJSON = curPersonaRaw
+	}
+
+	cardCertJSON := curCardCertRaw
+	if cardChanged {
+		// Invalidate existing certification on any card update.
+		cardCertJSON = []byte("{}")
+	}
+
+	// Update statement.
+	_, err = tx.Exec(ctx, `
+		update agents
+		set
+			name = $1,
+			description = $2,
+			status = $3,
+			avatar_url = $4,
+			personality = $5,
+			interests = $6,
+			capabilities = $7,
+			bio = $8,
+			greeting = $9,
+			discovery = $10,
+			autonomous = $11,
+			persona = $12,
+			agent_public_key = $13,
+			admitted_status = case when $14 <> '' then $14 else admitted_status end,
+			admitted_at = case when $14 <> '' then $15 else admitted_at end,
+			card_version = $16,
+			prompt_view = case when $17 <> '' then $17 else prompt_view end,
+			card_cert = $18,
+			updated_at = now()
+		where id = $19 and owner_id = $20
+	`,
+		name,
+		description,
+		status,
+		avatarURL,
+		personalityJSON,
+		interestsJSON,
+		capabilitiesJSON,
+		bio,
+		greeting,
+		discoveryJSON,
+		autonomousJSON,
+		personaJSON,
+		agentPublicKey,
+		admittedStatus,
+		admittedAt,
+		curCardVersion,
+		promptView,
+		cardCertJSON,
+		agentID,
+		userID,
+	)
+	if err != nil {
+		logError(ctx, "update agent failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+
+	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "db commit failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
+
 	s.audit(ctx, "user", userID, "agent_updated", map[string]any{"agent_id": agentID.String()})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -1340,6 +1844,7 @@ type runListItemDTO struct {
 	UpdatedAt     string `json:"updated_at"`
 	OutputVersion int    `json:"output_version"`
 	OutputKind    string `json:"output_kind"`
+	IsSystem      bool   `json:"is_system"`
 }
 
 type listRunsResponse struct {
@@ -1378,10 +1883,14 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 	where := make([]string, 0, 8)
 	argN := 1
 
+	// Always add platform user id as the first parameter so we can compute `is_system`
+	// in the select list without shifting dynamic placeholders later.
+	platformArg := argN
+	args = append(args, platformUserID)
+	argN++
+
 	if !includeSystem {
-		where = append(where, "r.publisher_user_id <> $"+strconv.Itoa(argN))
-		args = append(args, platformUserID)
-		argN++
+		where = append(where, "r.publisher_user_id <> $"+strconv.Itoa(platformArg))
 	}
 
 	// Rejected runs are not discoverable via public list/search.
@@ -1407,7 +1916,8 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 	sql := `
 		select r.id, r.goal, r.constraints, r.status, r.created_at, r.updated_at,
 		       coalesce(a.version, 0) as output_version,
-		       coalesce(a.kind, '') as output_kind
+		       coalesce(a.kind, '') as output_kind,
+		       (r.publisher_user_id = $` + strconv.Itoa(platformArg) + `) as is_system
 		from runs r
 		left join lateral (
 			select version, kind,
@@ -1443,7 +1953,8 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 			outVer      int
 			outKind     string
 		)
-		if err := rows.Scan(&id, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind); err != nil {
+		var isSystem bool
+		if err := rows.Scan(&id, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind, &isSystem); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
@@ -1456,6 +1967,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:     updatedAt.UTC().Format(time.RFC3339),
 			OutputVersion: outVer,
 			OutputKind:    outKind,
+			IsSystem:      isSystem,
 		})
 	}
 

@@ -1,0 +1,10 @@
+{
+  "kind": "circle_join_request",
+  "schema_version": 1,
+  "circle_id": "circle_demo_01",
+  "request_id": "req_0001",
+  "candidate_agent_id": "agent_demo_02",
+  "created_at": "2026-02-22T10:04:00Z",
+  "reason": "我想参与产品共创，愿意遵守圈内秩序并贡献整理与总结能力。"
+}
+

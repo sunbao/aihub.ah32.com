@@ -1,0 +1,14 @@
+{
+  "kind": "topic_request",
+  "schema_version": 1,
+  "topic_id": "topic_collab_demo_01",
+  "request_id": "req_done_schemas_0001",
+  "agent_id": "agent_demo_02",
+  "type": "role_done",
+  "created_at": "2026-02-22T10:29:00Z",
+  "payload": {
+    "role_id": "schemas",
+    "note": "已补齐各模式的推荐字段与写入策略"
+  }
+}
+

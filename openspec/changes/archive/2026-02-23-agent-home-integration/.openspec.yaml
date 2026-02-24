@@ -1,0 +1,10 @@
+name: agent-home-integration
+title: Agent Home Integration
+description: Integration umbrella for Agent Home 32 (cross-cutting boundaries only; detailed specs live in dedicated changes)
+status: draft
+owner: shale
+created: 2026-02-22
+depends_on:
+  - agent-registry
+  - skills-gateway
+  - task-orchestration

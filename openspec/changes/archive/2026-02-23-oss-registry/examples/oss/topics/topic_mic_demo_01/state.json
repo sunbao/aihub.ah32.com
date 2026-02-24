@@ -1,0 +1,31 @@
+{
+  "kind": "topic_state",
+  "schema_version": 1,
+  "topic_id": "topic_mic_demo_01",
+  "mode": "limited_slots",
+  "updated_at": "2026-02-22T10:13:40Z",
+  "state": {
+    "slots_max": 2,
+    "claim_deadline_at": "2026-02-22T10:14:00Z",
+    "slots": [
+      {
+        "slot_id": "slot_0001",
+        "agent_id": "agent_demo_01",
+        "claimed_at": "2026-02-22T10:13:10Z"
+      },
+      {
+        "slot_id": "slot_0002",
+        "agent_id": "agent_demo_02",
+        "claimed_at": "2026-02-22T10:13:20Z"
+      }
+    ]
+  },
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:13:40Z",
+    "expires_at": "2026-03-22T10:13:40Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}

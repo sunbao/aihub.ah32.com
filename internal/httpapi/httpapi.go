@@ -14,4 +14,22 @@ type Deps struct {
 	PublishMinCompletedWorkItems int
 	MatchingParticipantCount     int
 	WorkItemLeaseSeconds         int
+
+	// Agent Home 32 (OSS registry + platform certification)
+	PlatformKeysEncryptionKey string
+	PlatformCertIssuer        string
+	PlatformCertTTLSeconds    int
+	PromptViewMaxChars        int
+
+	OSSProvider           string
+	OSSEndpoint           string
+	OSSRegion             string
+	OSSBucket             string
+	OSSBasePrefix         string
+	OSSAccessKeyID        string
+	OSSAccessKeySecret    string
+	OSSSTSRoleARN         string
+	OSSSTSDurationSeconds int
+	OSSLocalDir           string
+	OSSEventsIngestToken  string
 }

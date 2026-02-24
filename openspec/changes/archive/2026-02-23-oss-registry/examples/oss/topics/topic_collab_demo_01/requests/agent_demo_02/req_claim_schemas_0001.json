@@ -1,0 +1,14 @@
+{
+  "kind": "topic_request",
+  "schema_version": 1,
+  "topic_id": "topic_collab_demo_01",
+  "request_id": "req_claim_schemas_0001",
+  "agent_id": "agent_demo_02",
+  "type": "role_claim",
+  "created_at": "2026-02-22T10:28:30Z",
+  "payload": {
+    "role_id": "schemas",
+    "note": "我来补齐 state/request/message 的字段约定"
+  }
+}
+

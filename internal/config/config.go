@@ -23,6 +23,24 @@ type Config struct {
 	MatchingParticipantCount int
 	WorkItemLeaseSeconds     int
 	WorkerTickSeconds        int
+
+	// Agent Home 32 (OSS registry + platform certification)
+	PlatformKeysEncryptionKey string
+	PlatformCertIssuer        string
+	PlatformCertTTLSeconds    int
+	PromptViewMaxChars        int
+
+	OSSProvider          string // "aliyun" | "local" | ""
+	OSSEndpoint          string
+	OSSRegion            string
+	OSSBucket            string
+	OSSBasePrefix        string
+	OSSAccessKeyID       string
+	OSSAccessKeySecret   string
+	OSSSTSRoleARN        string
+	OSSSTSDurationSeconds int
+	OSSLocalDir          string
+	OSSEventsIngestToken string
 }
 
 func Load() (Config, error) {
@@ -49,6 +67,27 @@ func Load() (Config, error) {
 		workerTick = 1
 	}
 
+	certTTLSeconds := getenvIntDefault("AIHUB_PLATFORM_CERT_TTL_SECONDS", 86400*30) // 30 days
+	if certTTLSeconds < 60 {
+		certTTLSeconds = 60
+	}
+
+	promptViewMaxChars := getenvIntDefault("AIHUB_PROMPT_VIEW_MAX_CHARS", 600)
+	if promptViewMaxChars < 100 {
+		promptViewMaxChars = 100
+	}
+	if promptViewMaxChars > 2000 {
+		promptViewMaxChars = 2000
+	}
+
+	stsDuration := getenvIntDefault("AIHUB_OSS_STS_DURATION_SECONDS", 900) // 15 minutes
+	if stsDuration < 60 {
+		stsDuration = 60
+	}
+	if stsDuration > 3600 {
+		stsDuration = 3600
+	}
+
 	cfg := Config{
 		DatabaseURL:                  os.Getenv("AIHUB_DATABASE_URL"),
 		HTTPAddr:                     getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
@@ -62,6 +101,23 @@ func Load() (Config, error) {
 		MatchingParticipantCount:     participantCount,
 		WorkItemLeaseSeconds:         leaseSeconds,
 		WorkerTickSeconds:            workerTick,
+
+		PlatformKeysEncryptionKey: strings.TrimSpace(os.Getenv("AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY")),
+		PlatformCertIssuer:        getenvDefault("AIHUB_PLATFORM_CERT_ISSUER", "aihub"),
+		PlatformCertTTLSeconds:    certTTLSeconds,
+		PromptViewMaxChars:        promptViewMaxChars,
+
+		OSSProvider:           strings.TrimSpace(os.Getenv("AIHUB_OSS_PROVIDER")),
+		OSSEndpoint:           strings.TrimSpace(os.Getenv("AIHUB_OSS_ENDPOINT")),
+		OSSRegion:             strings.TrimSpace(os.Getenv("AIHUB_OSS_REGION")),
+		OSSBucket:             strings.TrimSpace(os.Getenv("AIHUB_OSS_BUCKET")),
+		OSSBasePrefix:         strings.Trim(strings.TrimSpace(os.Getenv("AIHUB_OSS_BASE_PREFIX")), "/"),
+		OSSAccessKeyID:        strings.TrimSpace(os.Getenv("AIHUB_OSS_ACCESS_KEY_ID")),
+		OSSAccessKeySecret:    strings.TrimSpace(os.Getenv("AIHUB_OSS_ACCESS_KEY_SECRET")),
+		OSSSTSRoleARN:         strings.TrimSpace(os.Getenv("AIHUB_OSS_STS_ROLE_ARN")),
+		OSSSTSDurationSeconds: stsDuration,
+		OSSLocalDir:           strings.TrimSpace(os.Getenv("AIHUB_OSS_LOCAL_DIR")),
+		OSSEventsIngestToken:  strings.TrimSpace(os.Getenv("AIHUB_OSS_EVENTS_INGEST_TOKEN")),
 	}
 
 	if cfg.DatabaseURL == "" {

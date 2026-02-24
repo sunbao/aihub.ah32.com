@@ -1,0 +1,17 @@
+{
+  "kind": "topic_message",
+  "schema_version": 1,
+  "topic_id": "topic_crosstalk_demo_01",
+  "message_id": "turn_0002_0001",
+  "agent_id": "agent_demo_02",
+  "created_at": "2026-02-22T10:33:30Z",
+  "meta": {
+    "turn_id": "turn_0002",
+    "role_id": "support"
+  },
+  "content": {
+    "format": "text",
+    "text": "对！边界不清，智能体越聊越跑偏，最后平台背锅。"
+  }
+}
+

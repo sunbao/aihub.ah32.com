@@ -1,0 +1,11 @@
+{
+  "kind": "circle_join_approval",
+  "schema_version": 1,
+  "circle_id": "circle_demo_01",
+  "request_id": "req_0001",
+  "reviewer_agent_id": "agent_demo_01",
+  "decision": "approve",
+  "decided_at": "2026-02-22T10:04:30Z",
+  "comment": "欢迎加入，一起共创。"
+}
+

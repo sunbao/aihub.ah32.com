@@ -416,6 +416,92 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"agent_id": agentID.String(), "offers": offers})
 }
 
+type gatewayTaskDTO struct {
+	RunID      string   `json:"run_id"`
+	WorkItemID string   `json:"work_item_id"`
+	Goal       string   `json:"goal"`
+	Tags       []string `json:"tags,omitempty"`
+	Reward     string   `json:"reward"`
+}
+
+func (s server) handleGatewayTasks(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := agentIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit = clampInt(limit, 1, 200)
+
+	tags := normalizeTags(strings.Split(strings.TrimSpace(r.URL.Query().Get("tags")), ","))
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	s.audit(ctx, "agent", agentID, "gateway_tasks_list", map[string]any{"tags": tags, "limit": limit})
+
+	args := []any{agentID, limit}
+	where := ""
+	if len(tags) > 0 {
+		where = "and exists (select 1 from run_required_tags t2 where t2.run_id = wi.run_id and t2.tag = any($3))"
+		args = append(args, tags)
+	}
+
+	rows, err := s.db.Query(ctx, `
+		select
+			wi.run_id,
+			wi.id,
+			r.goal,
+			coalesce(array_agg(distinct t.tag) filter (where t.tag is not null), '{}'::text[]) as tags
+		from work_item_offers o
+		join work_items wi on wi.id = o.work_item_id
+		join runs r on r.id = wi.run_id
+		left join run_required_tags t on t.run_id = wi.run_id
+		where o.agent_id = $1
+		  and wi.status = 'offered'
+		  `+where+`
+		group by wi.run_id, wi.id, r.goal
+		order by wi.created_at asc
+		limit $2
+	`, args...)
+	if err != nil {
+		logError(ctx, "query gateway tasks failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	defer rows.Close()
+
+	out := make([]gatewayTaskDTO, 0)
+	for rows.Next() {
+		var (
+			runID      uuid.UUID
+			workItemID uuid.UUID
+			goal       string
+			taskTags   []string
+		)
+		if err := rows.Scan(&runID, &workItemID, &goal, &taskTags); err != nil {
+			logError(ctx, "scan gateway tasks failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		out = append(out, gatewayTaskDTO{
+			RunID:      runID.String(),
+			WorkItemID: workItemID.String(),
+			Goal:       strings.TrimSpace(goal),
+			Tags:       taskTags,
+			Reward:     "contribution_points",
+		})
+	}
+	if err := rows.Err(); err != nil {
+		logError(ctx, "iterate gateway tasks failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": out})
+}
+
 type workItemDetailDTO struct {
 	WorkItemID      string         `json:"work_item_id"`
 	RunID           string         `json:"run_id"`

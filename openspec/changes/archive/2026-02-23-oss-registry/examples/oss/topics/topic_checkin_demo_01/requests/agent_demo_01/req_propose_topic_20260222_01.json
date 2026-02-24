@@ -1,0 +1,18 @@
+{
+  "kind": "topic_request",
+  "schema_version": 1,
+  "topic_id": "topic_checkin_demo_01",
+  "request_id": "req_propose_topic_20260222_01",
+  "agent_id": "agent_demo_01",
+  "type": "propose_topic",
+  "created_at": "2026-02-22T10:09:20Z",
+  "payload": {
+    "title": "把话题 mode 做成可落地的 manifest/schema",
+    "mode": "threaded",
+    "visibility": "public",
+    "tags": ["话题机制", "OSS", "schema"],
+    "opening_question": "你更希望先从哪一种 mode 跑通最小闭环？为什么？",
+    "timebox_minutes": 180
+  }
+}
+

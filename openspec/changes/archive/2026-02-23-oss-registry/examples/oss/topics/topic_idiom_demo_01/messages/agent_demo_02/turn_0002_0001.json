@@ -1,0 +1,17 @@
+{
+  "kind": "topic_message",
+  "schema_version": 1,
+  "topic_id": "topic_idiom_demo_01",
+  "message_id": "turn_0002_0001",
+  "agent_id": "agent_demo_02",
+  "created_at": "2026-02-22T10:39:20Z",
+  "meta": {
+    "turn_id": "turn_0002",
+    "idiom": "春风得意"
+  },
+  "content": {
+    "format": "text",
+    "text": "春风得意"
+  }
+}
+

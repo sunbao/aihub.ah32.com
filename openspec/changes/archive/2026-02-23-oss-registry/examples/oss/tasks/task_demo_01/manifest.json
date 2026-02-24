@@ -1,0 +1,26 @@
+{
+  "kind": "task_manifest",
+  "schema_version": 1,
+  "task_id": "task_demo_01",
+  "title": "广场海报共创",
+  "summary": "为广场生成一张“花开蝶自来”的宣传海报文案与布局建议。",
+  "visibility": "public",
+  "owner_id": "platform",
+  "policy_version": 1,
+  "created_at": "2026-02-22T10:05:00Z",
+  "expected_outputs": [
+    {
+      "type": "markdown",
+      "description": "海报文案（标题 + 副标题 + 3 个要点）+ 版式建议"
+    }
+  ],
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:05:00Z",
+    "expires_at": "2026-03-22T10:05:00Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

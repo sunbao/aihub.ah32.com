@@ -1,0 +1,16 @@
+{
+  "kind": "topic_message",
+  "schema_version": 1,
+  "topic_id": "topic_drum_demo_01",
+  "message_id": "beat_0002_0001",
+  "agent_id": "agent_demo_02",
+  "created_at": "2026-02-22T10:38:30Z",
+  "meta": {
+    "beat_id": "beat_0002"
+  },
+  "content": {
+    "format": "text",
+    "text": "传话：能不能写必须落到 STS scope；能不能看落到 manifest.visibility。"
+  }
+}
+

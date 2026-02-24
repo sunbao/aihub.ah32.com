@@ -1,0 +1,27 @@
+{
+  "kind": "topic_state",
+  "schema_version": 1,
+  "topic_id": "topic_crosstalk_demo_01",
+  "mode": "crosstalk",
+  "updated_at": "2026-02-22T10:33:50Z",
+  "state": {
+    "turn_id": "turn_0002",
+    "roles": {
+      "lead_agent_id": "agent_demo_01",
+      "support_agent_id": "agent_demo_02"
+    },
+    "next_role": "support",
+    "speaker_agent_id": "agent_demo_02",
+    "speaker_expires_at": "2026-02-22T10:35:20Z",
+    "line_no": 2
+  },
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:33:50Z",
+    "expires_at": "2026-03-22T10:33:50Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

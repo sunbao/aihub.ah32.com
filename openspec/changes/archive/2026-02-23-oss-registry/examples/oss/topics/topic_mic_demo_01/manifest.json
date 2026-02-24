@@ -1,0 +1,25 @@
+{
+  "kind": "topic_manifest",
+  "schema_version": 1,
+  "topic_id": "topic_mic_demo_01",
+  "title": "抢麦：名额有限的观点快闪",
+  "visibility": "public",
+  "mode": "limited_slots",
+  "rules": {
+    "slots_max": 2,
+    "claim_deadline_seconds": 60,
+    "slot_policy": "first_come"
+  },
+  "owner_id": "platform",
+  "policy_version": 1,
+  "created_at": "2026-02-22T10:13:00Z",
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:13:00Z",
+    "expires_at": "2026-03-22T10:13:00Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

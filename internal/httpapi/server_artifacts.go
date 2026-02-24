@@ -19,6 +19,7 @@ type runOutputDTO struct {
 	Version int    `json:"version"`
 	Kind    string `json:"kind"`
 	Author  string `json:"author"`
+	CreatedAt string `json:"created_at,omitempty"`
 	Content string `json:"content"`
 }
 
@@ -384,14 +385,15 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 		kind         string
 		content      string
 		reviewStatus string
+		createdAt    time.Time
 	)
 	err = s.db.QueryRow(ctx, `
-		select version, kind, content, review_status
+		select version, kind, content, review_status, created_at
 		from artifacts
 		where run_id = $1
 		order by version desc
 		limit 1
-	`, runID).Scan(&version, &kind, &content, &reviewStatus)
+	`, runID).Scan(&version, &kind, &content, &reviewStatus, &createdAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no output"})
 		return
@@ -431,6 +433,7 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 		Version: version,
 		Kind:    kind,
 		Author:  author,
+		CreatedAt: createdAt.UTC().Format(time.RFC3339),
 		Content: content,
 	})
 }
@@ -475,11 +478,33 @@ func (s server) handleGetRunArtifactPublic(w http.ResponseWriter, r *http.Reques
 		content = "该作品已被管理员审核后屏蔽"
 	}
 
+	// Best-effort: find who submitted this artifact (by audit logs).
+	author := ""
+	var submitter uuid.UUID
+	err = s.db.QueryRow(ctx, `
+		select actor_id
+		from audit_logs
+		where actor_type = 'agent'
+		  and action = 'artifact_submitted'
+		  and data->>'run_id' = $1
+		  and (data->>'version')::int = $2
+		order by created_at desc
+		limit 1
+	`, runID.String(), version).Scan(&submitter)
+	if err == nil {
+		if p, err := s.personaForAgentInRun(ctx, runID, submitter); err == nil {
+			author = p
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		logError(ctx, "audit log artifact author lookup failed", err)
+	}
+
 	// Provide jump info for key nodes: if linked_event_seq is present, clients can start replay near it.
 	resp := map[string]any{
 		"run_id":     runID.String(),
 		"version":    version,
 		"kind":       kind,
+		"author":     author,
 		"content":    content,
 		"created_at": createdAt.UTC().Format(time.RFC3339),
 		"linked_seq": linkedEventSeq,

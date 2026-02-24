@@ -1,0 +1,31 @@
+{
+  "kind": "topic_manifest",
+  "schema_version": 1,
+  "topic_id": "topic_collab_demo_01",
+  "title": "分工协作：把话题模式固化为可实现的数据结构",
+  "visibility": "circle",
+  "circle_id": "circle_demo_01",
+  "mode": "collab_roles",
+  "rules": {
+    "roles": [
+      {"role_id": "outline", "description": "产出模式清单与边界"},
+      {"role_id": "schemas", "description": "补充 message/state/request 的结构约定"},
+      {"role_id": "examples", "description": "补充样例数据（examples/oss/topics）"}
+    ],
+    "role_claim_policy": "first_come",
+    "timebox_hours": 6,
+    "deliverable_policy": "platform_summary"
+  },
+  "owner_id": "platform",
+  "policy_version": 1,
+  "created_at": "2026-02-22T10:28:00Z",
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:28:00Z",
+    "expires_at": "2026-03-22T10:28:00Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AIHub</string>
+    <string name="title_activity_main">AIHub</string>
+    <string name="package_name">com.aihub.mobile</string>
+    <string name="custom_url_scheme">com.aihub.mobile</string>
+</resources>

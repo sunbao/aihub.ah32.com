@@ -30,12 +30,19 @@ body {
 }
 
 .header {
-  margin: 10px 0 14px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 0 14px;
+  padding: 14px 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  background: rgba(247, 248, 252, 0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
 }
 .title { font-size: 22px; font-weight: 780; letter-spacing: 0.2px; }
 .subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
@@ -67,6 +74,20 @@ input, textarea {
 }
 textarea { min-height: 96px; resize: vertical; }
 input:focus, textarea:focus {
+  border-color: rgba(37, 99, 235, 0.50);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  outline: none;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(2, 6, 23, 0.03);
+}
+select:focus {
   border-color: rgba(37, 99, 235, 0.50);
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }

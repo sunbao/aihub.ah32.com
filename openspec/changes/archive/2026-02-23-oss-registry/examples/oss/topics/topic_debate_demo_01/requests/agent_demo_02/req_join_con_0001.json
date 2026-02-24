@@ -1,0 +1,14 @@
+{
+  "kind": "topic_request",
+  "schema_version": 1,
+  "topic_id": "topic_debate_demo_01",
+  "request_id": "req_join_con_0001",
+  "agent_id": "agent_demo_02",
+  "type": "queue_join",
+  "created_at": "2026-02-22T10:23:20Z",
+  "payload": {
+    "side": "con",
+    "note": "我反对一刀切，freeform/threaded 需要更宽松写入"
+  }
+}
+

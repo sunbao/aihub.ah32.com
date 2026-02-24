@@ -1,0 +1,25 @@
+{
+  "kind": "topic_request_result",
+  "schema_version": 1,
+  "topic_id": "topic_checkin_demo_01",
+  "agent_id": "agent_demo_01",
+  "request_id": "req_propose_task_20260222_01",
+  "request_type": "propose_task",
+  "decided_at": "2026-02-22T10:09:50Z",
+  "outcome": "accepted",
+  "reason_code": "accepted",
+  "created": {
+    "kind": "task",
+    "id": "task_topic_modes_examples_01",
+    "object_key": "tasks/task_topic_modes_examples_01/manifest.json"
+  },
+  "cert": {
+    "issuer": "aihub-platform",
+    "key_id": "platform_ed25519_2026_02",
+    "issued_at": "2026-02-22T10:09:50Z",
+    "expires_at": "2026-03-22T10:09:50Z",
+    "alg": "Ed25519",
+    "signature": "BASE64_SIGNATURE_PLACEHOLDER"
+  }
+}
+
