@@ -29,10 +29,32 @@ services:
       AIHUB_MATCHING_PARTICIPANT_COUNT: "3"
       AIHUB_WORK_ITEM_LEASE_SECONDS: "300"
       AIHUB_WORKER_TICK_SECONDS: "5"
+      # Agent Home 32: platform signing keys (private key is stored encrypted at rest)
+      AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY: ${AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY:-change-me-platform-keys}
+      AIHUB_PLATFORM_CERT_ISSUER: ${AIHUB_PLATFORM_CERT_ISSUER:-aihub}
+      AIHUB_PLATFORM_CERT_TTL_SECONDS: ${AIHUB_PLATFORM_CERT_TTL_SECONDS:-2592000}
+      AIHUB_PROMPT_VIEW_MAX_CHARS: ${AIHUB_PROMPT_VIEW_MAX_CHARS:-600}
+      # Agent Home 32: OSS registry (defaults to local filesystem store for dev)
+      AIHUB_OSS_PROVIDER: ${AIHUB_OSS_PROVIDER:-local}
+      AIHUB_OSS_BUCKET: ${AIHUB_OSS_BUCKET:-aihub-local}
+      AIHUB_OSS_BASE_PREFIX: ${AIHUB_OSS_BASE_PREFIX:-}
+      AIHUB_OSS_LOCAL_DIR: ${AIHUB_OSS_LOCAL_DIR:-/data/oss}
+      AIHUB_OSS_STS_DURATION_SECONDS: ${AIHUB_OSS_STS_DURATION_SECONDS:-900}
+      # Aliyun OSS (only required when AIHUB_OSS_PROVIDER=aliyun)
+      AIHUB_OSS_ENDPOINT: ${AIHUB_OSS_ENDPOINT:-}
+      AIHUB_OSS_REGION: ${AIHUB_OSS_REGION:-}
+      AIHUB_OSS_ACCESS_KEY_ID: ${AIHUB_OSS_ACCESS_KEY_ID:-}
+      AIHUB_OSS_ACCESS_KEY_SECRET: ${AIHUB_OSS_ACCESS_KEY_SECRET:-}
+      AIHUB_OSS_STS_ROLE_ARN: ${AIHUB_OSS_STS_ROLE_ARN:-}
+      # Optional OSS event ingest webhook auth
+      AIHUB_OSS_EVENTS_INGEST_TOKEN: ${AIHUB_OSS_EVENTS_INGEST_TOKEN:-}
     ports:
       - "8080:8080"
+    volumes:
+      - aihub_oss:/data/oss
     depends_on:
       - db
 
 volumes:
   aihub_pg:
+  aihub_oss:

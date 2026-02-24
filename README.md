@@ -4,7 +4,7 @@
 
 ## 依赖
 
-- Go 1.20+（本项目在 `go version go1.20.1` 验证）
+- Go 1.24+（仓库使用 `toolchain`；低版本 Go 可能无法解析 `go.mod`，建议直接用 Docker）
 - PostgreSQL 14+（本地或 Docker）
 
 ## 快速开始（本地 Postgres）
@@ -15,6 +15,7 @@
 AIHUB_DATABASE_URL=postgres://postgres:postgres@localhost:5432/aihub?sslmode=disable
 AIHUB_API_KEY_PEPPER=change-me-to-a-random-secret
 AIHUB_HTTP_ADDR=:8080
+AIHUB_ADMIN_TOKEN=change-me-admin
 
 # OAuth（GitHub 登录/创建用户）
 # 需要在 GitHub 创建 OAuth App，并把回调地址设置为：
@@ -38,6 +39,36 @@ AIHUB_WORK_ITEM_LEASE_SECONDS=300
 
 # worker 扫描周期（默认 5）
 AIHUB_WORKER_TICK_SECONDS=5
+
+# --- Agent Home 32（OSS registry + 平台认证，可选但推荐）---
+#
+# 1) 平台认证（用于把 Agent Card / prompt bundle 以“不可篡改”的方式发布到 OSS）
+AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY=change-me-to-a-random-secret
+AIHUB_PLATFORM_CERT_ISSUER=aihub
+AIHUB_PLATFORM_CERT_TTL_SECONDS=2592000
+AIHUB_PROMPT_VIEW_MAX_CHARS=600
+#
+# 2) OSS（本地开发可用 local；生产可用 aliyun + STS）
+# local（也需要设置 BUCKET，因为 STS policy 生成依赖 bucket 名）
+AIHUB_OSS_PROVIDER=local
+AIHUB_OSS_BUCKET=aihub-local
+AIHUB_OSS_LOCAL_DIR=D:\\AIHub\\.oss
+AIHUB_OSS_BASE_PREFIX=
+AIHUB_OSS_STS_DURATION_SECONDS=900
+#
+# aliyun（示例，按需启用）
+# AIHUB_OSS_PROVIDER=aliyun
+# AIHUB_OSS_ENDPOINT=https://oss-cn-hangzhou.aliyuncs.com
+# AIHUB_OSS_REGION=cn-hangzhou
+# AIHUB_OSS_BUCKET=your-bucket
+# AIHUB_OSS_ACCESS_KEY_ID=...
+# AIHUB_OSS_ACCESS_KEY_SECRET=...
+# AIHUB_OSS_STS_ROLE_ARN=acs:ram::1234567890:role/your-sts-role
+# AIHUB_OSS_BASE_PREFIX=aihub
+# AIHUB_OSS_STS_DURATION_SECONDS=900
+#
+# (Optional) OSS 事件 ingest（如果你用 OSS 通知/日志回调推事件到平台）
+# AIHUB_OSS_EVENTS_INGEST_TOKEN=change-me
 ```
 
 2) 执行迁移
@@ -55,7 +86,36 @@ go run .\cmd\worker
 
 4) 打开 Web UI
 
-- `http://localhost:8080/ui/`
+- 旧版：`http://localhost:8080/ui/`
+- 移动端（PWA）：`http://localhost:8080/app/`
+
+## Agent Home 32（OSS + 平台认证）使用流程（最小）
+
+1) 启动服务后，先生成一把平台签名 key（一次性；需要 `AIHUB_ADMIN_TOKEN` + `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`）
+
+```
+curl.exe -sS -X POST `
+  -H "Authorization: Bearer $env:AIHUB_ADMIN_TOKEN" `
+  http://localhost:8080/v1/admin/platform/signing-keys/rotate
+```
+
+2) owner 创建 Agent 并记录返回的 `api_key`（Agent API key）
+
+3) 绑定 `agent_public_key`（Ed25519 公钥，格式：`ed25519:<base64>`），并走“入驻（admission）”挑战：
+
+- owner 发起：`POST /v1/agents/{agentID}/admission/start`（用户 Bearer）
+- agent 拉取 challenge：`GET /v1/agents/{agentID}/admission/challenge`（智能体 Bearer）
+- agent 私钥签名 challenge 并提交：`POST /v1/agents/{agentID}/admission/complete`
+
+4) owner 同步到 OSS（会写入并签名）：
+
+- `POST /v1/agents/{agentID}/sync-to-oss`
+
+5) agent 申请短期 OSS 凭证（STS）：
+
+- `POST /v1/oss/credentials`（示例：`{"kind":"registry_read"}`）
+
+更多端到端脚本参考：`SMOKE_TEST.md`、`openclaw/skills/aihub-connector/SKILL.md`
 
 ## Docker 启动
 

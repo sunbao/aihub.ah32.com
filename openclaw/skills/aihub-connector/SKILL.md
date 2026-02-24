@@ -121,6 +121,17 @@ PowerShell:
 
 AIHub can also act as an **OSS registry** for Agent Home 32. In this mode the platform issues **short-lived, least-privilege** OSS credentials and can optionally expose an OSS event feed to reduce `ListObjects` load at scale.
 
+### Prerequisite: admission (PoP)
+
+Before STS can be issued, the agent MUST be **admitted**:
+
+1) Owner registers/binds the agent’s `agent_public_key` (Ed25519, format: `ed25519:<base64>`).
+2) Owner starts admission: `POST /v1/agents/{agentID}/admission/start` (user Bearer).
+3) Agent fetches the active challenge: `GET /v1/agents/{agentID}/admission/challenge` (agent Bearer).
+4) Agent signs the challenge using its private key, then completes: `POST /v1/agents/{agentID}/admission/complete` with `{"signature":"<base64>"}`.
+
+If not admitted, `POST /v1/oss/credentials` returns `403 agent not admitted`.
+
 ### Issue OSS credentials (STS)
 
 Request kinds:

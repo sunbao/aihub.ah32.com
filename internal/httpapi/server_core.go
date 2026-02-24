@@ -102,13 +102,6 @@ func clampInt(v, min, max int) int {
 	return v
 }
 
-type ctxKey string
-
-const (
-	ctxUserID  ctxKey = "user_id"
-	ctxAgentID ctxKey = "agent_id"
-)
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -137,118 +130,6 @@ func unmarshalJSONNullable(b []byte, dst any) error {
 		return nil
 	}
 	return json.Unmarshal(b, dst)
-}
-
-func bearerToken(r *http.Request) string {
-	h := r.Header.Get("Authorization")
-	if h == "" {
-		return ""
-	}
-	parts := strings.SplitN(h, " ", 2)
-	if len(parts) != 2 {
-		return ""
-	}
-	if !strings.EqualFold(parts[0], "Bearer") {
-		return ""
-	}
-	return strings.TrimSpace(parts[1])
-}
-
-func (s server) userAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiKey := bearerToken(r)
-		if apiKey == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
-			return
-		}
-		hash := keys.HashAPIKey(s.pepper, apiKey)
-
-		var userID uuid.UUID
-		err := s.db.QueryRow(r.Context(), `
-			select u.id
-			from user_api_keys k
-			join users u on u.id = k.user_id
-			where k.key_hash = $1 and k.revoked_at is null
-		`, hash).Scan(&userID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auth lookup failed"})
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), ctxUserID, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (s server) agentAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiKey := bearerToken(r)
-		if apiKey == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
-			return
-		}
-		hash := keys.HashAPIKey(s.pepper, apiKey)
-
-		var agentID uuid.UUID
-		var status string
-		err := s.db.QueryRow(r.Context(), `
-			select a.id, a.status
-			from agent_api_keys k
-			join agents a on a.id = k.agent_id
-			where k.key_hash = $1 and k.revoked_at is null
-		`, hash).Scan(&agentID, &status)
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auth lookup failed"})
-			return
-		}
-		if status != "enabled" {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "agent disabled"})
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), ctxAgentID, agentID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (s server) adminAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.TrimSpace(s.adminToken) == "" {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "admin token not configured"})
-			return
-		}
-		token := bearerToken(r)
-		if token == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
-			return
-		}
-		if token != s.adminToken {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func userIDFromCtx(ctx context.Context) (uuid.UUID, bool) {
-	v := ctx.Value(ctxUserID)
-	id, ok := v.(uuid.UUID)
-	return id, ok
-}
-
-func agentIDFromCtx(ctx context.Context) (uuid.UUID, bool) {
-	v := ctx.Value(ctxAgentID)
-	id, ok := v.(uuid.UUID)
-	return id, ok
 }
 
 func (s server) audit(ctx context.Context, actorType string, actorID uuid.UUID, action string, data map[string]any) {
@@ -319,16 +200,16 @@ type createAgentRequest struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 
-	AvatarURL      string          `json:"avatar_url,omitempty"`
-	AgentPublicKey string          `json:"agent_public_key,omitempty"`
-	Personality    *personalityDTO `json:"personality,omitempty"`
-	Interests      []string        `json:"interests,omitempty"`
-	Capabilities   []string        `json:"capabilities,omitempty"`
-	Bio            string          `json:"bio,omitempty"`
-	Greeting       string          `json:"greeting,omitempty"`
-	Discovery      *discoveryDTO   `json:"discovery,omitempty"`
-	Autonomous     *autonomousDTO  `json:"autonomous,omitempty"`
-	PersonaTemplateID string       `json:"persona_template_id,omitempty"`
+	AvatarURL         string          `json:"avatar_url,omitempty"`
+	AgentPublicKey    string          `json:"agent_public_key,omitempty"`
+	Personality       *personalityDTO `json:"personality,omitempty"`
+	Interests         []string        `json:"interests,omitempty"`
+	Capabilities      []string        `json:"capabilities,omitempty"`
+	Bio               string          `json:"bio,omitempty"`
+	Greeting          string          `json:"greeting,omitempty"`
+	Discovery         *discoveryDTO   `json:"discovery,omitempty"`
+	Autonomous        *autonomousDTO  `json:"autonomous,omitempty"`
+	PersonaTemplateID string          `json:"persona_template_id,omitempty"`
 }
 
 type createAgentResponse struct {
@@ -923,16 +804,16 @@ type updateAgentRequest struct {
 	Description *string `json:"description"`
 	Status      *string `json:"status"` // enabled|disabled
 
-	AvatarURL       *string          `json:"avatar_url,omitempty"`
-	Personality     *personalityDTO  `json:"personality,omitempty"`
-	Interests       *[]string        `json:"interests,omitempty"`
-	Capabilities    *[]string        `json:"capabilities,omitempty"`
-	Bio             *string          `json:"bio,omitempty"`
-	Greeting        *string          `json:"greeting,omitempty"`
-	Discovery       *discoveryDTO    `json:"discovery,omitempty"`
-	Autonomous      *autonomousDTO   `json:"autonomous,omitempty"`
-	PersonaTemplateID *string        `json:"persona_template_id,omitempty"`
-	AgentPublicKey  *string          `json:"agent_public_key,omitempty"`
+	AvatarURL         *string         `json:"avatar_url,omitempty"`
+	Personality       *personalityDTO `json:"personality,omitempty"`
+	Interests         *[]string       `json:"interests,omitempty"`
+	Capabilities      *[]string       `json:"capabilities,omitempty"`
+	Bio               *string         `json:"bio,omitempty"`
+	Greeting          *string         `json:"greeting,omitempty"`
+	Discovery         *discoveryDTO   `json:"discovery,omitempty"`
+	Autonomous        *autonomousDTO  `json:"autonomous,omitempty"`
+	PersonaTemplateID *string         `json:"persona_template_id,omitempty"`
+	AgentPublicKey    *string         `json:"agent_public_key,omitempty"`
 }
 
 func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -980,22 +861,22 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 
 	var (
-		curName           string
-		curDescription    string
-		curStatus         string
-		curAvatarURL      string
-		curPersonalityRaw []byte
-		curInterestsRaw   []byte
+		curName            string
+		curDescription     string
+		curStatus          string
+		curAvatarURL       string
+		curPersonalityRaw  []byte
+		curInterestsRaw    []byte
 		curCapabilitiesRaw []byte
-		curBio            string
-		curGreeting       string
-		curDiscoveryRaw   []byte
-		curAutonomousRaw  []byte
-		curPersonaRaw     []byte
-		curAgentPubKey    string
-		curCardVersion    int
-		curPromptView     string
-		curCardCertRaw    []byte
+		curBio             string
+		curGreeting        string
+		curDiscoveryRaw    []byte
+		curAutonomousRaw   []byte
+		curPersonaRaw      []byte
+		curAgentPubKey     string
+		curCardVersion     int
+		curPromptView      string
+		curCardCertRaw     []byte
 	)
 	err = tx.QueryRow(ctx, `
 		select
