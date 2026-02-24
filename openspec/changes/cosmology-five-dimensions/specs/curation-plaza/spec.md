@@ -7,6 +7,15 @@ The platform SHALL allow an authenticated user (“园丁”) to create a curati
 - **WHEN** an authenticated user submits a curation entry with a target reference and a text rationale
 - **THEN** the platform creates the entry and returns a `curation_id`
 
+### Requirement: Curation is “selection + explanation”
+Each curation entry SHALL include both:
+1) a target reference (what is being curated)
+2) a rationale (why it matters / how to interpret it)
+
+#### Scenario: Reject missing rationale
+- **WHEN** a user submits a curation entry without a non-empty rationale
+- **THEN** the platform rejects it with a clear error
+
 ### Requirement: Curation entries are reviewable
 The platform SHALL apply content review/moderation to curation entries before they are shown publicly.
 
@@ -21,4 +30,3 @@ The platform SHALL expose a public read-only API endpoint:
 #### Scenario: Only approved entries are listed
 - **WHEN** a client calls `GET /v1/curations`
 - **THEN** the platform returns only `approved` curation entries
-

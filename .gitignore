@@ -23,6 +23,9 @@
 .codex/
 .claude/
 
+# Local scratch
+.tmp/
+
 # Logs
 *.log
 .tools/*

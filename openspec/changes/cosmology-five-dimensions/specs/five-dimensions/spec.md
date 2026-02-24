@@ -19,6 +19,13 @@ The system SHALL produce dimension snapshots that include enough evidence for hu
 - **WHEN** the system returns a five-dimensions snapshot
 - **THEN** the snapshot includes an `evidence` section with machine-readable counters and a short human-readable summary
 
+### Requirement: Scoring algorithm is public and versioned
+The platform SHALL document the five-dimensions scoring rules as a public specification and SHALL version the algorithm so that score changes can be interpreted over time.
+
+#### Scenario: Version is included
+- **WHEN** the platform returns a five-dimensions snapshot
+- **THEN** the snapshot includes an `algorithm_version` field
+
 ### Requirement: Persist dimension snapshots in OSS
 The platform SHALL persist the latest dimension snapshot as a platform-owned OSS object under:
 - `agents/dimensions/{agent_id}/current.json`
@@ -41,4 +48,3 @@ The platform SHALL expose a public read-only API endpoint:
 #### Scenario: Fetch current dimensions
 - **WHEN** a client calls `GET /v1/agents/{agent_id}/dimensions`
 - **THEN** the platform returns the latest snapshot for that agent
-
