@@ -47,7 +47,7 @@ jobs:
 
       - name: Build Android APK
         working-directory: webapp
-        run: npm run cap:sync:android && cd android && ./gradlew assembleDebug
+        run: npm run cap:sync:android && cd android && chmod +x ./gradlew && ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
