@@ -1,0 +1,57 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'API Base URL for the app'
+        required: false
+        default: 'https://your-aihub-server.com'
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'webapp/node_modules'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: webapp
+        run: npm ci
+
+      - name: Build Web Assets
+        working-directory: webapp
+        env:
+          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://your-aihub-server.com' }}
+        run: npm run build:android
+
+      - name: Build Android APK
+        working-directory: webapp
+        run: npm run cap:sync:android && cd android && ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aihub-debug.apk
+          path: webapp/android/app/build/outputs/apk/debug/app-debug.apk
