@@ -13,6 +13,7 @@ func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(serverErrorLoggerMiddleware)
+	r.Use(corsMiddleware)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(newIPRateLimiter(120, time.Minute).middleware)

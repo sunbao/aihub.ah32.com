@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentCardEditorDialog } from "@/app/components/AgentCardEditorDialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetchJson, ApiRequestError, getApiBaseUrl } from "@/lib/api";
+import { apiFetchJson, ApiRequestError, getApiBaseUrl, normalizeApiBaseUrl } from "@/lib/api";
 import { copyText } from "@/lib/copy";
 import { fmtAgentStatus } from "@/lib/format";
 import {
@@ -72,6 +72,7 @@ function buildNpxCmd(opts: { baseUrl: string; apiKey: string; profileName: strin
 
 function buildGitHubStartUrl(opts: { flow?: "app"; redirectTo?: string }): string {
   const base = getApiBaseUrl();
+  if (!base) return "";
   const url = new URL(`${base}/v1/auth/github/start`);
   if (opts.flow) url.searchParams.set("flow", opts.flow);
   if (opts.redirectTo) url.searchParams.set("redirect_to", opts.redirectTo);
@@ -98,7 +99,7 @@ export function MePage() {
   const savedAgentKey = currentAgentId ? getAgentApiKey(currentAgentId) : "";
 
   // connect form state
-  const [baseUrl, setBaseUrl] = useState(() => (getStored(STORAGE_KEYS.baseUrl) || "").trim() || window.location.origin);
+  const [baseUrl, setBaseUrl] = useState(() => getApiBaseUrl() || "");
   const [agentKeyInput, setAgentKeyInput] = useState(savedAgentKey);
   const [profileName, setProfileName] = useState(() =>
     currentAgentId ? getOpenclawProfileName(currentAgentId) : "",
@@ -171,12 +172,37 @@ export function MePage() {
     return buildNpxCmd({ baseUrl: baseUrl.trim(), apiKey, profileName });
   }, [agentKeyInput, baseUrl, currentAgentId, profileName]);
 
-  const loginUrlWeb = useMemo(() => buildGitHubStartUrl({ redirectTo: "/app/me" }), []);
-  const loginUrlApp = useMemo(() => buildGitHubStartUrl({ flow: "app" }), []);
-
   if (!isLoggedIn) {
     return (
       <div className="space-y-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">服务器地址</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="text-xs text-muted-foreground">
+              填写 AIHub 服务端地址（不要带 <span className="font-mono">/app</span> 或{" "}
+              <span className="font-mono">/ui</span>）。APK / PWA 登录与请求数据都依赖它。
+            </div>
+            <Input
+              value={baseUrl}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBaseUrl(v);
+                setStored(STORAGE_KEYS.baseUrl, v.trim());
+              }}
+              onBlur={() => {
+                const normalized = normalizeApiBaseUrl(baseUrl);
+                if (normalized && normalized !== baseUrl.trim()) {
+                  setBaseUrl(normalized);
+                  setStored(STORAGE_KEYS.baseUrl, normalized);
+                }
+              }}
+              placeholder="例如：http://你的服务器:8080"
+            />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">登录</CardTitle>
@@ -188,16 +214,27 @@ export function MePage() {
             <Button
               className="w-full"
               onClick={async () => {
+                const url = Capacitor.isNativePlatform()
+                  ? buildGitHubStartUrl({ flow: "app" })
+                  : buildGitHubStartUrl({ redirectTo: "/app/me" });
+                if (!url) {
+                  toast({
+                    title: "请先填写服务器地址",
+                    description: "例如：http://你的服务器:8080（不要带 /app 或 /ui）",
+                    variant: "destructive",
+                  });
+                  return;
+                }
                 if (Capacitor.isNativePlatform()) {
                   try {
-                    await Browser.open({ url: loginUrlApp });
+                    await Browser.open({ url });
                   } catch (e: any) {
                     console.warn("[AIHub] open browser failed", e);
                     toast({ title: "无法打开登录页面", description: String(e?.message ?? ""), variant: "destructive" });
                   }
                   return;
                 }
-                window.location.href = loginUrlWeb;
+                window.location.href = url;
               }}
             >
               用 GitHub 登录
@@ -379,6 +416,13 @@ export function MePage() {
                 const v = e.target.value;
                 setBaseUrl(v);
                 setStored(STORAGE_KEYS.baseUrl, v.trim());
+              }}
+              onBlur={() => {
+                const normalized = normalizeApiBaseUrl(baseUrl);
+                if (normalized && normalized !== baseUrl.trim()) {
+                  setBaseUrl(normalized);
+                  setStored(STORAGE_KEYS.baseUrl, normalized);
+                }
               }}
               placeholder="例如：http://你的服务器:8080"
             />

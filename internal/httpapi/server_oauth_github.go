@@ -431,18 +431,19 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		codeVerifier = strings.TrimSpace(pkceCookie.Value)
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	baseCtx := context.WithoutCancel(r.Context())
+	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer cancel()
 
 	accessToken, err := s.exchangeGitHubToken(ctx, code, redirectURI, codeVerifier)
 	if err != nil {
-		logError(r.Context(), "oauth github token exchange failed", err)
+		logError(ctx, "oauth github token exchange failed", err)
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "与 GitHub 交换凭证失败，请稍后再试。")
 		return
 	}
 	gu, err := s.fetchGitHubUser(ctx, accessToken)
 	if err != nil {
-		logError(r.Context(), "oauth github fetch user failed", err)
+		logError(ctx, "oauth github fetch user failed", err)
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "获取 GitHub 用户信息失败，请稍后再试。")
 		return
 	}
@@ -464,7 +465,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	// Upsert user + identity.
 	userID, err := s.upsertGitHubIdentity(ctx, gu)
 	if err != nil {
-		logError(r.Context(), "oauth upsert identity failed", err)
+		logError(ctx, "oauth upsert identity failed", err)
 		writeOAuthHTML(w, http.StatusInternalServerError, "登录失败", "系统繁忙，请稍后再试。")
 		return
 	}
@@ -479,7 +480,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	if flow == "app" {
 		exchangeToken, err := s.issueAppExchangeToken(ctx, userID)
 		if err != nil {
-			logError(r.Context(), "issue app exchange token failed", err)
+			logError(ctx, "issue app exchange token failed", err)
 			writeOAuthHTML(w, http.StatusInternalServerError, "登录失败", "系统繁忙，请稍后再试。")
 			return
 		}
@@ -489,7 +490,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 
 	apiKey, err := s.issueUserAPIKey(ctx, userID, map[string]any{"provider": "github"})
 	if err != nil {
-		logError(r.Context(), "oauth issue api key failed", err)
+		logError(ctx, "oauth issue api key failed", err)
 		writeOAuthHTML(w, http.StatusInternalServerError, "登录失败", "系统繁忙，请稍后再试。")
 		return
 	}
