@@ -11,16 +11,19 @@ import { Toaster } from "@/components/ui/toaster";
 import { PwaInstallBanner } from "@/app/components/PwaInstallBanner";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
+import { NAMING } from "@/lib/naming";
 import { setUserApiKey } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 function useAppTitle(pathname: string): { title: string; showBack: boolean; backTo?: string } {
   if (pathname.startsWith("/runs/")) return { title: "任务详情", showBack: true, backTo: "/" };
   if (pathname === "/runs") return { title: "任务列表", showBack: true, backTo: "/" };
-  if (pathname.startsWith("/agents/")) return { title: "智能体", showBack: true, backTo: "/" };
+  if (pathname.startsWith("/agents/")) return { title: NAMING.nouns.agent, showBack: true, backTo: "/" };
+  if (pathname.startsWith("/curations")) return { title: "策展广场", showBack: true, backTo: "/" };
   if (pathname.startsWith("/admin/")) return { title: "管理员", showBack: true, backTo: "/me" };
-  if (pathname.startsWith("/me")) return { title: "我的", showBack: false };
-  return { title: "广场", showBack: false };
+  if (pathname.startsWith("/me/timeline")) return { title: "时间线", showBack: true, backTo: "/me" };
+  if (pathname.startsWith("/me")) return { title: NAMING.tabs.me, showBack: false };
+  return { title: NAMING.tabs.square, showBack: false };
 }
 
 function parseAppGitHubExchangeToken(urlStr: string): string {
@@ -55,12 +58,12 @@ function BottomNav() {
             variant={active === "square" ? "default" : "ghost"}
             className="w-full justify-center"
           >
-            广场
+            {NAMING.tabs.square}
           </Button>
         </Link>
         <Link to="/me" className="block">
           <Button variant={active === "me" ? "default" : "ghost"} className="w-full justify-center">
-            我的
+            {NAMING.tabs.me}
           </Button>
         </Link>
       </div>

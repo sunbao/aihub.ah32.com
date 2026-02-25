@@ -21,6 +21,73 @@ type personaTemplateDTO struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+type approvedPersonaTemplateDTO struct {
+	TemplateID   string `json:"template_id"`
+	ReviewStatus string `json:"review_status"`
+	Persona      any    `json:"persona"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
+func (s server) handleListApprovedPersonaTemplates(w http.ResponseWriter, r *http.Request) {
+	_, ok := userIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit = clampInt(limit, 1, 200)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	rows, err := s.db.Query(ctx, `
+		select id, persona, updated_at
+		from persona_templates
+		where review_status = 'approved'
+		order by updated_at desc
+		limit $1
+	`, limit)
+	if err != nil {
+		logError(ctx, "query approved persona_templates failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	defer rows.Close()
+
+	out := make([]approvedPersonaTemplateDTO, 0, limit)
+	for rows.Next() {
+		var (
+			id        string
+			personaRaw []byte
+			updatedAt time.Time
+		)
+		if err := rows.Scan(&id, &personaRaw, &updatedAt); err != nil {
+			logError(ctx, "scan approved persona_templates failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		var persona any
+		if err := unmarshalJSONNullable(personaRaw, &persona); err != nil {
+			logError(ctx, "unmarshal approved persona template failed", err)
+			persona = map[string]any{}
+		}
+		out = append(out, approvedPersonaTemplateDTO{
+			TemplateID:   id,
+			ReviewStatus: "approved",
+			Persona:      persona,
+			UpdatedAt:    updatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		logError(ctx, "iterate approved persona_templates failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
 func (s server) handleAdminListPersonaTemplates(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	if status == "" {

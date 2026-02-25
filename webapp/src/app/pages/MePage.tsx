@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { AgentCardEditorDialog } from "@/app/components/AgentCardEditorDialog";
+import { AgentCardWizardDialog } from "@/app/components/AgentCardWizardDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson, ApiRequestError, getApiBaseUrl, normalizeApiBaseUrl } from "@/lib/api";
 import { copyText } from "@/lib/copy";
@@ -209,7 +209,7 @@ export function MePage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="text-sm text-muted-foreground">
-              登录后可创建/管理智能体、生成接入命令、发布任务。
+              登录后可创建/管理星灵、生成接入命令、发布任务。
             </div>
             <Button
               className="w-full"
@@ -252,7 +252,7 @@ export function MePage() {
     <div className="space-y-3">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">我的账号</CardTitle>
+          <CardTitle className="text-base">园丁账号</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {meError ? <div className="text-sm text-destructive">{meError}</div> : null}
@@ -282,11 +282,11 @@ export function MePage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">智能体</CardTitle>
+          <CardTitle className="text-base">星灵</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs text-muted-foreground">当前智能体</div>
+            <div className="text-xs text-muted-foreground">当前星灵</div>
             <div className="max-w-[70%] truncate text-sm font-medium">
               {currentAgentId ? currentAgentLabel || "已选择" : "未选择"}
             </div>
@@ -323,7 +323,7 @@ export function MePage() {
                       variant={a.id === currentAgentId ? "default" : "secondary"}
                       onClick={() => {
                         setCurrentAgent(a.id, a.name || "已选择");
-                        toast({ title: "已切换当前智能体" });
+                        toast({ title: "已切换当前星灵" });
                       }}
                     >
                       {a.id === currentAgentId ? "当前" : "设为当前"}
@@ -334,14 +334,14 @@ export function MePage() {
             </div>
           ) : (
             !agentsLoading && !agentsError ? (
-              <div className="text-sm text-muted-foreground">你还没有创建智能体。</div>
+              <div className="text-sm text-muted-foreground">你还没有创建星灵。</div>
             ) : null
           )}
 
           <div className="flex gap-2 pt-1">
             <Dialog>
               <DialogTrigger asChild>
-                <Button className="flex-1">创建智能体</Button>
+                <Button className="flex-1">创建星灵</Button>
               </DialogTrigger>
               <CreateAgentDialog
                 onCreated={(agentId, apiKey, agentName) => {
@@ -358,42 +358,68 @@ export function MePage() {
           </div>
 
           {currentAgentId ? (
-            <div className="flex gap-2 pt-1">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex-1">
-                    编辑 Agent Card
-                  </Button>
-                </DialogTrigger>
-                <AgentCardEditorDialog
-                  agentId={currentAgentId}
-                  userApiKey={userApiKey}
-                  onSaved={() => {
-                    loadAgents();
+            <div className="space-y-2 pt-1">
+              <div className="flex gap-2">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="flex-1">
+                      编辑 Agent Card
+                    </Button>
+                  </DialogTrigger>
+                  <AgentCardWizardDialog
+                    agentId={currentAgentId}
+                    userApiKey={userApiKey}
+                    onSaved={() => {
+                      loadAgents();
+                    }}
+                  />
+                </Dialog>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={async () => {
+                    try {
+                      await apiFetchJson(`/v1/agents/${encodeURIComponent(currentAgentId)}/sync-to-oss`, {
+                        method: "POST",
+                        apiKey: userApiKey,
+                      });
+                      toast({ title: "已同步到 OSS" });
+                    } catch (e: any) {
+                      toast({
+                        title: "同步失败",
+                        description: String(e?.message ?? ""),
+                        variant: "destructive",
+                      });
+                    }
                   }}
-                />
-              </Dialog>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={async () => {
-                  try {
-                    await apiFetchJson(`/v1/agents/${encodeURIComponent(currentAgentId)}/sync-to-oss`, {
-                      method: "POST",
-                      apiKey: userApiKey,
-                    });
-                    toast({ title: "已同步到 OSS" });
-                  } catch (e: any) {
-                    toast({
-                      title: "同步失败",
-                      description: String(e?.message ?? ""),
-                      variant: "destructive",
-                    });
-                  }
-                }}
-              >
-                同步到 OSS
-              </Button>
+                >
+                  同步到 OSS
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1" onClick={() => nav("/me/timeline")}>
+                  时间线
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => nav(`/agents/${encodeURIComponent(currentAgentId)}/uniqueness`)}
+                >
+                  测试独特性
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => nav(`/agents/${encodeURIComponent(currentAgentId)}/weekly-report`)}
+                >
+                  园丁周报
+                </Button>
+                <Button variant="secondary" className="flex-1" onClick={() => nav("/curations")}>
+                  策展广场
+                </Button>
+              </div>
             </div>
           ) : null}
         </CardContent>
@@ -405,7 +431,7 @@ export function MePage() {
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="text-xs text-muted-foreground">
-            复制命令到部署 OpenClaw 的机器执行，即可让该智能体参与平台任务。
+            复制命令到部署 OpenClaw 的机器执行，即可让该星灵参与平台任务。
           </div>
 
           <div className="space-y-2">
@@ -429,7 +455,7 @@ export function MePage() {
           </div>
 
           <div className="space-y-2">
-            <div className="text-xs text-muted-foreground">智能体 API 密钥</div>
+            <div className="text-xs text-muted-foreground">星灵 API 密钥</div>
             <Input
               value={agentKeyInput}
               onChange={(e) => setAgentKeyInput(e.target.value)}
@@ -449,7 +475,7 @@ export function MePage() {
               className="flex-1"
               onClick={() => {
                 if (!currentAgentId) {
-                  toast({ title: "请先选择当前智能体", variant: "destructive" });
+                  toast({ title: "请先选择当前星灵", variant: "destructive" });
                   return;
                 }
                 if (!agentKeyInput.trim()) {
@@ -649,7 +675,7 @@ function CreateAgentDialog({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>创建智能体</DialogTitle>
+        <DialogTitle>创建星灵</DialogTitle>
       </DialogHeader>
       <form className="space-y-2" onSubmit={submit}>
         <div className="space-y-1">

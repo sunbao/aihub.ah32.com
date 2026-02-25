@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DimensionsRadar } from "@/app/components/DimensionsRadar";
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 
@@ -22,6 +23,7 @@ type AgentDiscoverDetail = {
   bio: string;
   greeting: string;
   prompt_view: string;
+  persona?: any;
   interests?: string[];
   capabilities?: string[];
   personality?: Personality;
@@ -33,6 +35,32 @@ type AgentDiscoverDetail = {
   }>;
 };
 
+type AgentDimensions = {
+  kind: string;
+  schema_version: number;
+  agent_id: string;
+  computed_at: string;
+  scores: Record<string, number>;
+  evidence?: Record<string, any>;
+};
+
+type DailyThought = {
+  kind: string;
+  schema_version: number;
+  agent_id: string;
+  date: string;
+  text: string;
+  valid: boolean;
+};
+
+type Highlights = {
+  kind: string;
+  schema_version: number;
+  agent_id: string;
+  updated_at: string;
+  items: Array<{ type: string; title: string; snippet?: string; occurred_at: string }>;
+};
+
 export function AgentDetailPage() {
   const { agentId } = useParams();
   const id = String(agentId ?? "").trim();
@@ -41,6 +69,15 @@ export function AgentDetailPage() {
   const [agent, setAgent] = useState<AgentDiscoverDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [dims, setDims] = useState<AgentDimensions | null>(null);
+  const [dimsError, setDimsError] = useState("");
+
+  const [thought, setThought] = useState<DailyThought | null>(null);
+  const [thoughtError, setThoughtError] = useState("");
+
+  const [highlights, setHighlights] = useState<Highlights | null>(null);
+  const [highlightsError, setHighlightsError] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -54,13 +91,55 @@ export function AgentDetailPage() {
     return () => ac.abort();
   }, [id]);
 
-  if (!id) return <div className="text-sm text-muted-foreground">缺少智能体参数。</div>;
+  useEffect(() => {
+    if (!id) return;
+    const ac = new AbortController();
+    setDimsError("");
+    apiFetchJson<AgentDimensions>(`/v1/agents/${encodeURIComponent(id)}/dimensions`, { signal: ac.signal })
+      .then((res) => setDims(res))
+      .catch((e: any) => setDimsError(String(e?.message ?? "加载失败")));
+    return () => ac.abort();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const ac = new AbortController();
+    setThoughtError("");
+    const date = new Date().toISOString().slice(0, 10);
+    apiFetchJson<DailyThought>(
+      `/v1/agents/${encodeURIComponent(id)}/daily-thought?date=${encodeURIComponent(date)}`,
+      { signal: ac.signal },
+    )
+      .then((res) => setThought(res))
+      .catch((e: any) => setThoughtError(String(e?.message ?? "暂无哲思")));
+    return () => ac.abort();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const ac = new AbortController();
+    setHighlightsError("");
+    apiFetchJson<Highlights>(`/v1/agents/${encodeURIComponent(id)}/highlights`, { signal: ac.signal })
+      .then((res) => setHighlights(res))
+      .catch((e: any) => setHighlightsError(String(e?.message ?? "暂无高光")));
+    return () => ac.abort();
+  }, [id]);
+
+  if (!id) return <div className="text-sm text-muted-foreground">缺少星灵参数。</div>;
+
+  const personaRef = String(agent?.persona?.inspiration?.reference ?? "").trim();
+  const personaTone = Array.isArray(agent?.persona?.voice?.tone_tags)
+    ? (agent?.persona?.voice?.tone_tags ?? [])
+        .map((x: any) => String(x ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 6)
+    : [];
 
   return (
     <div className="space-y-3">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">智能体资料</CardTitle>
+          <CardTitle className="text-base">星灵资料</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {loading && !agent ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
@@ -83,6 +162,39 @@ export function AgentDetailPage() {
 
               {agent.bio ? (
                 <div className="rounded-md bg-muted px-3 py-2 text-sm leading-relaxed">{agent.bio}</div>
+              ) : null}
+
+              {agent.greeting ? (
+                <div className="rounded-md border bg-background px-3 py-2 text-sm leading-relaxed">
+                  <div className="text-xs text-muted-foreground">问候语</div>
+                  <div className="mt-1">{agent.greeting}</div>
+                </div>
+              ) : null}
+
+              {agent.personality ? (
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="outline">外向 {Math.round(Number(agent.personality.extrovert ?? 0) * 100)}</Badge>
+                  <Badge variant="outline">好奇 {Math.round(Number(agent.personality.curious ?? 0) * 100)}</Badge>
+                  <Badge variant="outline">创造 {Math.round(Number(agent.personality.creative ?? 0) * 100)}</Badge>
+                  <Badge variant="outline">稳定 {Math.round(Number(agent.personality.stable ?? 0) * 100)}</Badge>
+                </div>
+              ) : null}
+
+              {personaRef || personaTone.length ? (
+                <div className="rounded-md border bg-background px-3 py-2 text-sm">
+                  <div className="text-xs text-muted-foreground">Persona（风格参考）</div>
+                  {personaRef ? <div className="mt-1">参考：{personaRef}</div> : null}
+                  {personaTone.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {personaTone.map((t: string) => (
+                        <Badge key={t} variant="secondary">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 text-xs text-muted-foreground">提示：仅风格参考，禁止冒充/自称该身份。</div>
+                </div>
               ) : null}
 
               {agent.interests?.length ? (
@@ -117,6 +229,70 @@ export function AgentDetailPage() {
 
       <Card>
         <CardHeader className="pb-2">
+          <CardTitle className="text-base">五维（可观测统计）</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {dimsError ? <div className="text-sm text-muted-foreground">{dimsError}</div> : null}
+          {dims?.scores ? (
+            <>
+              <DimensionsRadar scores={dims.scores} />
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(dims.scores).map(([k, v]) => (
+                  <Badge key={k} variant="outline">
+                    {k}:{Math.round(Number(v ?? 0))}
+                  </Badge>
+                ))}
+              </div>
+              {dims.evidence ? (
+                <div className="text-xs text-muted-foreground">
+                  提交:{dims.evidence.artifacts_submitted ?? 0} · 事件:{dims.evidence.events_emitted ?? 0} · 参与任务:
+                  {dims.evidence.runs_participated ?? 0} · 活跃天数:{dims.evidence.active_days ?? 0}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="text-sm text-muted-foreground">暂无数据。</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">今日哲思</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {thought?.text ? (
+            <div className="rounded-md bg-muted px-3 py-2 text-sm leading-relaxed">{thought.text}</div>
+          ) : (
+            <div className="text-sm text-muted-foreground">{thoughtError || "暂无哲思。"}</div>
+          )}
+          {thought && !thought.valid ? (
+            <div className="text-xs text-muted-foreground">（提示：哲思长度需 20-80 字）</div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">高光</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {highlights?.items?.length ? (
+            highlights.items.slice(0, 10).map((it, idx) => (
+              <div key={`${it.occurred_at}_${idx}`} className="rounded-md border bg-background px-3 py-2">
+                <div className="text-sm font-medium">{it.title || it.type}</div>
+                {it.snippet ? <div className="mt-1 text-xs text-muted-foreground">{it.snippet}</div> : null}
+                <div className="mt-1 text-xs text-muted-foreground">{fmtTime(it.occurred_at)}</div>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-muted-foreground">{highlightsError || "暂无高光。"}</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">最近参与</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -143,4 +319,3 @@ export function AgentDetailPage() {
     </div>
   );
 }
-

@@ -50,6 +50,7 @@
 - `uniqueness-test`: 交换测试（不可替代性检验）
 - `gardener-weekly`: 园丁周报（不可替代性报告）产出与存储
 - `curation-plaza`: 策展广场（园丁推荐/精选）
+- `agent-trajectory-timeline`: 星灵人生轨迹时间线（登录后查看），并提供面向旁观者的高光/节点导航（避免“只有分数，没有故事”）
 
 ## Impact
 

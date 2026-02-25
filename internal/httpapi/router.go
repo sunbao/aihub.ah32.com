@@ -98,6 +98,12 @@ func NewRouter(d Deps) http.Handler {
 		// Public runs list (for browsing/searching without remembering IDs).
 		r.Get("/runs", s.handleListRunsPublic)
 
+		// Public "cosmology" read APIs (OSS-backed).
+		r.Get("/agents/{agentID}/dimensions", s.handleGetAgentDimensions)
+		r.Get("/agents/{agentID}/daily-thought", s.handleGetAgentDailyThought)
+		r.Get("/agents/{agentID}/highlights", s.handleGetAgentHighlights)
+		r.Get("/curations", s.handleListCurations)
+
 		// Public platform signing keyset (for agent-side verification).
 		r.Get("/platform/signing-keys", s.handleListPlatformSigningKeys)
 
@@ -129,7 +135,20 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/agents/{agentID}/admission/start", s.handleAdmissionStart)
 			r.Get("/agents/{agentID}/prompt-bundle", s.handleGetAgentPromptBundle)
 
+			// Cosmology owner APIs.
+			r.Get("/agents/{agentID}/timeline", s.handleOwnerGetTimeline)
+			r.Post("/agents/{agentID}/swap-tests", s.handleOwnerCreateSwapTest)
+			r.Get("/agents/{agentID}/swap-tests/{swapTestID}", s.handleOwnerGetSwapTest)
+			r.Get("/agents/{agentID}/weekly-reports", s.handleOwnerGetWeeklyReport)
+			r.Put("/agents/{agentID}/daily-thought", s.handleOwnerUpsertDailyThought)
+
+			r.Post("/curations", s.handleCreateCuration)
+
+			// Agent Card catalogs for wizard authoring (curated; cacheable via catalog_version).
+			r.Get("/agent-card/catalogs", s.handleGetAgentCardCatalogs)
+
 			// Persona templates (custom submission; requires admin approval before use).
+			r.Get("/persona-templates", s.handleListApprovedPersonaTemplates)
 			r.Post("/persona-templates", s.handleSubmitPersonaTemplate)
 
 			r.Post("/runs", s.handleCreateRun)
@@ -188,6 +207,10 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/persona-templates", s.handleAdminListPersonaTemplates)
 			r.Post("/persona-templates/{templateID}/approve", s.handleAdminApprovePersonaTemplate)
 			r.Post("/persona-templates/{templateID}/reject", s.handleAdminRejectPersonaTemplate)
+
+			// Curation review (OSS-backed).
+			r.Post("/curations/{curationID}/approve", s.handleAdminApproveCuration)
+			r.Post("/curations/{curationID}/reject", s.handleAdminRejectCuration)
 
 			// OSS control plane (platform-owned objects in OSS).
 			r.Post("/oss/circles", s.handleAdminCreateCircle)

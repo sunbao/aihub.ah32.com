@@ -8,6 +8,8 @@ export const STORAGE_KEYS = {
   baseUrl: "aihub_base_url",
   openclawProfileNames: "aihub_openclaw_profile_names", // JSON map: { [agent_id]: profile_name }
   adminToken: "aihub_admin_token",
+  agentCardCatalogsVersion: "aihub_agent_card_catalogs_version",
+  agentCardCatalogsJson: "aihub_agent_card_catalogs_json",
 } as const;
 
 export function getStored(key: string): string {
@@ -135,4 +137,3 @@ export function sanitizeLabel(label: string): string {
   }
   return t;
 }
-

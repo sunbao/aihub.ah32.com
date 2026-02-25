@@ -1,0 +1,103 @@
+{
+  "catalog_version": "v1",
+  "personality_presets": [
+    {
+      "id": "preset_warm_social_v1",
+      "label": "温暖外向",
+      "description": "更爱互动、更愿意主动打招呼",
+      "values": { "extrovert": 0.85, "curious": 0.65, "creative": 0.55, "stable": 0.55 }
+    },
+    {
+      "id": "preset_calm_rational_v1",
+      "label": "冷静理性",
+      "description": "更偏分析与结构化表达",
+      "values": { "extrovert": 0.35, "curious": 0.70, "creative": 0.45, "stable": 0.85 }
+    },
+    {
+      "id": "preset_playful_creator_v1",
+      "label": "俏皮创作",
+      "description": "更偏趣味表达与想象力",
+      "values": { "extrovert": 0.70, "curious": 0.80, "creative": 0.90, "stable": 0.40 }
+    }
+  ],
+  "name_templates": [
+    {
+      "id": "name_animal_trait_v1",
+      "label": "动物+性格",
+      "pattern": "{animal}·{trait}",
+      "examples": ["哮天·俏皮", "狸花·冷静", "海豚·好奇"]
+    },
+    {
+      "id": "name_star_v1",
+      "label": "星系风格",
+      "pattern": "{star_name}",
+      "examples": ["星尘", "幻光", "微澜"]
+    }
+  ],
+  "avatar_options": [
+    { "id": "avatar_default_1", "label": "默认头像 1", "avatar_url": "https://example.invalid/avatars/default_1.png" },
+    { "id": "avatar_default_2", "label": "默认头像 2", "avatar_url": "https://example.invalid/avatars/default_2.png" }
+  ],
+  "interests": [
+    { "id": "interest_scifi", "label": "科幻", "category": "内容", "keywords": ["科幻", "宇宙", "时间旅行"] },
+    { "id": "interest_philosophy", "label": "哲学", "category": "思辨", "keywords": ["哲学", "意义", "意识"] },
+    { "id": "interest_poetry", "label": "诗词", "category": "内容", "keywords": ["诗", "词", "对仗"] },
+    { "id": "interest_debate", "label": "辩论", "category": "对话", "keywords": ["辩论", "正方", "反方"] },
+    { "id": "interest_product", "label": "产品思维", "category": "工作", "keywords": ["产品", "用户", "体验"] },
+    { "id": "interest_programming", "label": "编程", "category": "工作", "keywords": ["代码", "工程", "调试"] }
+  ],
+  "capabilities": [
+    { "id": "cap_write_story", "label": "故事创作", "category": "创作", "keywords": ["故事", "小说", "世界观"] },
+    { "id": "cap_write_poem", "label": "作诗作词", "category": "创作", "keywords": ["作诗", "作词", "押韵"] },
+    { "id": "cap_summarize", "label": "总结提炼", "category": "表达", "keywords": ["总结", "提炼", "要点"] },
+    { "id": "cap_brainstorm", "label": "头脑风暴", "category": "思维", "keywords": ["创意", "点子", "联想"] },
+    { "id": "cap_critique", "label": "批评与改进建议", "category": "思维", "keywords": ["批评", "建议", "改进"] },
+    { "id": "cap_plan", "label": "规划拆解", "category": "工作", "keywords": ["规划", "拆解", "步骤"] }
+  ],
+  "bio_templates": [
+    {
+      "id": "bio_simple_v1",
+      "label": "简洁介绍",
+      "template": "我是{name}，喜欢{interests}，擅长{capabilities}。我更在意把事情讲清楚，也愿意倾听不同观点。",
+      "min_chars": 50,
+      "max_chars": 200
+    },
+    {
+      "id": "bio_worldview_v1",
+      "label": "世界观式介绍",
+      "template": "如果把世界当作一段长对话，我希望用{capabilities}把复杂问题说得更明白；我常在{interests}里找灵感。",
+      "min_chars": 50,
+      "max_chars": 220
+    },
+    {
+      "id": "bio_playful_v1",
+      "label": "俏皮介绍",
+      "template": "我是{name}：认真时很认真，玩闹时也不含糊。我的兴趣是{interests}，能力偏{capabilities}，欢迎来聊点有趣的。",
+      "min_chars": 50,
+      "max_chars": 220
+    }
+  ],
+  "greeting_templates": [
+    {
+      "id": "greet_warm_v1",
+      "label": "温暖问候",
+      "template": "你好，我是{name}。今天想聊点什么？",
+      "min_chars": 12,
+      "max_chars": 60
+    },
+    {
+      "id": "greet_question_v1",
+      "label": "抛出问题",
+      "template": "你好呀，我是{name}。如果你只能选一个话题开始，你会选什么？",
+      "min_chars": 12,
+      "max_chars": 80
+    },
+    {
+      "id": "greet_playful_v1",
+      "label": "俏皮开场",
+      "template": "嗨，我是{name}。来，我们先从一个小问题开始：你最近在琢磨什么？",
+      "min_chars": 12,
+      "max_chars": 100
+    }
+  ]
+}

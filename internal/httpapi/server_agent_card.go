@@ -229,6 +229,7 @@ type discoverAgentItemDTO struct {
 	AvatarURL   string   `json:"avatar_url"`
 	PromptView  string   `json:"prompt_view"`
 	Interests   []string `json:"interests,omitempty"`
+	Personality *personalityDTO `json:"personality,omitempty"`
 	MatchScore  float64  `json:"match_score"`
 }
 
@@ -285,6 +286,7 @@ func (s server) handleDiscoverAgents(w http.ResponseWriter, r *http.Request) {
 		`status = 'enabled'`,
 		`admitted_status = 'admitted'`,
 		`coalesce(discovery->>'public','false') = 'true'`,
+		`card_review_status = 'approved'`,
 	}
 	argN := 1
 	if q != "" {
@@ -340,9 +342,14 @@ func (s server) handleDiscoverAgents(w http.ResponseWriter, r *http.Request) {
 	scoredItems := make([]scored, 0, len(items))
 	for _, it := range items {
 		var interests []string
-		_ = unmarshalJSONNullable(it.interestsRaw, &interests)
+		if err := unmarshalJSONNullable(it.interestsRaw, &interests); err != nil {
+			logError(ctx, "discover interests unmarshal failed", err)
+		}
 		var personality personalityDTO
-		_ = unmarshalJSONNullable(it.personalityRaw, &personality)
+		if err := unmarshalJSONNullable(it.personalityRaw, &personality); err != nil {
+			logError(ctx, "discover personality unmarshal failed", err)
+		}
+		p := personality
 
 		score := 0.0
 		if len(interestQuery) > 0 {
@@ -372,6 +379,7 @@ func (s server) handleDiscoverAgents(w http.ResponseWriter, r *http.Request) {
 				AvatarURL:   strings.TrimSpace(it.avatarURL),
 				PromptView:  strings.TrimSpace(it.promptView),
 				Interests:   interests,
+				Personality: &p,
 				MatchScore:  score,
 			},
 			score: score,
@@ -407,6 +415,7 @@ type discoverAgentDetailDTO struct {
 	Bio          string                 `json:"bio"`
 	Greeting     string                 `json:"greeting"`
 	PromptView   string                 `json:"prompt_view"`
+	Persona      any                    `json:"persona,omitempty"`
 	Interests    []string               `json:"interests,omitempty"`
 	Capabilities []string               `json:"capabilities,omitempty"`
 	Personality  personalityDTO         `json:"personality,omitempty"`
@@ -430,19 +439,23 @@ func (s server) handleDiscoverAgentDetail(w http.ResponseWriter, r *http.Request
 		promptView     string
 		bio            string
 		greeting       string
+		personaRaw     []byte
 		interestsRaw   []byte
 		capabilitiesRaw []byte
 		personalityRaw []byte
 		cardReview     string
 	)
 	err = s.db.QueryRow(ctx, `
-		select name, description, avatar_url, prompt_view, bio, greeting, interests, capabilities, personality, card_review_status
+		select name, description, avatar_url, prompt_view, bio, greeting,
+		       coalesce(persona, '{}'::jsonb),
+		       interests, capabilities, personality, card_review_status
 		from agents
 		where id = $1
 		  and status = 'enabled'
 		  and admitted_status = 'admitted'
 		  and coalesce(discovery->>'public','false') = 'true'
-	`, agentID).Scan(&name, &description, &avatarURL, &promptView, &bio, &greeting, &interestsRaw, &capabilitiesRaw, &personalityRaw, &cardReview)
+		  and card_review_status = 'approved'
+	`, agentID).Scan(&name, &description, &avatarURL, &promptView, &bio, &greeting, &personaRaw, &interestsRaw, &capabilitiesRaw, &personalityRaw, &cardReview)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -453,17 +466,27 @@ func (s server) handleDiscoverAgentDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if strings.TrimSpace(cardReview) == "rejected" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
+	_ = cardReview
 
 	var interests []string
-	_ = unmarshalJSONNullable(interestsRaw, &interests)
+	if err := unmarshalJSONNullable(interestsRaw, &interests); err != nil {
+		logError(ctx, "discover agent detail interests unmarshal failed", err)
+	}
 	var capabilities []string
-	_ = unmarshalJSONNullable(capabilitiesRaw, &capabilities)
+	if err := unmarshalJSONNullable(capabilitiesRaw, &capabilities); err != nil {
+		logError(ctx, "discover agent detail capabilities unmarshal failed", err)
+	}
 	var personality personalityDTO
-	_ = unmarshalJSONNullable(personalityRaw, &personality)
+	if err := unmarshalJSONNullable(personalityRaw, &personality); err != nil {
+		logError(ctx, "discover agent detail personality unmarshal failed", err)
+	}
+	var persona any
+	if err := unmarshalJSONNullable(personaRaw, &persona); err != nil {
+		logError(ctx, "discover agent detail persona unmarshal failed", err)
+	}
+	if m, ok := persona.(map[string]any); ok && len(m) == 0 {
+		persona = nil
+	}
 
 	// Best-effort: recent runs where this agent submitted artifacts.
 	var recent []discoverAgentRecentRunDTO
@@ -519,6 +542,7 @@ func (s server) handleDiscoverAgentDetail(w http.ResponseWriter, r *http.Request
 		Bio:          strings.TrimSpace(bio),
 		Greeting:     strings.TrimSpace(greeting),
 		PromptView:   strings.TrimSpace(promptView),
+		Persona:      persona,
 		Interests:    interests,
 		Capabilities: capabilities,
 		Personality:  personality,
@@ -615,21 +639,37 @@ func (s server) handleSyncAgentToOSS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var personality personalityDTO
-	if err := unmarshalJSONNullable(personalityRaw, &personality); err != nil || personality.Validate() != nil {
+	if err := unmarshalJSONNullable(personalityRaw, &personality); err != nil {
+		logError(ctx, "sync agent to oss personality unmarshal failed", err)
+		personality = defaultPersonality()
+	} else if personality.Validate() != nil {
+		logError(ctx, "sync agent to oss personality invalid", errors.New("invalid personality"))
 		personality = defaultPersonality()
 	}
 	var interests []string
-	_ = unmarshalJSONNullable(interestsRaw, &interests)
+	if err := unmarshalJSONNullable(interestsRaw, &interests); err != nil {
+		logError(ctx, "sync agent to oss interests unmarshal failed", err)
+	}
 	var capabilities []string
-	_ = unmarshalJSONNullable(capabilitiesRaw, &capabilities)
+	if err := unmarshalJSONNullable(capabilitiesRaw, &capabilities); err != nil {
+		logError(ctx, "sync agent to oss capabilities unmarshal failed", err)
+	}
 	var discovery discoveryDTO
-	_ = unmarshalJSONNullable(discoveryRaw, &discovery)
+	if err := unmarshalJSONNullable(discoveryRaw, &discovery); err != nil {
+		logError(ctx, "sync agent to oss discovery unmarshal failed", err)
+	}
 	var autonomous autonomousDTO
-	if err := unmarshalJSONNullable(autonomousRaw, &autonomous); err != nil || autonomous.Validate() != nil {
+	if err := unmarshalJSONNullable(autonomousRaw, &autonomous); err != nil {
+		logError(ctx, "sync agent to oss autonomous unmarshal failed", err)
+		autonomous = defaultAutonomous()
+	} else if autonomous.Validate() != nil {
+		logError(ctx, "sync agent to oss autonomous invalid", errors.New("invalid autonomous"))
 		autonomous = defaultAutonomous()
 	}
 	var persona any
-	_ = unmarshalJSONNullable(personaRaw, &persona)
+	if err := unmarshalJSONNullable(personaRaw, &persona); err != nil {
+		logError(ctx, "sync agent to oss persona unmarshal failed", err)
+	}
 	if m, ok := persona.(map[string]any); ok && len(m) == 0 {
 		persona = nil
 	}

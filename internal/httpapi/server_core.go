@@ -428,6 +428,13 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cardReviewStatus := "pending"
+	if catalogs, err := loadAgentCardCatalogs(); err != nil {
+		logError(ctx, "load agent card catalogs failed", err)
+	} else if isPureCatalogCard(catalogs, strings.TrimSpace(req.PersonaTemplateID), interests, capabilities, bio, greeting, req.Name) {
+		cardReviewStatus = "approved"
+	}
+
 	var agentID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		insert into agents (
@@ -435,14 +442,16 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 			avatar_url, personality, interests, capabilities, bio, greeting,
 			discovery, autonomous, persona,
 			agent_public_key,
-			prompt_view
+			prompt_view,
+			card_review_status
 		)
 		values (
 			$1, $2, $3, 'enabled',
 			$4, $5, $6, $7, $8, $9,
 			$10, $11, $12,
 			$13,
-			$14
+			$14,
+			$15
 		)
 		returning id
 	`, userID, req.Name, req.Description,
@@ -450,6 +459,7 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		discoveryJSON, autonomousJSON, personaJSON,
 		agentPublicKey,
 		promptView,
+		cardReviewStatus,
 	).Scan(&agentID); err != nil {
 		logError(ctx, "insert agent failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create agent failed"})
@@ -877,6 +887,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		curCardVersion     int
 		curPromptView      string
 		curCardCertRaw     []byte
+		curCardReview      string
 	)
 	err = tx.QueryRow(ctx, `
 		select
@@ -888,7 +899,8 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			agent_public_key,
 			card_version,
 			prompt_view,
-			card_cert
+			card_cert,
+			card_review_status
 		from agents
 		where id = $1 and owner_id = $2
 	`, agentID, userID).Scan(
@@ -901,6 +913,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		&curCardVersion,
 		&curPromptView,
 		&curCardCertRaw,
+		&curCardReview,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
@@ -920,25 +933,39 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	greeting := curGreeting
 
 	var personality personalityDTO
-	if err := unmarshalJSONNullable(curPersonalityRaw, &personality); err != nil || personality.Validate() != nil {
+	if err := unmarshalJSONNullable(curPersonalityRaw, &personality); err != nil {
+		logError(ctx, "update agent personality unmarshal failed", err)
+		personality = defaultPersonality()
+	} else if personality.Validate() != nil {
+		logError(ctx, "update agent personality invalid", errors.New("invalid personality"))
 		personality = defaultPersonality()
 	}
 	var interests []string
 	if err := unmarshalJSONNullable(curInterestsRaw, &interests); err != nil {
+		logError(ctx, "update agent interests unmarshal failed", err)
 		interests = []string{}
 	}
 	var capabilities []string
 	if err := unmarshalJSONNullable(curCapabilitiesRaw, &capabilities); err != nil {
+		logError(ctx, "update agent capabilities unmarshal failed", err)
 		capabilities = []string{}
 	}
 	var discovery discoveryDTO
-	_ = unmarshalJSONNullable(curDiscoveryRaw, &discovery)
+	if err := unmarshalJSONNullable(curDiscoveryRaw, &discovery); err != nil {
+		logError(ctx, "update agent discovery unmarshal failed", err)
+	}
 	var autonomous autonomousDTO
-	if err := unmarshalJSONNullable(curAutonomousRaw, &autonomous); err != nil || autonomous.Validate() != nil {
+	if err := unmarshalJSONNullable(curAutonomousRaw, &autonomous); err != nil {
+		logError(ctx, "update agent autonomous unmarshal failed", err)
+		autonomous = defaultAutonomous()
+	} else if autonomous.Validate() != nil {
+		logError(ctx, "update agent autonomous invalid", errors.New("invalid autonomous"))
 		autonomous = defaultAutonomous()
 	}
 	var personaAny any
-	_ = unmarshalJSONNullable(curPersonaRaw, &personaAny)
+	if err := unmarshalJSONNullable(curPersonaRaw, &personaAny); err != nil {
+		logError(ctx, "update agent persona unmarshal failed", err)
+	}
 	if m, ok := personaAny.(map[string]any); ok && len(m) == 0 {
 		personaAny = nil
 	}
@@ -1108,12 +1135,6 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
 		return
 	}
-	discoveryJSON, err := marshalJSONB(discovery)
-	if err != nil {
-		logError(ctx, "marshal discovery failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
-		return
-	}
 	autonomousJSON, err := marshalJSONB(autonomous)
 	if err != nil {
 		logError(ctx, "marshal autonomous failed", err)
@@ -1145,6 +1166,28 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		cardCertJSON = []byte("{}")
 	}
 
+	cardReviewStatus := strings.TrimSpace(curCardReview)
+	if cardChanged {
+		// Any card change means the published OSS version (if any) is stale.
+		discovery.OSSEndpoint = ""
+		discovery.LastSyncedAt = ""
+
+		// Any change makes prior review status obsolete; recompute via catalog validation.
+		cardReviewStatus = "pending"
+		if catalogs, err := loadAgentCardCatalogs(); err != nil {
+			logError(ctx, "load agent card catalogs failed", err)
+		} else if isPureCatalogCard(catalogs, "", interests, capabilities, bio, greeting, name) {
+			cardReviewStatus = "approved"
+		}
+	}
+
+	discoveryJSON, err := marshalJSONB(discovery)
+	if err != nil {
+		logError(ctx, "marshal discovery failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+
 	// Update statement.
 	_, err = tx.Exec(ctx, `
 		update agents
@@ -1167,8 +1210,9 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			card_version = $16,
 			prompt_view = case when $17 <> '' then $17 else prompt_view end,
 			card_cert = $18,
+			card_review_status = $19,
 			updated_at = now()
-		where id = $19 and owner_id = $20
+		where id = $20 and owner_id = $21
 	`,
 		name,
 		description,
@@ -1188,6 +1232,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		curCardVersion,
 		promptView,
 		cardCertJSON,
+		cardReviewStatus,
 		agentID,
 		userID,
 	)
@@ -1726,6 +1771,7 @@ type runListItemDTO struct {
 	OutputVersion int    `json:"output_version"`
 	OutputKind    string `json:"output_kind"`
 	IsSystem      bool   `json:"is_system"`
+	PreviewText   string `json:"preview_text,omitempty"`
 }
 
 type listRunsResponse struct {
@@ -1798,14 +1844,24 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 		select r.id, r.goal, r.constraints, r.status, r.created_at, r.updated_at,
 		       coalesce(a.version, 0) as output_version,
 		       coalesce(a.kind, '') as output_kind,
-		       (r.publisher_user_id = $` + strconv.Itoa(platformArg) + `) as is_system
+		       (r.publisher_user_id = $` + strconv.Itoa(platformArg) + `) as is_system,
+		       left(coalesce(kn.text, ''), 400) as key_node_text,
+		       left(coalesce(a.content, ''), 400) as artifact_text
 		from runs r
 		left join lateral (
+			select
+				coalesce(payload->>'text', '') as text
+			from events
+			where run_id = r.id and is_key_node = true and review_status <> 'rejected'
+			order by seq desc
+			limit 1
+		) kn on true
+		left join lateral (
 			select version, kind,
-			       case when review_status = 'rejected' then '' else content end as content
+			       content
 			from artifacts
-			where run_id = r.id
-			order by version desc
+			where run_id = r.id and review_status <> 'rejected'
+			order by (kind = 'output') desc, version desc
 			limit 1
 		) a on true
 	`
@@ -1817,6 +1873,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
+		logError(ctx, "list runs query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -1833,12 +1890,22 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 			updatedAt   time.Time
 			outVer      int
 			outKind     string
+			keyNodeText string
+			artifactText string
 		)
 		var isSystem bool
-		if err := rows.Scan(&id, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind, &isSystem); err != nil {
+		if err := rows.Scan(&id, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind, &isSystem, &keyNodeText, &artifactText); err != nil {
+			logError(ctx, "list runs scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
+
+		preview := strings.TrimSpace(keyNodeText)
+		if preview == "" {
+			preview = strings.TrimSpace(artifactText)
+		}
+		preview = strings.Join(strings.Fields(preview), " ")
+
 		out = append(out, runListItemDTO{
 			RunID:         id.String(),
 			Goal:          goal,
@@ -1849,7 +1916,13 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 			OutputVersion: outVer,
 			OutputKind:    outKind,
 			IsSystem:      isSystem,
+			PreviewText:   preview,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		logError(ctx, "list runs iterate failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
+		return
 	}
 
 	hasMore := false

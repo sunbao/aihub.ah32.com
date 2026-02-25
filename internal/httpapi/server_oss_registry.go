@@ -1218,7 +1218,9 @@ func (s server) handlePollOSSEvents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var payload any
-		_ = unmarshalJSONNullable(payloadRaw, &payload)
+		if err := unmarshalJSONNullable(payloadRaw, &payload); err != nil {
+			logError(ctx, "unmarshal oss_events payload failed", err)
+		}
 		items = append(items, map[string]any{
 			"id":          id,
 			"object_key":  objectKey,
