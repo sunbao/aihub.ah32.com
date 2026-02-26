@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -21,13 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const (
-	oauthGitHubStateCookie   = "aihub_oauth_github_state"
-	oauthGitHubPKCECookie    = "aihub_oauth_github_pkce"
-	oauthGitHubFlowCookie    = "aihub_oauth_github_flow"
-	oauthGitHubRedirectCookie = "aihub_oauth_github_redirect_to"
-	oauthGitHubCookieMaxAgeS = 10 * 60
-)
+const oauthGitHubStateTTL = 10 * time.Minute
 
 const appExchangeTokenTTL = 60 * time.Second
 
@@ -120,28 +115,99 @@ func (s server) oauthRedirectURL(r *http.Request) (string, bool) {
 	return base + "/v1/auth/github/callback", scheme == "https"
 }
 
-func setOAuthCookie(w http.ResponseWriter, name, value string, secure bool) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     name,
-		Value:    value,
-		Path:     "/",
-		MaxAge:   oauthGitHubCookieMaxAgeS,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
-	})
+type githubOAuthState struct {
+	Version     int    `json:"v"`
+	ExpiresAt   int64  `json:"exp"`
+	PKCE        string `json:"pkce"`
+	RedirectURI string `json:"redirect_uri"`
+	Flow        string `json:"flow,omitempty"`        // "" | "app"
+	RedirectTo  string `json:"redirect_to,omitempty"` // sanitized relative path
 }
 
-func clearOAuthCookie(w http.ResponseWriter, name string, secure bool) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     name,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
-	})
+func (s server) githubOAuthStateHMACKey() ([]byte, error) {
+	pepper := strings.TrimSpace(s.pepper)
+	if pepper == "" {
+		return nil, errors.New("missing pepper")
+	}
+	sum := sha256.Sum256([]byte("aihub:oauth:github:state:" + pepper))
+	return sum[:], nil
+}
+
+func (s server) signGitHubOAuthState(st githubOAuthState) (string, error) {
+	key, err := s.githubOAuthStateHMACKey()
+	if err != nil {
+		return "", err
+	}
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return "", err
+	}
+	payload := base64.RawURLEncoding.EncodeToString(raw)
+
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write(raw)
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	return payload + "." + sig, nil
+}
+
+func (s server) parseGitHubOAuthState(token string) (githubOAuthState, error) {
+	key, err := s.githubOAuthStateHMACKey()
+	if err != nil {
+		return githubOAuthState{}, err
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return githubOAuthState{}, errors.New("invalid token format")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return githubOAuthState{}, errors.New("invalid payload encoding")
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return githubOAuthState{}, errors.New("invalid signature encoding")
+	}
+
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write(raw)
+	expected := mac.Sum(nil)
+	if !hmac.Equal(sig, expected) {
+		return githubOAuthState{}, errors.New("invalid signature")
+	}
+
+	var st githubOAuthState
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return githubOAuthState{}, errors.New("invalid payload json")
+	}
+	if st.Version != 1 {
+		return githubOAuthState{}, errors.New("unsupported token version")
+	}
+	if st.ExpiresAt <= time.Now().Unix() {
+		return githubOAuthState{}, errors.New("token expired")
+	}
+	if strings.TrimSpace(st.PKCE) == "" {
+		return githubOAuthState{}, errors.New("missing pkce")
+	}
+	if strings.TrimSpace(st.RedirectURI) == "" {
+		return githubOAuthState{}, errors.New("missing redirect_uri")
+	}
+	switch strings.ToLower(strings.TrimSpace(st.Flow)) {
+	case "":
+		st.Flow = ""
+	case "app":
+		st.Flow = "app"
+	default:
+		return githubOAuthState{}, errors.New("invalid flow")
+	}
+	if st.RedirectTo != "" {
+		if v, ok := sanitizeOAuthRedirectTo(st.RedirectTo); ok {
+			st.RedirectTo = v
+		} else {
+			return githubOAuthState{}, errors.New("invalid redirect_to")
+		}
+	}
+	return st, nil
 }
 
 func writeOAuthHTML(w http.ResponseWriter, status int, title, message string) {
@@ -195,6 +261,11 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 		writeOAuthHTML(w, http.StatusServiceUnavailable, "未配置 GitHub OAuth", "服务端尚未配置 GitHub OAuth（client id/secret）。请联系管理员配置后再试。")
 		return
 	}
+	if strings.TrimSpace(s.pepper) == "" {
+		logMsg(r.Context(), "oauth github start: missing pepper")
+		writeOAuthHTML(w, http.StatusServiceUnavailable, "无法发起登录", "服务端未配置必要的安全参数，请联系管理员配置 AIHUB_API_KEY_PEPPER 后再试。")
+		return
+	}
 
 	// If AIHUB_PUBLIC_BASE_URL is set, enforce a canonical host+scheme for the OAuth flow.
 	// Otherwise state/PKCE cookies may be set on host A but GitHub redirects back to host B,
@@ -212,17 +283,10 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	redirectURI, secure := s.oauthRedirectURL(r)
+	redirectURI, _ := s.oauthRedirectURL(r)
 	if redirectURI == "" {
 		logMsg(r.Context(), "oauth github start: redirect uri unavailable")
 		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
-		return
-	}
-
-	state, err := randomBase64URL(32)
-	if err != nil {
-		logError(r.Context(), "oauth state generation failed", err)
-		writeOAuthHTML(w, http.StatusInternalServerError, "发起登录失败", "系统繁忙，请稍后再试。")
 		return
 	}
 
@@ -236,32 +300,40 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	sum := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
 
-	setOAuthCookie(w, oauthGitHubStateCookie, state, secure)
-	setOAuthCookie(w, oauthGitHubPKCECookie, codeVerifier, secure)
 	flow := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("flow")))
+	redirectTo := ""
 	switch flow {
 	case "":
-		clearOAuthCookie(w, oauthGitHubFlowCookie, secure)
-		clearOAuthCookie(w, oauthGitHubRedirectCookie, secure)
+		flow = ""
 	case "app":
-		setOAuthCookie(w, oauthGitHubFlowCookie, "app", secure)
+		flow = "app"
 	default:
 		logMsg(r.Context(), "oauth github start: invalid flow")
-		clearOAuthCookie(w, oauthGitHubStateCookie, secure)
-		clearOAuthCookie(w, oauthGitHubPKCECookie, secure)
-		clearOAuthCookie(w, oauthGitHubFlowCookie, secure)
-		clearOAuthCookie(w, oauthGitHubRedirectCookie, secure)
 		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "不支持的登录流程")
 		return
 	}
 
 	if v, ok := sanitizeOAuthRedirectTo(r.URL.Query().Get("redirect_to")); ok {
-		setOAuthCookie(w, oauthGitHubRedirectCookie, v, secure)
+		redirectTo = v
 	} else {
 		if strings.TrimSpace(r.URL.Query().Get("redirect_to")) != "" {
 			logMsg(r.Context(), "oauth github start: invalid redirect_to ignored")
 		}
-		clearOAuthCookie(w, oauthGitHubRedirectCookie, secure)
+		redirectTo = ""
+	}
+
+	stateToken, err := s.signGitHubOAuthState(githubOAuthState{
+		Version:     1,
+		ExpiresAt:   time.Now().Add(oauthGitHubStateTTL).Unix(),
+		PKCE:        codeVerifier,
+		RedirectURI: redirectURI,
+		Flow:        flow,
+		RedirectTo:  redirectTo,
+	})
+	if err != nil {
+		logError(r.Context(), "oauth state signing failed", err)
+		writeOAuthHTML(w, http.StatusInternalServerError, "发起登录失败", "系统繁忙，请稍后再试。")
+		return
 	}
 
 	u := &url.URL{
@@ -272,7 +344,7 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	q := u.Query()
 	q.Set("client_id", strings.TrimSpace(s.githubClientID))
 	q.Set("redirect_uri", redirectURI)
-	q.Set("state", state)
+	q.Set("state", stateToken)
 	q.Set("scope", "read:user")
 	q.Set("allow_signup", "true")
 	q.Set("code_challenge", codeChallenge)
@@ -384,6 +456,11 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		writeOAuthHTML(w, http.StatusServiceUnavailable, "未配置 GitHub OAuth", "服务端尚未配置 GitHub OAuth（client id/secret）。请联系管理员配置后再试。")
 		return
 	}
+	if strings.TrimSpace(s.pepper) == "" {
+		logMsg(r.Context(), "oauth github callback: missing pepper")
+		writeOAuthHTML(w, http.StatusServiceUnavailable, "登录失败", "服务端未配置必要的安全参数，请联系管理员配置 AIHUB_API_KEY_PEPPER 后再试。")
+		return
+	}
 
 	// Defensive: if callback hits a non-canonical host while AIHUB_PUBLIC_BASE_URL is set,
 	// cookies/state are very likely missing. Ask the user to restart from the canonical URL.
@@ -399,13 +476,6 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 			)
 			return
 		}
-	}
-
-	redirectURI, secure := s.oauthRedirectURL(r)
-	if redirectURI == "" {
-		logMsg(r.Context(), "oauth github callback: redirect uri unavailable")
-		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
-		return
 	}
 
 	if ghErr := strings.TrimSpace(r.URL.Query().Get("error")); ghErr != "" {
@@ -427,22 +497,19 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	stateCookie, err := r.Cookie(oauthGitHubStateCookie)
-	if err != nil || strings.TrimSpace(stateCookie.Value) == "" {
-		logMsg(r.Context(), "oauth github callback: missing state cookie")
+	st, err := s.parseGitHubOAuthState(state)
+	if err != nil {
+		logMsg(r.Context(), "oauth github callback: invalid state token")
+		logError(r.Context(), "oauth github callback: state token parse failed", err)
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "登录已过期，请返回后重试。")
 		return
 	}
-	if subtleConstantTimeEquals(stateCookie.Value, state) == false {
-		logMsg(r.Context(), "oauth github callback: state mismatch")
-		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "登录状态不匹配，请返回后重试。")
-		return
-	}
-
-	pkceCookie, _ := r.Cookie(oauthGitHubPKCECookie)
-	codeVerifier := ""
-	if pkceCookie != nil {
-		codeVerifier = strings.TrimSpace(pkceCookie.Value)
+	redirectURI := strings.TrimSpace(st.RedirectURI)
+	codeVerifier := strings.TrimSpace(st.PKCE)
+	flow := st.Flow
+	redirectTo := "/app/me"
+	if st.RedirectTo != "" {
+		redirectTo = st.RedirectTo
 	}
 
 	baseCtx := context.WithoutCancel(r.Context())
@@ -462,20 +529,6 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	flowCookie, _ := r.Cookie(oauthGitHubFlowCookie)
-	flow := ""
-	if flowCookie != nil {
-		flow = strings.ToLower(strings.TrimSpace(flowCookie.Value))
-	}
-
-	redirectTo := "/app/me"
-	redirectCookie, _ := r.Cookie(oauthGitHubRedirectCookie)
-	if redirectCookie != nil {
-		if v, ok := sanitizeOAuthRedirectTo(redirectCookie.Value); ok {
-			redirectTo = v
-		}
-	}
-
 	// Upsert user + identity.
 	userID, err := s.upsertGitHubIdentity(ctx, gu)
 	if err != nil {
@@ -483,11 +536,6 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		writeOAuthHTML(w, http.StatusInternalServerError, "登录失败", "系统繁忙，请稍后再试。")
 		return
 	}
-
-	clearOAuthCookie(w, oauthGitHubStateCookie, secure)
-	clearOAuthCookie(w, oauthGitHubPKCECookie, secure)
-	clearOAuthCookie(w, oauthGitHubFlowCookie, secure)
-	clearOAuthCookie(w, oauthGitHubRedirectCookie, secure)
 
 	s.audit(ctx, "user", userID, "user_oauth_login", map[string]any{"provider": "github", "flow": flow})
 

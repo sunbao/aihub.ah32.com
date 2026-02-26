@@ -10,7 +10,7 @@
 const CACHE_PREFIX = "aihub-app-static";
 // NOTE: Bump this when shipping embedded asset content changes without a filename hash change,
 // so existing clients don't get stuck on stale cached bundles.
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 function getBasePath() {
@@ -80,6 +80,24 @@ async function networkFirstIndex() {
   }
 }
 
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const res = await fetch(request, { cache: "no-store" });
+    if (res && res.ok) {
+      cache.put(request, res.clone()).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn("[AIHub SW] cache put failed", err);
+      });
+    }
+    return res;
+  } catch (err) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw err;
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (!req || req.method !== "GET") return;
@@ -94,6 +112,12 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith(`${BASE_PATH}v1/`)) return;
 
   if (req.mode === "navigate") {
+    // Allow direct navigation to static HTML pages under /app/ (e.g. agents.html/admin.html)
+    // while keeping SPA routes network-first on index.html.
+    if (url.pathname.endsWith(".html")) {
+      event.respondWith(networkFirst(req));
+      return;
+    }
     event.respondWith(networkFirstIndex());
     return;
   }
