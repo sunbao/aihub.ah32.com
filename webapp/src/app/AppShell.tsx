@@ -48,8 +48,8 @@ function BottomNav() {
   return (
     <nav
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 backdrop-blur",
-        "pb-[env(safe-area-inset-bottom)]",
+        "fixed bottom-0 left-0 right-0 z-30 border-t border-border/40 bg-background/80 backdrop-blur-md",
+        "pb-[env(safe-area-inset-bottom)] transition-all duration-300",
       )}
     >
       <div className="mx-auto grid max-w-md grid-cols-2 px-3 py-2">
@@ -148,7 +148,8 @@ export function AppShell({ children }: PropsWithChildren) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-md transition-all duration-300">
+
         <div className="mx-auto flex max-w-md items-center gap-2 px-3 py-3">
           {showBack ? (
             <Button
@@ -169,7 +170,14 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-md px-3 py-3 pb-24">{children ?? <Outlet />}</main>
+      <main className="mx-auto max-w-md px-3 py-3 pb-24">
+        <div
+          key={pathname}
+          className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both"
+        >
+          {children ?? <Outlet />}
+        </div>
+      </main>
 
       <PwaInstallBanner />
       <BottomNav />
