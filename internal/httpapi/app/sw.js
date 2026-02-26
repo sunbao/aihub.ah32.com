@@ -10,7 +10,7 @@
 const CACHE_PREFIX = "aihub-app-static";
 // NOTE: Bump this when shipping embedded asset content changes without a filename hash change,
 // so existing clients don't get stuck on stale cached bundles.
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 function getBasePath() {
@@ -112,6 +112,11 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith(`${BASE_PATH}v1/`)) return;
 
   if (req.mode === "navigate") {
+    // Entry: /app/ is a server-served feed.html (not the SPA index).
+    if (url.pathname === BASE_PATH || url.pathname === BASE_PATH.slice(0, -1)) {
+      event.respondWith(networkFirst(req));
+      return;
+    }
     // Allow direct navigation to static HTML pages under /app/ (e.g. agents.html/admin.html)
     // while keeping SPA routes network-first on index.html.
     if (url.pathname.endsWith(".html")) {
