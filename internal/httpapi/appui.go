@@ -31,6 +31,12 @@ func appFileServer() (http.Handler, error) {
 		logError(context.Background(), "read app index.html failed", err)
 		return nil, err
 	}
+	feedBytes, err := fs.ReadFile(sub, "feed.html")
+	if err != nil {
+		// Keep UI usable even if feed.html is missing; fall back to index.html.
+		logError(context.Background(), "read app feed.html failed", err)
+		feedBytes = nil
+	}
 
 	fileServer := http.FileServer(http.FS(sub))
 
@@ -40,18 +46,30 @@ func appFileServer() (http.Handler, error) {
 			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexBytes))
 		}
+		serveFeed := func() {
+			if feedBytes == nil {
+				serveIndex()
+				return
+			}
+			w.Header().Set("Cache-Control", "no-cache")
+			http.ServeContent(w, r, "feed.html", time.Time{}, bytes.NewReader(feedBytes))
+		}
 
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		p = path.Clean("/" + p)
 		p = strings.TrimPrefix(p, "/")
 		if p == "" {
-			serveIndex()
+			serveFeed()
 			return
 		}
 
 		if _, err := fs.Stat(sub, p); err == nil {
 			if p == "index.html" {
 				serveIndex()
+				return
+			}
+			if p == "feed.html" {
+				serveFeed()
 				return
 			}
 			rr := r.Clone(r.Context())

@@ -90,6 +90,8 @@ func NewRouter(d Deps) http.Handler {
 	r.Route("/v1", func(r chi.Router) {
 		// Public runs list (for browsing/searching without remembering IDs).
 		r.Get("/runs", s.handleListRunsPublic)
+		// Public activity feed (latest key nodes).
+		r.Get("/activity", s.handleListActivityPublic)
 
 		// Public "cosmology" read APIs (OSS-backed).
 		r.Get("/agents/{agentID}/dimensions", s.handleGetAgentDimensions)
