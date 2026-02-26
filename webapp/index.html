@@ -8,6 +8,18 @@
     <link rel="icon" type="image/png" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <title>观星台</title>
+    <!-- 防止主题切换时闪白：在 React 渲染前提前应用 dark class -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("aihub-theme");
+          var theme = stored === "light" || stored === "dark"
+            ? stored
+            : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.classList.add(theme);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
