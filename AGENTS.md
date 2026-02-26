@@ -18,3 +18,8 @@
 - No “compatibility/downgrade/fallback” mindset: deprecated things MUST be removed; needed things MUST be integrated into `/app`.
 - No parallel implementations: if a feature is needed, **integrate** it into `/app`; if not needed, **delete** it.
 - When integrating from `/ui` → `/app`, remove the `/ui` page/route/assets in the same change and update internal links/docs accordingly (no shims/fallbacks).
+
+## 4) Agent UX (no “current agent”)
+
+- Do **not** introduce a global “current agent”/“set as current” concept in console UX.
+- Agent-bound actions must be **per-agent** (explicit `agent_id`), and should work without extra “select current agent” steps.

@@ -11,7 +11,7 @@
       <header class="header">
         <div>
           <div class="title">星灵管理（Agent Hub）</div>
-          <div class="subtitle">编辑卡片 / 一键接入（OpenClaw）/ 同步 OSS / 周报&独特性&时间线：按星灵聚合，无需反复设置“当前星灵”</div>
+          <div class="subtitle">编辑卡片 / 一键接入（OpenClaw）/ 同步 OSS / 周报&独特性&时间线：按星灵聚合，一处完成</div>
         </div>
         <div class="subtitle">
           <div class="row">
@@ -71,8 +71,6 @@
       const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
       const BASE_URL_KEY = "aihub_base_url";
       const OPENCLAW_PROFILE_NAMES = "aihub_openclaw_profile_names"; // JSON map: { [agent_id]: profile_name }
-      const CURRENT_AGENT_ID = "aihub_current_agent_id";
-      const CURRENT_AGENT_LABEL = "aihub_current_agent_label";
 
       let openclawCmdUpdaters = [];
 
@@ -132,27 +130,6 @@
         const m = getProfileNameMap();
         m[agentID] = String(name || "").trim();
         setProfileNameMap(m);
-      }
-
-      function setCurrentAgent(agent) {
-        if (!agent) {
-          setStored(CURRENT_AGENT_ID, "");
-          setStored(CURRENT_AGENT_LABEL, "");
-          return;
-        }
-        setStored(CURRENT_AGENT_ID, agent.id);
-        setStored(CURRENT_AGENT_LABEL, `${agent.name || ""}`);
-      }
-
-      function isUUIDLike(s) {
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test((s || "").trim());
-      }
-      function sanitizeLabel(label) {
-        const t = (label || "").trim();
-        if (!t) return "";
-        const parts = t.split("·").map(s => s.trim()).filter(Boolean);
-        if (parts.length >= 2 && isUUIDLike(parts[parts.length - 1])) return parts.slice(0, -1).join(" · ");
-        return t;
       }
 
       function normalizeTagsInput(v) {
@@ -237,7 +214,6 @@
         try {
           const res = await apiFetch("/v1/agents", { apiKey });
           const list = res.agents || [];
-          const currentID = getStored(CURRENT_AGENT_ID).trim();
           const container = $("agents");
           container.innerHTML = "";
           const cmdUpdaters = [];
@@ -248,9 +224,8 @@
 
             const meta = document.createElement("div");
             meta.className = "meta";
-            const isCurrent = a.id === currentID;
             const hasKey = !!getSavedAgentKey(a.id);
-            meta.textContent = `${fmtAgentStatus(a.status)} · ${hasKey ? "已保存密钥" : "未保存密钥"}${isCurrent ? " · 当前" : ""} · ${a.id}`;
+            meta.textContent = `${fmtAgentStatus(a.status)} · ${hasKey ? "已保存密钥" : "未保存密钥"} · ${a.id}`;
 
             const body = document.createElement("div");
             body.className = "body";
@@ -275,20 +250,9 @@
             linkUniq.href = `/app/agents/${encodeURIComponent(a.id)}/uniqueness`;
             linkUniq.textContent = "独特性";
 
-            const btnSetCurrent = document.createElement("button");
-            btnSetCurrent.className = "btn secondary";
-            btnSetCurrent.type = "button";
-            btnSetCurrent.textContent = "设为当前";
-            btnSetCurrent.onclick = () => {
-              setCurrentAgent(a);
-              renderNotice($("noticeAgents"), `已设置当前星灵：${sanitizeLabel(a.name)} · ${a.id}`);
-              listAgents();
-            };
-
             actions.appendChild(linkEdit);
             actions.appendChild(linkWeekly);
             actions.appendChild(linkUniq);
-            actions.appendChild(btnSetCurrent);
 
             const details = document.createElement("details");
             details.style.marginTop = "10px";
@@ -528,7 +492,6 @@
               try {
                 await apiFetch(`/v1/agents/${a.id}`, { method: "DELETE", apiKey });
                 deleteAgentKey(a.id);
-                if (getStored(CURRENT_AGENT_ID).trim() === a.id) setCurrentAgent(null);
                 renderNotice(noticeOps, "已删除。");
                 await listAgents();
               } catch (e) {
@@ -642,7 +605,6 @@
           const res = await apiFetch("/v1/agents", { method: "POST", apiKey, body: { name, description, tags }});
           if (res.agent_id && res.api_key) {
             saveAgentKey(res.agent_id, res.api_key);
-            setCurrentAgent({ id: res.agent_id, name, description, tags, status: "enabled" });
             renderNotice($("noticeCreate"), "创建成功：已把星灵密钥保存到本浏览器（建议你也单独备份）。");
             $("outCreate").textContent = `星灵 API 密钥（只显示一次，请立即保存）：\n${res.api_key}`;
           } else {
