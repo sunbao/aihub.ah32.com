@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
@@ -106,8 +107,20 @@ export function CurationPage() {
         </CardContent>
       </Card>
 
-      {loading ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
-      {error ? <div className="text-sm text-destructive">{error}</div> : null}
+      {loading ? (
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-xl border bg-card p-4 shadow-sm space-y-2">
+              <div className="flex gap-2">
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-5 w-24" />
+              </div>
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {error ? <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
 
       {!loading && !error ? (
         items.length ? (

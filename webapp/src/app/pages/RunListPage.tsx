@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 
@@ -26,10 +27,25 @@ type ListRunsResponse = {
   next_offset: number;
 };
 
+function RunSkeleton() {
+  return (
+    <div className="mb-2 rounded-xl border bg-card p-4 shadow-sm">
+      <div className="flex gap-2">
+        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-5 w-24" />
+      </div>
+      <Skeleton className="mt-3 h-5 w-3/4" />
+    </div>
+  );
+}
+
 function RunRow({ run }: { run: RunListItem }) {
   const nav = useNavigate();
   return (
-    <Card className="mb-2">
+    <Card
+      className="mb-2 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
+      onClick={() => nav(`/runs/${encodeURIComponent(run.run_id)}`)}
+    >
       <CardContent className="pt-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary">{fmtRunStatus(run.status)}</Badge>
@@ -37,11 +53,6 @@ function RunRow({ run }: { run: RunListItem }) {
           {run.is_system ? <Badge variant="outline">平台内置</Badge> : null}
         </div>
         <div className="mt-2 text-sm font-medium">{trunc(run.goal, 140) || "（无标题）"}</div>
-        <div className="mt-3">
-          <Button size="sm" onClick={() => nav(`/runs/${encodeURIComponent(run.run_id)}`)}>
-            进入详情
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
@@ -49,7 +60,6 @@ function RunRow({ run }: { run: RunListItem }) {
 
 export function RunListPage() {
   const [sp, setSp] = useSearchParams();
-  const nav = useNavigate();
 
   const q = sp.get("q") ?? "";
   const status = sp.get("status") ?? "all";
@@ -62,6 +72,7 @@ export function RunListPage() {
   const [error, setError] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
+  const observerTarget = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
     const base = items.slice();
@@ -73,7 +84,6 @@ export function RunListPage() {
         : status === "done"
           ? base.filter((r) => isDone(r.status))
           : base;
-    // Default ordering: running first, then newest.
     out.sort((a, b) => {
       const ar = isRunning(a.status) ? 0 : 1;
       const br = isRunning(b.status) ? 0 : 1;
@@ -93,6 +103,7 @@ export function RunListPage() {
   }
 
   async function load({ reset }: { reset: boolean }) {
+    if (loading) return;
     setLoading(true);
     setError("");
     try {
@@ -114,6 +125,23 @@ export function RunListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
+  // Infinite scroll
+  useEffect(() => {
+    const currentTarget = observerTarget.current;
+    if (!currentTarget) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          void load({ reset: false });
+        }
+      },
+      { threshold: 0.1, rootMargin: "120px" },
+    );
+    observer.observe(currentTarget);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, loading, nextOffset]);
+
   return (
     <div className="space-y-3">
       <Card>
@@ -123,6 +151,14 @@ export function RunListPage() {
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
               placeholder="搜索任务…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const next = new URLSearchParams(sp);
+                  if (qInput.trim()) next.set("q", qInput.trim());
+                  else next.delete("q");
+                  setSp(next, { replace: true });
+                }
+              }}
             />
             <Button
               onClick={() => {
@@ -136,73 +172,57 @@ export function RunListPage() {
             </Button>
           </div>
           <div className="mt-3 flex gap-2">
-            <Button
-              variant={status === "all" ? "default" : "secondary"}
-              size="sm"
-              onClick={() => {
-                const next = new URLSearchParams(sp);
-                next.set("status", "all");
-                setSp(next, { replace: true });
-              }}
-            >
-              全部
-            </Button>
-            <Button
-              variant={status === "running" ? "default" : "secondary"}
-              size="sm"
-              onClick={() => {
-                const next = new URLSearchParams(sp);
-                next.set("status", "running");
-                setSp(next, { replace: true });
-              }}
-            >
-              进行中
-            </Button>
-            <Button
-              variant={status === "done" ? "default" : "secondary"}
-              size="sm"
-              onClick={() => {
-                const next = new URLSearchParams(sp);
-                next.set("status", "done");
-                setSp(next, { replace: true });
-              }}
-            >
-              已完成
-            </Button>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => nav("/")}>
-              回广场
-            </Button>
-            <Link
-              to="/me"
-              className="inline-flex items-center text-xs text-muted-foreground underline-offset-4 hover:underline"
-            >
-              去我的
-            </Link>
+            {(["all", "running", "done"] as const).map((s) => (
+              <Button
+                key={s}
+                variant={status === s ? "default" : "secondary"}
+                size="sm"
+                onClick={() => {
+                  const next = new URLSearchParams(sp);
+                  next.set("status", s);
+                  setSp(next, { replace: true });
+                }}
+              >
+                {s === "all" ? "全部" : s === "running" ? "进行中" : "已完成"}
+              </Button>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      {loading && !items.length ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
-      {error ? <div className="text-sm text-destructive">{error}</div> : null}
+      {error ? <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
 
-      {filtered.length ? filtered.map((r) => <RunRow key={r.run_id} run={r} />) : null}
+      {/* Initial skeleton */}
+      {loading && !items.length && (
+        <>
+          <RunSkeleton />
+          <RunSkeleton />
+          <RunSkeleton />
+        </>
+      )}
+
+      {filtered.map((r) => (
+        <RunRow key={r.run_id} run={r} />
+      ))}
 
       {!loading && !error && !filtered.length ? (
-        <div className="text-sm text-muted-foreground">暂无任务。</div>
+        <div className="py-12 text-center text-sm text-muted-foreground">暂无任务。</div>
       ) : null}
 
-      <div className="py-2">
-        {hasMore ? (
-          <Button disabled={loading} variant="secondary" className="w-full" onClick={() => load({ reset: false })}>
-            {loading ? "加载中…" : "加载更多"}
-          </Button>
-        ) : (
-          <div className="text-center text-xs text-muted-foreground">没有更多了。</div>
-        )}
-      </div>
+      {/* Sentinel */}
+      <div ref={observerTarget} className="h-4 w-full" />
+
+      {/* Bottom loading skeletons */}
+      {loading && items.length > 0 && (
+        <>
+          <RunSkeleton />
+          <RunSkeleton />
+        </>
+      )}
+
+      {!hasMore && filtered.length > 0 && (
+        <div className="py-4 text-center text-xs text-muted-foreground/50">- 已经到底了 -</div>
+      )}
     </div>
   );
 }
-

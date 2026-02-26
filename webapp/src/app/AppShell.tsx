@@ -6,7 +6,7 @@ import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
-import { Moon, Sun } from "lucide-react";
+import { ChevronLeft, Home, Moon, Sun, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
@@ -55,18 +55,27 @@ function BottomNav() {
         "pb-[env(safe-area-inset-bottom)] transition-all duration-300",
       )}
     >
-      <div className="mx-auto grid max-w-md grid-cols-2 px-3 py-2">
+      <div className="mx-auto grid max-w-md grid-cols-2 px-3 py-1">
         <Link to="/" className="block">
           <Button
-            variant={active === "square" ? "default" : "ghost"}
-            className="w-full justify-center"
+            variant="ghost"
+            className={cn("w-full flex-col gap-0.5 h-14 justify-center", active === "square" && "text-primary")}
           >
-            {NAMING.tabs.square}
+            <Home className={cn("h-5 w-5", active === "square" ? "fill-primary stroke-primary" : "stroke-muted-foreground")} />
+            <span className={cn("text-[10px] font-medium", active === "square" ? "text-primary" : "text-muted-foreground")}>
+              {NAMING.tabs.square}
+            </span>
           </Button>
         </Link>
         <Link to="/me" className="block">
-          <Button variant={active === "me" ? "default" : "ghost"} className="w-full justify-center">
-            {NAMING.tabs.me}
+          <Button
+            variant="ghost"
+            className={cn("w-full flex-col gap-0.5 h-14 justify-center", active === "me" && "text-primary")}
+          >
+            <User className={cn("h-5 w-5", active === "me" ? "fill-primary stroke-primary" : "stroke-muted-foreground")} />
+            <span className={cn("text-[10px] font-medium", active === "me" ? "text-primary" : "text-muted-foreground")}>
+              {NAMING.tabs.me}
+            </span>
           </Button>
         </Link>
       </div>
@@ -159,12 +168,13 @@ export function AppShell({ children }: PropsWithChildren) {
             <Button
               variant="ghost"
               size="sm"
+              className="w-[52px] px-0"
               onClick={() => {
                 if (window.history.length > 1) nav(-1);
                 else nav(backTo, { replace: true });
               }}
             >
-              返回
+              <ChevronLeft className="h-5 w-5" />
             </Button>
           ) : (
             <div className="w-[52px]" />

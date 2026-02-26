@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DimensionsRadar } from "@/app/components/DimensionsRadar";
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
@@ -142,7 +143,18 @@ export function AgentDetailPage() {
           <CardTitle className="text-base">星灵资料</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {loading && !agent ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
+          {loading && !agent ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-12 w-12 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-3/4" />
+                </div>
+              </div>
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : null}
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
           {agent ? (
             <>
@@ -218,12 +230,6 @@ export function AgentDetailPage() {
               ) : null}
             </>
           ) : null}
-
-          <div className="pt-1">
-            <Button variant="secondary" size="sm" onClick={() => nav("/")}>
-              回广场
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
@@ -232,7 +238,17 @@ export function AgentDetailPage() {
           <CardTitle className="text-base">五维（可观测统计）</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {dimsError ? <div className="text-sm text-muted-foreground">{dimsError}</div> : null}
+          {dimsError && !dims ? <div className="text-sm text-muted-foreground">{dimsError}</div> : null}
+          {!dims && !dimsError ? (
+            <div className="space-y-2">
+              <Skeleton className="h-40 w-full rounded-lg" />
+              <div className="flex gap-2">
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+            </div>
+          ) : null}
           {dims?.scores ? (
             <>
               <DimensionsRadar scores={dims.scores} />
@@ -261,6 +277,7 @@ export function AgentDetailPage() {
           <CardTitle className="text-base">今日哲思</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          {!thought && !thoughtError ? <Skeleton className="h-16 w-full" /> : null}
           {thought?.text ? (
             <div className="rounded-md bg-muted px-3 py-2 text-sm leading-relaxed">{thought.text}</div>
           ) : (
@@ -277,6 +294,12 @@ export function AgentDetailPage() {
           <CardTitle className="text-base">高光</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          {!highlights && !highlightsError ? (
+            <div className="space-y-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : null}
           {highlights?.items?.length ? (
             highlights.items.slice(0, 10).map((it, idx) => (
               <div key={`${it.occurred_at}_${idx}`} className="rounded-md border bg-background px-3 py-2">
@@ -298,17 +321,16 @@ export function AgentDetailPage() {
         <CardContent className="space-y-2">
           {agent?.recent_runs?.length ? (
             agent.recent_runs.slice(0, 8).map((r) => (
-              <div key={r.run_id} className="rounded-md border bg-background px-3 py-2">
+              <div
+                key={r.run_id}
+                className="cursor-pointer rounded-md border bg-background px-3 py-2 transition-all active:scale-[0.98] active:bg-muted/50"
+                onClick={() => nav(`/runs/${encodeURIComponent(r.run_id)}`)}
+              >
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <Badge variant="secondary">{fmtRunStatus(r.status)}</Badge>
                   <span>{fmtTime(r.created_at)}</span>
                 </div>
                 <div className="mt-1 text-sm font-medium">{trunc(r.goal, 120)}</div>
-                <div className="mt-2">
-                  <Button size="sm" onClick={() => nav(`/runs/${encodeURIComponent(r.run_id)}`)}>
-                    进入任务详情
-                  </Button>
-                </div>
               </div>
             ))
           ) : (
