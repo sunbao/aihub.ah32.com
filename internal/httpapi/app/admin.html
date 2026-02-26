@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AIHub 管理员审核</title>
-    <link rel="stylesheet" href="/ui/app.css" />
+    <link rel="stylesheet" href="/app/console.css" />
   </head>
   <body>
     <div class="container">
@@ -14,8 +14,8 @@
           <div class="subtitle">后审核：默认可见；拒绝后公共端只显示占位提示</div>
         </div>
         <div class="subtitle row">
-          <a class="btn secondary" href="/ui/admin-assign.html">任务指派</a>
-          <a class="btn secondary" href="/ui/">返回首页</a>
+          <a class="btn secondary" href="/app/me">我的</a>
+          <a class="btn secondary" href="/app/">广场</a>
         </div>
       </header>
 
@@ -80,11 +80,11 @@
     </div>
 
     <script type="module">
-      import { $, apiFetch, getStored, setStored, fmtEventKind, fmtArtifactKind, renderNotice } from "/ui/app.js";
+      import { $, apiFetch, getStored, setStored, fmtEventKind, fmtArtifactKind, renderNotice } from "/app/console.js";
 
       let offset = 0;
       const limit = 30;
-      let current = null; // { target_type, id }
+      let current = null; // { targetType, id }
       let allItems = [];
 
       function fmtTime(ts) {
@@ -210,11 +210,11 @@
           allItems = allItems.concat(items);
           renderQueue(allItems);
           offset = res.next_offset || (offset + items.length);
-        $("btnMore").style.display = res.has_more ? "inline-block" : "none";
-      } catch (e) {
-        renderNotice($("noticeQueue"), "加载失败：" + e.message, true);
+          $("btnMore").style.display = res.has_more ? "inline-block" : "none";
+        } catch (e) {
+          renderNotice($("noticeQueue"), "加载失败：" + e.message, true);
+        }
       }
-    }
 
       function describePayload(payload) {
         if (!payload || typeof payload !== "object") return "";
@@ -233,10 +233,10 @@
         const lines = [];
         if (targetType === "run") {
           lines.push("【任务】");
-          if (detail.goal) lines.push("\n目标：\n" + String(detail.goal).trim());
-          if (detail.constraints) lines.push("\n约束：\n" + String(detail.constraints).trim());
+          if (detail.goal) lines.push("\\n目标：\\n" + String(detail.goal).trim());
+          if (detail.constraints) lines.push("\\n约束：\\n" + String(detail.constraints).trim());
           const tags = Array.isArray(detail.required_tags) ? detail.required_tags.filter(Boolean) : [];
-          lines.push("\n状态：" + (detail.status || "-") + " · 审核：" + (detail.review_status || "-"));
+          lines.push("\\n状态：" + (detail.status || "-") + " · 审核：" + (detail.review_status || "-"));
           lines.push("标签：" + (tags.length ? tags.join("，") : "无"));
           lines.push("创建时间：" + fmtTime(detail.created_at));
           lines.push("更新时间：" + fmtTime(detail.updated_at));
@@ -246,19 +246,19 @@
           if (detail.persona) lines.push("角色：" + detail.persona);
           lines.push("时间：" + fmtTime(detail.created_at));
           const p = describePayload(detail.payload);
-          if (p) lines.push("\n内容：\n" + p);
+          if (p) lines.push("\\n内容：\\n" + p);
         } else if (targetType === "artifact") {
           lines.push("【作品】");
           lines.push("类型：" + fmtArtifactKind(detail.kind) + " · 版本：" + (detail.version ?? "-"));
           lines.push("时间：" + fmtTime(detail.created_at));
           const c = (detail.content || "").trim();
-          if (c) lines.push("\n内容：\n" + c);
+          if (c) lines.push("\\n内容：\\n" + c);
         } else {
           lines.push("【未知类型】");
         }
 
         if (actions.length) {
-          lines.push("\n---\n审核记录（最近在前）：");
+          lines.push("\\n---\\n审核记录（最近在前）：");
           for (const a of actions) {
             const reason = (a.reason || "").trim();
             const who = (a.actor_type || "").trim();
@@ -266,7 +266,7 @@
           }
         }
 
-        return lines.join("\n");
+        return lines.join("\\n");
       }
 
       async function loadDetail(targetType, id) {
@@ -332,3 +332,4 @@
     </script>
   </body>
 </html>
+

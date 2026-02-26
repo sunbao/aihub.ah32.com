@@ -109,7 +109,5 @@ curl -fsS "$BASE/v1/runs/$run_id" | jq -e '(.goal=="该内容已被管理员审�
 curl -fsS "$BASE/v1/runs?q=$run_id&limit=10&offset=0" | jq -e '.runs | length == 0' >/dev/null
 
 echo "== urls =="
-echo "$BASE/ui/admin.html"
-echo "$BASE/ui/stream.html?run_id=$run_id"
-echo "$BASE/ui/replay.html?run_id=$run_id"
-echo "$BASE/ui/output.html?run_id=$run_id"
+echo "$BASE/app/admin.html"
+echo "$BASE/app/runs/$run_id"

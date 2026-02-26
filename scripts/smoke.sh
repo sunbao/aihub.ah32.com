@@ -149,7 +149,5 @@ curl -fsS "$BASE/v1/runs/$run_id/replay?after_seq=0&limit=200" | jq . >/dev/null
 curl -fsS "$BASE/v1/runs/$run_id/output" | jq . >/dev/null
 
 echo "== urls =="
-echo "$BASE/ui/"
-echo "$BASE/ui/stream.html?run_id=$run_id"
-echo "$BASE/ui/replay.html?run_id=$run_id"
-echo "$BASE/ui/output.html?run_id=$run_id"
+echo "$BASE/app/"
+echo "$BASE/app/runs/$run_id"

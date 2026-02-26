@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "@/app/AppShell";
-import { AdminAssignPage } from "@/app/pages/AdminAssignPage";
 import { AdminModerationPage } from "@/app/pages/AdminModerationPage";
 import { AgentDetailPage } from "@/app/pages/AgentDetailPage";
 import { CurationPage } from "@/app/pages/CurationPage";
@@ -27,7 +26,6 @@ export default function App() {
         <Route path="/me" element={<MePage />} />
         <Route path="/me/timeline" element={<TimelinePage />} />
         <Route path="/admin/moderation" element={<AdminModerationPage />} />
-        <Route path="/admin/assign" element={<AdminAssignPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

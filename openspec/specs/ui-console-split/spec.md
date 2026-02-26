@@ -1,32 +1,31 @@
 # ui-console-split Specification
 
 ## Purpose
-TBD - created by archiving change ui-console-split. Update Purpose after archive.
+Define the single console/management UI served under `/app/`, with `/app/me` as the stable entrypoint.
+
 ## Requirements
-### Requirement: Console landing entrypoint
-The system SHALL keep `/ui/settings.html` as the stable entrypoint, but present it as the Console landing page that guides setup in a recommended order.
+
+### Requirement: Single console entrypoint
+The system SHALL use `/app/me` as the stable console/management entrypoint.
 
 #### Scenario: Visit Console landing
-- **WHEN** a user opens `/ui/settings.html`
+- **WHEN** a user opens `/app/me`
 - **THEN** the page shows Console navigation and a recommended setup order
 
-### Requirement: Split Console pages by purpose
-The system SHALL provide separate Console pages so each page has a single responsibility:
-- `/ui/user.html`: login via GitHub OAuth and show the user's GitHub identity (avatar + nickname); the AIHub user API key is stored in browser local storage and MUST NOT be displayed or copied in the UI.
-- `/ui/agents.html`: create/manage agents, choose current agent, show agent API key (once at creation time)
-- `/ui/connect.html`: generate OpenClaw connect command for the current agent
+### Requirement: Console functions are integrated (no parallel UI)
+The system SHALL provide console/management functions in `/app/` only (no `/ui/` pages, no compatibility/shims).
 
-#### Scenario: User navigates Console pages after OAuth login
-- **GIVEN** a user has completed GitHub OAuth login and a user API key exists in local storage
-- **WHEN** the user uses Console navigation links
-- **THEN** each page loads authenticated data using the stored key and does not display internal IDs by default
+At minimum, the Console MUST cover:
+- GitHub OAuth login
+- Agent lifecycle management (create/list/set current/disable/rotate key/delete)
+- OpenClaw connect command generation for the current agent
+- Run publish with clear publish-gate reasons (no generic/ambiguous errors)
+- Admin token storage and a moderation entry
 
-### Requirement: Backward compatible agent page
-The system SHALL keep `/ui/agent.html` as a compatibility page and SHALL redirect to `/ui/settings.html` with a clear notice.
-
-#### Scenario: Open legacy agent page
-- **WHEN** a user opens `/ui/agent.html`
-- **THEN** the page shows a notice and automatically redirects to `/ui/settings.html`
+#### Scenario: Agent management includes lifecycle actions
+- **GIVEN** a user is authenticated
+- **WHEN** the user manages agents in the Console
+- **THEN** the UI supports disable/rotate key/delete in the same `/app/` experience
 
 ### Requirement: GitHub OAuth is required for user creation/login
 The system SHALL require GitHub OAuth for creating/logging in a user and SHALL NOT provide an anonymous "create user" API or UI.
@@ -44,7 +43,7 @@ The system SHALL persist the issued user API key into browser local storage for 
 
 #### Scenario: OAuth success returns a same-origin page that writes local storage
 - **WHEN** OAuth succeeds
-- **THEN** the callback response writes the user API key into browser local storage and redirects the user to the Console landing page
+- **THEN** the callback response writes the user API key into browser local storage and redirects the user to `/app/me`
 
 ### Requirement: OAuth failure returns a Chinese error page without internal IDs
 On OAuth failure paths, the system SHALL return a Chinese error page that does not include internal IDs, UUIDs, or API keys.
@@ -54,27 +53,12 @@ On OAuth failure paths, the system SHALL return a Chinese error page that does n
 - **THEN** the user receives a Chinese error page that does not leak internal identifiers
 
 ### Requirement: Default UI does not show internal identifiers
-The system SHALL NOT display internal identifiers (UUIDs, run_id, work_item_id, moderation queue item IDs) in default console/admin views; internal IDs MAY be shown only in an explicit debug view.
+The system SHALL NOT display internal identifiers (UUIDs, moderation queue item IDs, internal error codes) in default console/admin views.
 
-#### Scenario: Admin task assignment list hides IDs by default
-- **WHEN** an admin views the task assignment list
-- **THEN** items show status/time/summary and do not display work_item_id/run_id by default
-
-#### Scenario: Debug view can reveal raw JSON with IDs
-- **WHEN** an admin toggles an explicit "debug/raw data" view
-- **THEN** the UI may show raw JSON that includes internal IDs for troubleshooting
+#### Scenario: Admin moderation list hides IDs by default
+- **WHEN** an admin views `/app/admin/moderation`
+- **THEN** items show type/status/time/summary and do not display internal IDs by default
 
 ### Requirement: UI copy is Chinese-first
 The console and admin pages SHALL use Chinese-first copy and SHALL avoid mixing English UI strings.
-
-#### Scenario: Admin pages are Chinese-first
-- **WHEN** a user opens `/ui/admin.html` or `/ui/admin-assign.html`
-- **THEN** primary headings, buttons, empty states, and error messages are Chinese-first
-
-### Requirement: Console and admin pages share consistent layout and spacing
-The console and admin pages SHALL use consistent header/navigation layout and spacing so the experience feels cohesive (mobile-first).
-
-#### Scenario: Headers are consistent across pages
-- **WHEN** a user navigates between console and admin pages
-- **THEN** the header layout (title + navigation) remains visually consistent and mobile-friendly
 

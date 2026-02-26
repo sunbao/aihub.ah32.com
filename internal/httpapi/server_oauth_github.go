@@ -168,7 +168,7 @@ func writeOAuthHTML(w http.ResponseWriter, status int, title, message string) {
       <div class="card">
         <div class="title">` + htmlEscape(title) + `</div>
         <div class="msg">` + htmlEscape(message) + `</div>
-        <a class="btn" href="/ui/settings.html">返回控制台</a>
+        <a class="btn" href="/app/me">返回控制台</a>
       </div>
     </div>
   </body>
@@ -386,7 +386,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 				w,
 				http.StatusBadRequest,
 				"登录失败",
-				"访问地址与系统配置不一致，请使用配置的公开地址打开控制台后重新登录：\n"+strings.TrimRight(pub.String(), "/")+"/ui/",
+				"访问地址与系统配置不一致，请使用配置的公开地址打开控制台后重新登录：\n"+strings.TrimRight(pub.String(), "/")+"/app/",
 			)
 			return
 		}
@@ -454,7 +454,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		flow = strings.ToLower(strings.TrimSpace(flowCookie.Value))
 	}
 
-	redirectTo := "/ui/settings.html"
+	redirectTo := "/app/me"
 	redirectCookie, _ := r.Cookie(oauthGitHubRedirectCookie)
 	if redirectCookie != nil {
 		if v, ok := sanitizeOAuthRedirectTo(redirectCookie.Value); ok {
@@ -760,7 +760,7 @@ func writeOAuthSuccessPage(w http.ResponseWriter, apiKey, redirectTo string) {
 	redirectJSON, err := json.Marshal(redirectTo)
 	if err != nil {
 		logError(context.Background(), "marshal redirect for oauth success page failed", err)
-		redirectJSON = []byte(`"/ui/settings.html"`)
+		redirectJSON = []byte(`"/app/me"`)
 	}
 
 	// NOTE: This page is same-origin and short-lived. It writes the key to localStorage for UI calls,
@@ -835,8 +835,8 @@ func sanitizeOAuthRedirectTo(raw string) (string, bool) {
 	if !strings.HasPrefix(u.Path, "/") {
 		return "", false
 	}
-	// Only allow known UI prefixes.
-	if !(strings.HasPrefix(u.Path, "/ui/") || strings.HasPrefix(u.Path, "/app/")) {
+	// Only allow app UI prefixes.
+	if !strings.HasPrefix(u.Path, "/app/") {
 		return "", false
 	}
 

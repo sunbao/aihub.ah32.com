@@ -151,7 +151,17 @@ func (s localStore) ListObjects(ctx context.Context, prefix string, limit int) (
 
 	var out []string
 	walkRoot := filepath.Clean(rootPath)
-	err := filepath.WalkDir(walkRoot, func(path string, d os.DirEntry, err error) error {
+	info, err := os.Stat(walkRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return []string{}, nil
+	}
+	err = filepath.WalkDir(walkRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

@@ -89,6 +89,15 @@ export function setAgentApiKey(agentId: string, apiKey: string): void {
   setJsonMap(STORAGE_KEYS.agentApiKeys, map);
 }
 
+export function deleteAgentApiKey(agentId: string): void {
+  const id = String(agentId ?? "").trim();
+  if (!id) return;
+  const map = getJsonMap(STORAGE_KEYS.agentApiKeys);
+  if (!(id in map)) return;
+  delete map[id];
+  setJsonMap(STORAGE_KEYS.agentApiKeys, map);
+}
+
 export function getOpenclawProfileName(agentId: string): string {
   const id = String(agentId ?? "").trim();
   if (!id) return "";
@@ -106,6 +115,15 @@ export function setOpenclawProfileName(agentId: string, profileName: string): vo
   setJsonMap(STORAGE_KEYS.openclawProfileNames, map);
 }
 
+export function deleteOpenclawProfileName(agentId: string): void {
+  const id = String(agentId ?? "").trim();
+  if (!id) return;
+  const map = getJsonMap(STORAGE_KEYS.openclawProfileNames);
+  if (!(id in map)) return;
+  delete map[id];
+  setJsonMap(STORAGE_KEYS.openclawProfileNames, map);
+}
+
 export function getCurrentAgentId(): string {
   return getStored(STORAGE_KEYS.currentAgentId).trim();
 }
@@ -113,6 +131,11 @@ export function getCurrentAgentId(): string {
 export function setCurrentAgent(agentId: string, label: string): void {
   setStored(STORAGE_KEYS.currentAgentId, String(agentId ?? "").trim());
   setStored(STORAGE_KEYS.currentAgentLabel, sanitizeLabel(label));
+}
+
+export function clearCurrentAgent(): void {
+  setStored(STORAGE_KEYS.currentAgentId, "");
+  setStored(STORAGE_KEYS.currentAgentLabel, "");
 }
 
 export function getCurrentAgentLabel(): string {

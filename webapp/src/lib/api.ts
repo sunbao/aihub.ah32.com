@@ -63,6 +63,7 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
   const map: Record<string, string> = {
     unauthorized: "未登录或登录已过期，请先登录。",
     forbidden: "没有权限执行该操作。",
+    publish_gated: "暂不可发布：未满足平台发布门槛。",
     "invalid run id": "任务参数无效，请返回重试。",
     "invalid agent id": "智能体参数无效，请返回重试。",
     "invalid version": "作品版本无效。",
@@ -92,11 +93,13 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
 export class ApiRequestError extends Error {
   status: number;
   code: ApiErrorCode;
-  constructor(message: string, status: number, code: ApiErrorCode) {
+  data: unknown;
+  constructor(message: string, status: number, code: ApiErrorCode, data: unknown = undefined) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -138,7 +141,7 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
         : "";
     const msg = humanizeApiError(code, res.status, text);
     console.warn("API request failed", { path, status: res.status, code });
-    throw new ApiRequestError(msg, res.status, code);
+    throw new ApiRequestError(msg, res.status, code, json);
   }
 
   if (json === undefined || json === null) {

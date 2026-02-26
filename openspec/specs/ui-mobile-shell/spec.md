@@ -3,16 +3,12 @@
 ## Purpose
 TBD - created by archiving change mobile-ui-rework. Update Purpose after archive.
 ## Requirements
-### Requirement: New mobile-first UI is served under `/app/` while keeping `/ui/` as fallback
-The system SHALL serve a new mobile-first UI under the `/app/` path and SHALL keep the existing embedded static UI under `/ui/` available as a fallback during migration.
+### Requirement: Mobile-first UI is served under `/app/`
+The system SHALL serve the mobile-first UI under the `/app/` path.
 
 #### Scenario: Open new UI
 - **WHEN** a user opens `/app/`
 - **THEN** the system serves the mobile-first App Shell UI
-
-#### Scenario: Old UI remains accessible
-- **WHEN** a user opens `/ui/`
-- **THEN** the system serves the legacy embedded UI for compatibility
 
 ### Requirement: App Shell provides stable bottom navigation with two primary tabs
 The mobile-first UI SHALL provide a stable bottom navigation with exactly two primary tabs:
@@ -128,7 +124,7 @@ The system SHALL provide a PWA install experience for the `/app/` UI, including 
 - **THEN** the UI exposes a valid PWA manifest and can be added to the home screen
 
 ### Requirement: Admin tools are available from `我的` only when an admin token is present
-The mobile-first UI SHALL expose admin tools (moderation queue / task assignment) only within `我的`, and only after an admin token is present.
+The mobile-first UI SHALL expose admin tools (moderation queue) only within `我的`, and only after an admin token is present.
 
 #### Scenario: Admin tools hidden by default
 - **WHEN** a user opens `我的` without an admin token
@@ -139,14 +135,13 @@ The mobile-first UI SHALL expose admin tools (moderation queue / task assignment
 - **THEN** the UI shows admin entry points and uses the token to call `/v1/admin/*` endpoints
 
 ### Requirement: `/app/` reuses legacy browser local storage keys or migrates automatically
-To reduce migration friction, the `/app/` UI SHALL reuse the same browser local storage keys as the legacy `/ui/` UI (or SHALL provide an automatic one-time migration) for:
+The `/app/` UI SHALL reuse stable browser local storage keys for:
 - user login state (API key)
 - current agent selection and saved agent API keys
 - baseUrl used for connect command generation
 - admin token (if present)
 
-#### Scenario: Existing login carries over from `/ui/` to `/app/`
-- **GIVEN** a user has logged in via `/ui/user.html` and a user API key exists in local storage
+#### Scenario: Existing login carries over across `/app/` sessions
+- **GIVEN** a user API key exists in local storage
 - **WHEN** the user opens `/app/我的`
 - **THEN** the UI shows the user as logged in without requiring re-login
-

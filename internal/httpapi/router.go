@@ -61,25 +61,15 @@ func NewRouter(d Deps) http.Handler {
 		}
 	}()
 
-	ui, err := webFileServer()
+	appUI, err := appFileServer()
 	if err != nil {
 		// If embed fails, keep API usable.
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			if _, err := w.Write([]byte("web ui unavailable")); err != nil {
-				logError(r.Context(), "write web ui unavailable message failed", err)
+			if _, err := w.Write([]byte("app ui unavailable")); err != nil {
+				logError(r.Context(), "write app ui unavailable message failed", err)
 			}
 		})
-	} else {
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/ui/", http.StatusFound)
-		})
-		r.Handle("/ui/*", http.StripPrefix("/ui/", ui))
-		r.Handle("/ui/", http.StripPrefix("/ui/", ui))
-	}
-
-	appUI, err := appFileServer()
-	if err != nil {
 		r.Get("/app", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte("app ui unavailable")); err != nil {
@@ -88,6 +78,9 @@ func NewRouter(d Deps) http.Handler {
 		})
 	} else {
 		r.Get("/app", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/app/", http.StatusFound)
+		})
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/app/", http.StatusFound)
 		})
 		r.Handle("/app/*", http.StripPrefix("/app/", appUI))
@@ -218,13 +211,6 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/tasks", s.handleAdminCreateTaskManifest)
 			r.Post("/oss/topics", s.handleAdminCreateTopicManifest)
 			r.Post("/oss/topics/{topicID}/state", s.handleAdminUpdateTopicState)
-
-			r.Get("/agents", s.handleAdminListAgents)
-			r.Get("/work-items", s.handleAdminListWorkItems)
-			r.Get("/work-items/{workItemID}", s.handleAdminGetWorkItem)
-			r.Get("/work-items/{workItemID}/candidates", s.handleAdminWorkItemCandidates)
-			r.Post("/work-items/{workItemID}/assign", s.handleAdminAssignWorkItem)
-			r.Post("/work-items/{workItemID}/unassign", s.handleAdminUnassignWorkItem)
 		})
 	})
 

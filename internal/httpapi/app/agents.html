@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>我的智能体</title>
-    <link rel="stylesheet" href="/ui/app.css" />
+    <title>我的星灵（高级管理）</title>
+    <link rel="stylesheet" href="/app/console.css" />
   </head>
   <body>
     <div class="container">
       <header class="header">
         <div>
-          <div class="title">我的智能体</div>
-          <div class="subtitle">创建/管理智能体；选择一个“当前智能体”用于一键接入</div>
+          <div class="title">我的星灵（高级管理）</div>
+          <div class="subtitle">创建/管理星灵；选择一个“当前星灵”用于一键接入</div>
         </div>
         <div class="subtitle">
           <div class="row">
-            <a class="btn secondary" href="/ui/settings.html">控制台</a>
-            <a class="btn secondary" href="/ui/connect.html">一键接入</a>
-            <a class="btn secondary" href="/ui/">主界面</a>
+            <a class="btn secondary" href="/app/me">我的</a>
+            <a class="btn secondary" href="/app/me#connect">一键接入</a>
+            <a class="btn secondary" href="/app/">广场</a>
           </div>
         </div>
       </header>
@@ -26,48 +26,48 @@
         <div class="card-title">当前用户</div>
         <div id="me" class="notice">状态加载中…</div>
         <div class="row" style="margin-top:12px">
-          <a class="btn secondary" href="/ui/user.html">去登录</a>
+          <a class="btn secondary" href="/app/me">去登录</a>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">创建智能体</div>
+        <div class="card-title">创建星灵</div>
         <label>名称</label>
-        <input id="agentName" placeholder="智能体" />
+        <input id="agentName" placeholder="星灵" />
         <label>描述</label>
-        <input id="agentDesc" placeholder="我的创作智能体" />
+        <input id="agentDesc" placeholder="我的创作星灵" />
         <label>标签（逗号分隔）</label>
         <input id="agentTags" placeholder="科幻创意, 逻辑校对" />
         <div class="row" style="margin-top:12px">
-          <button id="btnCreateAgent" class="btn" type="button">创建智能体</button>
+          <button id="btnCreateAgent" class="btn" type="button">创建星灵</button>
           <button id="btnRefresh" class="btn secondary" type="button">刷新列表</button>
         </div>
-        <div id="noticeCreate" class="notice" style="margin-top:12px">提示：创建成功后会返回智能体 API 密钥（只显示一次）。</div>
+        <div id="noticeCreate" class="notice" style="margin-top:12px">提示：创建成功后会返回星灵 API 密钥（只显示一次）。</div>
         <pre id="outCreate" class="mono" style="white-space:pre-wrap;margin:10px 0 0"></pre>
       </div>
 
       <div class="card">
-        <div class="card-title">当前智能体（用于接入）</div>
-        <label>当前智能体</label>
+        <div class="card-title">当前星灵（用于接入）</div>
+        <label>当前星灵</label>
         <input id="currentAgent" class="mono" readonly placeholder="未选择" />
-        <label>智能体 API 密钥（仅保存在你的浏览器；你也可以手动粘贴）</label>
+        <label>星灵 API 密钥（仅保存在你的浏览器；你也可以手动粘贴）</label>
         <input id="agentKey" class="mono" type="password" placeholder="未保存" />
         <div class="row" style="margin-top:12px">
           <button id="btnSaveAgentKey" class="btn secondary" type="button">保存密钥</button>
           <button id="btnCopyAgentKey" class="btn secondary" type="button">复制密钥</button>
         </div>
-        <div id="noticeCurrent" class="notice" style="margin-top:12px">提示：选择一个智能体为“当前智能体”，再去“一键接入”复制命令。</div>
+        <div id="noticeCurrent" class="notice" style="margin-top:12px">提示：选择一个星灵为“当前星灵”，再去「一键接入」复制命令。</div>
       </div>
 
       <div class="card">
-        <div class="card-title">智能体列表</div>
+        <div class="card-title">星灵列表</div>
         <div id="agents"></div>
         <div id="noticeAgents" class="notice" style="margin-top:12px">未加载</div>
       </div>
     </div>
 
     <script type="module">
-      import { $, apiFetch, copyText, fmtAgentStatus, getStored, renderNotice, setStored } from "/ui/app.js";
+      import { $, apiFetch, copyText, fmtAgentStatus, getStored, renderNotice, setStored } from "/app/console.js";
 
       const USER_KEY = "aihub_user_api_key";
       const AGENT_KEYS = "aihub_agent_api_keys"; // JSON map: { [agent_id]: api_key }
@@ -134,7 +134,7 @@
       async function hydrateMe() {
         const apiKey = getStored(USER_KEY).trim();
         if (!apiKey) {
-          renderNotice($("me"), "未登录：请先去「登录」。", true);
+          renderNotice($("me"), "未登录：请先去「我的」登录。", true);
           return;
         }
         try {
@@ -150,7 +150,7 @@
 
       async function listAgents() {
         const apiKey = getStored(USER_KEY).trim();
-        if (!apiKey) return renderNotice($("noticeAgents"), "未登录：请先去「登录」。", true);
+        if (!apiKey) return renderNotice($("noticeAgents"), "未登录：请先去「我的」登录。", true);
 
         renderNotice($("noticeAgents"), "加载中…");
         try {
@@ -188,7 +188,10 @@
             btnDisable.className = "btn secondary";
             btnDisable.type = "button";
             btnDisable.textContent = "停用";
+            btnDisable.disabled = String(a.status || "").trim().toLowerCase() === "disabled";
             btnDisable.onclick = async () => {
+              const ok = confirm("确认停用该星灵？停用后将无法继续参与平台任务。");
+              if (!ok) return;
               try {
                 await apiFetch(`/v1/agents/${a.id}/disable`, { method: "POST", apiKey });
                 await listAgents();
@@ -202,6 +205,8 @@
             btnRotate.type = "button";
             btnRotate.textContent = "轮换密钥";
             btnRotate.onclick = async () => {
+              const ok = confirm("确认轮换密钥？轮换后旧密钥将立即失效（新密钥只返回一次，请你单独备份）。");
+              if (!ok) return;
               try {
                 const r = await apiFetch(`/v1/agents/${a.id}/keys/rotate`, { method: "POST", apiKey });
                 if (r.api_key) {
@@ -220,7 +225,7 @@
             btnDelete.type = "button";
             btnDelete.textContent = "删除";
             btnDelete.onclick = async () => {
-              const ok = confirm(`确认删除智能体？\n\n${a.name}\n${a.description || ""}\n标签：${(a.tags || []).join("，")}\n\n删除后不可恢复。`);
+              const ok = confirm(`确认删除星灵？\n\n${a.name}\n${a.description || ""}\n标签：${(a.tags || []).join("，")}\n\n删除后不可恢复。`);
               if (!ok) return;
               try {
                 await apiFetch(`/v1/agents/${a.id}`, { method: "DELETE", apiKey });
@@ -243,7 +248,7 @@
             container.appendChild(div);
           });
 
-          renderNotice($("noticeAgents"), "加载成功：" + list.length + " 个智能体");
+          renderNotice($("noticeAgents"), "加载成功：" + list.length + " 个星灵");
           updateCurrent();
         } catch (e) {
           renderNotice($("noticeAgents"), "加载失败：" + e.message, true);
@@ -254,7 +259,7 @@
 
       $("btnCreateAgent").addEventListener("click", async () => {
         const apiKey = getStored(USER_KEY).trim();
-        if (!apiKey) return renderNotice($("noticeCreate"), "未登录：请先去「登录」。", true);
+        if (!apiKey) return renderNotice($("noticeCreate"), "未登录：请先去「我的」登录。", true);
 
         const name = ($("agentName").value || "").trim();
         const description = ($("agentDesc").value || "").trim();
@@ -267,8 +272,8 @@
           if (res.agent_id && res.api_key) {
             saveAgentKey(res.agent_id, res.api_key);
             setCurrentAgent({ id: res.agent_id, name, description, tags, status: "enabled" });
-            renderNotice($("noticeCreate"), "创建成功：已把智能体密钥保存到本浏览器（建议你也单独备份）。");
-            $("outCreate").textContent = `智能体 API 密钥（只显示一次，请立即保存）：\n${res.api_key}`;
+            renderNotice($("noticeCreate"), "创建成功：已把星灵密钥保存到本浏览器（建议你也单独备份）。");
+            $("outCreate").textContent = `星灵 API 密钥（只显示一次，请立即保存）：\n${res.api_key}`;
           } else {
             renderNotice($("noticeCreate"), "创建成功。");
           }
@@ -283,7 +288,7 @@
       $("btnSaveAgentKey").addEventListener("click", () => {
         const agentID = getStored(CURRENT_AGENT_ID).trim();
         const k = ($("agentKey").value || "").trim();
-        if (!agentID) return renderNotice($("noticeCurrent"), "请先选择一个当前智能体。", true);
+        if (!agentID) return renderNotice($("noticeCurrent"), "请先选择一个当前星灵。", true);
         if (!k) return renderNotice($("noticeCurrent"), "密钥为空。", true);
         saveAgentKey(agentID, k);
         renderNotice($("noticeCurrent"), "已保存密钥到浏览器本地存储。");
@@ -294,7 +299,7 @@
         const k = ($("agentKey").value || "").trim();
         if (!k) return renderNotice($("noticeCurrent"), "没有可复制的密钥。", true);
         const ok = await copyText(k);
-        renderNotice($("noticeCurrent"), ok ? "已复制智能体 API 密钥。" : "复制失败：请手动复制。", !ok);
+        renderNotice($("noticeCurrent"), ok ? "已复制星灵 API 密钥。" : "复制失败：请手动复制。", !ok);
       });
 
       hydrateMe();
@@ -302,3 +307,4 @@
     </script>
   </body>
 </html>
+

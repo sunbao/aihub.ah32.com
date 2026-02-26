@@ -18,8 +18,11 @@ import { copyText } from "@/lib/copy";
 import { fmtAgentStatus } from "@/lib/format";
 import {
   getAgentApiKey,
+  clearCurrentAgent,
   getCurrentAgentId,
   getCurrentAgentLabel,
+  deleteAgentApiKey,
+  deleteOpenclawProfileName,
   getOpenclawProfileName,
   getStored,
   getUserApiKey,
@@ -143,6 +146,74 @@ export function MePage() {
       setAgentsError(String(e?.message ?? "加载失败"));
     } finally {
       setAgentsLoading(false);
+    }
+  }
+
+  async function disableAgent(agent: AgentListItem) {
+    const agentId = String(agent?.id ?? "").trim();
+    if (!agentId) return;
+    const ok = window.confirm("确认停用该星灵？停用后将无法继续参与平台任务。");
+    if (!ok) return;
+
+    try {
+      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/disable`, {
+        method: "POST",
+        apiKey: userApiKey,
+      });
+      toast({ title: "已停用" });
+      loadAgents();
+    } catch (e: any) {
+      toast({ title: "停用失败", description: String(e?.message ?? ""), variant: "destructive" });
+    }
+  }
+
+  async function rotateAgentKey(agent: AgentListItem) {
+    const agentId = String(agent?.id ?? "").trim();
+    if (!agentId) return;
+    const ok = window.confirm("确认轮换密钥？轮换后旧密钥将立即失效（新密钥只返回一次，请你单独备份）。");
+    if (!ok) return;
+
+    try {
+      const res = await apiFetchJson<{ api_key?: string }>(`/v1/agents/${encodeURIComponent(agentId)}/keys/rotate`, {
+        method: "POST",
+        apiKey: userApiKey,
+      });
+      const apiKey = String(res?.api_key ?? "").trim();
+      if (!apiKey) throw new Error("轮换成功但未返回新密钥");
+
+      setAgentApiKey(agentId, apiKey);
+      setCurrentAgent(agentId, agent.name || "已选择");
+      setAgentKeyInput(apiKey);
+      toast({ title: "已轮换并保存新密钥", description: "新密钥只返回一次，建议你也单独备份。" });
+      loadAgents();
+    } catch (e: any) {
+      toast({ title: "轮换失败", description: String(e?.message ?? ""), variant: "destructive" });
+    }
+  }
+
+  async function deleteAgent(agent: AgentListItem) {
+    const agentId = String(agent?.id ?? "").trim();
+    if (!agentId) return;
+
+    const name = String(agent?.name ?? "").trim();
+    const description = String(agent?.description ?? "").trim();
+    const tags = Array.isArray(agent?.tags) ? agent.tags.filter(Boolean) : [];
+    const ok = window.confirm(
+      `确认删除星灵？\n\n${name || "未命名"}\n${description || ""}\n标签：${tags.length ? tags.join("，") : "无"}\n\n删除后不可恢复。`,
+    );
+    if (!ok) return;
+
+    try {
+      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "DELETE", apiKey: userApiKey });
+
+      deleteAgentApiKey(agentId);
+      deleteOpenclawProfileName(agentId);
+      if (getCurrentAgentId() === agentId) clearCurrentAgent();
+
+      toast({ title: "已删除" });
+      loadAgents();
+    } catch (e: any) {
+      toast({ title: "删除失败", description: String(e?.message ?? ""), variant: "destructive" });
     }
   }
 
@@ -327,6 +398,20 @@ export function MePage() {
                       }}
                     >
                       {a.id === currentAgentId ? "当前" : "设为当前"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={String(a.status ?? "").toLowerCase() === "disabled"}
+                      onClick={() => disableAgent(a)}
+                    >
+                      停用
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => rotateAgentKey(a)}>
+                      轮换密钥
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => deleteAgent(a)}>
+                      删除
                     </Button>
                   </div>
                 </div>
@@ -565,15 +650,35 @@ export function MePage() {
                 toast({ title: "发布成功" });
                 nav(`/runs/${encodeURIComponent(res.run_id)}`);
               } catch (e: any) {
-                if (e instanceof ApiRequestError && e.code === "publish_gated") {
+                if (e instanceof ApiRequestError && e.code === "publish_gated" && e.status === 403) {
+                  const data = (e.data && typeof e.data === "object") ? (e.data as any) : null;
+                  const reason = String(data?.reason ?? "").trim();
+                  if (reason === "no_agent") {
+                    toast({
+                      title: "暂不可发布",
+                      description: "发布门槛：请先创建至少一个星灵。",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (reason === "insufficient_contribution") {
+                    const min = Number(data?.min ?? 0);
+                    const completed = Number(data?.completed ?? 0);
+                    toast({
+                      title: "暂不可发布",
+                      description: `发布门槛：你的星灵需要先完成平台任务（当前完成 ${completed}，至少需要 ${min}）。`,
+                      variant: "destructive",
+                    });
+                    return;
+                  }
                   toast({
                     title: "暂不可发布",
-                    description: "需要先完成平台前置条件（例如：创建智能体并让其完成平台任务）。",
+                    description: "发布门槛：未满足平台前置条件。",
                     variant: "destructive",
                   });
-                } else {
-                  toast({ title: "发布失败", description: String(e?.message ?? ""), variant: "destructive" });
+                  return;
                 }
+                toast({ title: "发布失败", description: String(e?.message ?? ""), variant: "destructive" });
               }
             }}
           >
@@ -623,9 +728,6 @@ export function MePage() {
             <div className="flex gap-2 pt-1">
               <Button variant="outline" className="flex-1" onClick={() => nav("/admin/moderation")}>
                 内容审核
-              </Button>
-              <Button variant="outline" className="flex-1" onClick={() => nav("/admin/assign")}>
-                任务指派
               </Button>
             </div>
           ) : null}
