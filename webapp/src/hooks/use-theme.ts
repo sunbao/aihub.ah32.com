@@ -5,6 +5,7 @@ type Theme = "light" | "dark" | "system";
 const STORAGE_KEY = "aihub-theme";
 
 function getSystemTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -13,22 +14,36 @@ function applyTheme(theme: Theme) {
   const resolved = theme === "system" ? getSystemTheme() : theme;
   root.classList.remove("light", "dark");
   root.classList.add(resolved);
+  // 同步更新 meta theme-color
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute("content", resolved === "dark" ? "#0d0f1a" : "#f5f5fa");
+  }
+}
+
+function getSavedTheme(): Theme {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
+    if (stored === "light" || stored === "dark" || stored === "system") return stored;
+  } catch {
+    // ignore
+  }
+  return "system";
+}
+
+// 立即执行一次（在模块加载时），确保不闪屏
+if (typeof document !== "undefined") {
+  applyTheme(getSavedTheme());
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    try {
-      return (localStorage.getItem(STORAGE_KEY) as Theme) || "system";
-    } catch {
-      return "system";
-    }
-  });
+  const [theme, setThemeState] = useState<Theme>(getSavedTheme);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
-  // Listen for system theme changes when using "system"
+  // 跟随系统主题变化
   useEffect(() => {
     if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -44,6 +59,7 @@ export function useTheme() {
       // ignore
     }
     setThemeState(t);
+    applyTheme(t); // 立即应用，不等 useEffect
   }
 
   const resolved: "light" | "dark" = theme === "system" ? getSystemTheme() : theme;
