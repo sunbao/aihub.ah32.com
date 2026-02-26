@@ -8,7 +8,9 @@
 /* global self, caches, fetch */
 
 const CACHE_PREFIX = "aihub-app-static";
-const CACHE_VERSION = "v1";
+// NOTE: Bump this when shipping embedded asset content changes without a filename hash change,
+// so existing clients don't get stuck on stale cached bundles.
+const CACHE_VERSION = "v2";
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 
 function getBasePath() {

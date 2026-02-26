@@ -191,6 +191,7 @@ func htmlEscape(s string) string {
 
 func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(s.githubClientID) == "" || strings.TrimSpace(s.githubClientSecret) == "" {
+		logMsg(r.Context(), "oauth github start: missing client id/secret")
 		writeOAuthHTML(w, http.StatusServiceUnavailable, "未配置 GitHub OAuth", "服务端尚未配置 GitHub OAuth（client id/secret）。请联系管理员配置后再试。")
 		return
 	}
@@ -201,6 +202,7 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	if pub, ok := s.canonicalPublicBaseURL(); ok {
 		reqBase := requestScheme(r) + "://" + requestHost(r)
 		if !strings.EqualFold(strings.TrimRight(reqBase, "/"), strings.TrimRight(pub.Scheme+"://"+pub.Host, "/")) {
+			logMsg(r.Context(), "oauth github start: request host mismatch, redirecting to canonical")
 			target := strings.TrimRight(pub.String(), "/") + "/v1/auth/github/start"
 			if r.URL.RawQuery != "" {
 				target = target + "?" + r.URL.RawQuery
@@ -212,6 +214,7 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 
 	redirectURI, secure := s.oauthRedirectURL(r)
 	if redirectURI == "" {
+		logMsg(r.Context(), "oauth github start: redirect uri unavailable")
 		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
 		return
 	}
@@ -243,6 +246,7 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	case "app":
 		setOAuthCookie(w, oauthGitHubFlowCookie, "app", secure)
 	default:
+		logMsg(r.Context(), "oauth github start: invalid flow")
 		clearOAuthCookie(w, oauthGitHubStateCookie, secure)
 		clearOAuthCookie(w, oauthGitHubPKCECookie, secure)
 		clearOAuthCookie(w, oauthGitHubFlowCookie, secure)
@@ -254,6 +258,9 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	if v, ok := sanitizeOAuthRedirectTo(r.URL.Query().Get("redirect_to")); ok {
 		setOAuthCookie(w, oauthGitHubRedirectCookie, v, secure)
 	} else {
+		if strings.TrimSpace(r.URL.Query().Get("redirect_to")) != "" {
+			logMsg(r.Context(), "oauth github start: invalid redirect_to ignored")
+		}
 		clearOAuthCookie(w, oauthGitHubRedirectCookie, secure)
 	}
 
@@ -373,6 +380,7 @@ func (s server) fetchGitHubUser(ctx context.Context, accessToken string) (github
 
 func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(s.githubClientID) == "" || strings.TrimSpace(s.githubClientSecret) == "" {
+		logMsg(r.Context(), "oauth github callback: missing client id/secret")
 		writeOAuthHTML(w, http.StatusServiceUnavailable, "未配置 GitHub OAuth", "服务端尚未配置 GitHub OAuth（client id/secret）。请联系管理员配置后再试。")
 		return
 	}
@@ -382,6 +390,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	if pub, ok := s.canonicalPublicBaseURL(); ok {
 		reqBase := requestScheme(r) + "://" + requestHost(r)
 		if !strings.EqualFold(strings.TrimRight(reqBase, "/"), strings.TrimRight(pub.Scheme+"://"+pub.Host, "/")) {
+			logMsg(r.Context(), "oauth github callback: request host mismatch (expected canonical)")
 			writeOAuthHTML(
 				w,
 				http.StatusBadRequest,
@@ -394,11 +403,13 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 
 	redirectURI, secure := s.oauthRedirectURL(r)
 	if redirectURI == "" {
+		logMsg(r.Context(), "oauth github callback: redirect uri unavailable")
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
 		return
 	}
 
 	if ghErr := strings.TrimSpace(r.URL.Query().Get("error")); ghErr != "" {
+		logMsg(r.Context(), "oauth github callback: oauth error returned by github")
 		desc := strings.TrimSpace(r.URL.Query().Get("error_description"))
 		msg := "你已取消授权，或授权失败。"
 		if desc != "" {
@@ -411,16 +422,19 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	code := strings.TrimSpace(r.URL.Query().Get("code"))
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
 	if code == "" || state == "" {
+		logMsg(r.Context(), "oauth github callback: missing code/state")
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "缺少必要参数，请返回后重试。")
 		return
 	}
 
 	stateCookie, err := r.Cookie(oauthGitHubStateCookie)
 	if err != nil || strings.TrimSpace(stateCookie.Value) == "" {
+		logMsg(r.Context(), "oauth github callback: missing state cookie")
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "登录已过期，请返回后重试。")
 		return
 	}
 	if subtleConstantTimeEquals(stateCookie.Value, state) == false {
+		logMsg(r.Context(), "oauth github callback: state mismatch")
 		writeOAuthHTML(w, http.StatusBadRequest, "登录失败", "登录状态不匹配，请返回后重试。")
 		return
 	}
