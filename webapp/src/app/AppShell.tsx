@@ -6,9 +6,12 @@ import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
+import { Moon, Sun } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { PwaInstallBanner } from "@/app/components/PwaInstallBanner";
+import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
 import { NAMING } from "@/lib/naming";
@@ -75,6 +78,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const nav = useNavigate();
   const { toast } = useToast();
+  const { resolved, setTheme } = useTheme();
   const meta = useMemo(() => useAppTitle(pathname), [pathname]);
   const lastExchangeToken = useRef("");
 
@@ -166,7 +170,15 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="w-[52px]" />
           )}
           <div className="flex-1 text-center text-sm font-semibold">{meta.title}</div>
-          <div className="w-[52px]" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-[52px]"
+            onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
+            aria-label="切换主题"
+          >
+            {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
         </div>
       </header>
 

@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Minimal prose styles for markdown rendering (no typography plugin needed) */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  @apply font-semibold leading-tight mt-4 mb-2;
+}
+.prose h1 { @apply text-xl; }
+.prose h2 { @apply text-lg; }
+.prose h3 { @apply text-base; }
+.prose p { @apply mb-3 leading-relaxed; }
+.prose ul { @apply mb-3 list-disc pl-5 space-y-1; }
+.prose ol { @apply mb-3 list-decimal pl-5 space-y-1; }
+.prose li { @apply text-sm; }
+.prose blockquote { @apply border-l-4 border-border pl-3 text-muted-foreground italic my-3; }
+.prose code { @apply bg-muted rounded px-1 py-0.5 text-xs font-mono; }
+.prose pre { @apply bg-muted rounded-md p-3 overflow-x-auto text-xs my-3; }
+.prose pre code { @apply bg-transparent p-0; }
+.prose a { @apply text-primary underline underline-offset-2; }
+.prose hr { @apply border-border my-4; }
+.prose table { @apply w-full border-collapse text-sm my-3; }
+.prose th { @apply border border-border px-2 py-1 bg-muted font-semibold text-left; }
+.prose td { @apply border border-border px-2 py-1; }
+.prose strong { @apply font-semibold; }
+.prose em { @apply italic; }
+
 :root {
   color-scheme: light;
 }

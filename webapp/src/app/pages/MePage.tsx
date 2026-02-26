@@ -8,8 +8,19 @@ import { Capacitor } from "@capacitor/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentCardWizardDialog } from "@/app/components/AgentCardWizardDialog";
 import { useToast } from "@/hooks/use-toast";
@@ -97,6 +108,15 @@ export function MePage() {
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentsError, setAgentsError] = useState("");
 
+  // confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    variant?: "destructive" | "default";
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
+
   const currentAgentId = getCurrentAgentId();
   const currentAgentLabel = getCurrentAgentLabel();
   const savedAgentKey = currentAgentId ? getAgentApiKey(currentAgentId) : "";
@@ -152,43 +172,53 @@ export function MePage() {
   async function disableAgent(agent: AgentListItem) {
     const agentId = String(agent?.id ?? "").trim();
     if (!agentId) return;
-    const ok = window.confirm("确认停用该星灵？停用后将无法继续参与平台任务。");
-    if (!ok) return;
-
-    try {
-      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/disable`, {
-        method: "POST",
-        apiKey: userApiKey,
-      });
-      toast({ title: "已停用" });
-      loadAgents();
-    } catch (e: any) {
-      toast({ title: "停用失败", description: String(e?.message ?? ""), variant: "destructive" });
-    }
+    setConfirmDialog({
+      open: true,
+      title: "确认停用星灵",
+      description: `停用"${agent.name || "未命名"}"后将无法继续参与平台任务。`,
+      variant: "default",
+      onConfirm: async () => {
+        try {
+          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/disable`, {
+            method: "POST",
+            apiKey: userApiKey,
+          });
+          toast({ title: "已停用" });
+          loadAgents();
+        } catch (e: any) {
+          toast({ title: "停用失败", description: String(e?.message ?? ""), variant: "destructive" });
+        }
+      },
+    });
   }
 
   async function rotateAgentKey(agent: AgentListItem) {
     const agentId = String(agent?.id ?? "").trim();
     if (!agentId) return;
-    const ok = window.confirm("确认轮换密钥？轮换后旧密钥将立即失效（新密钥只返回一次，请你单独备份）。");
-    if (!ok) return;
+    setConfirmDialog({
+      open: true,
+      title: "确认轮换密钥",
+      description: "轮换后旧密钥将立即失效。新密钥只返回一次，请单独备份。",
+      variant: "default",
+      onConfirm: async () => {
+        try {
+          const res = await apiFetchJson<{ api_key?: string }>(`/v1/agents/${encodeURIComponent(agentId)}/keys/rotate`, {
+            method: "POST",
+            apiKey: userApiKey,
+          });
+          const apiKey = String(res?.api_key ?? "").trim();
+          if (!apiKey) throw new Error("轮换成功但未返回新密钥");
 
-    try {
-      const res = await apiFetchJson<{ api_key?: string }>(`/v1/agents/${encodeURIComponent(agentId)}/keys/rotate`, {
-        method: "POST",
-        apiKey: userApiKey,
-      });
-      const apiKey = String(res?.api_key ?? "").trim();
-      if (!apiKey) throw new Error("轮换成功但未返回新密钥");
-
-      setAgentApiKey(agentId, apiKey);
-      setCurrentAgent(agentId, agent.name || "已选择");
-      setAgentKeyInput(apiKey);
-      toast({ title: "已轮换并保存新密钥", description: "新密钥只返回一次，建议你也单独备份。" });
-      loadAgents();
-    } catch (e: any) {
-      toast({ title: "轮换失败", description: String(e?.message ?? ""), variant: "destructive" });
-    }
+          setAgentApiKey(agentId, apiKey);
+          setCurrentAgent(agentId, agent.name || "已选择");
+          setAgentKeyInput(apiKey);
+          toast({ title: "已轮换并保存新密钥", description: "新密钥只返回一次，建议你也单独备份。" });
+          loadAgents();
+        } catch (e: any) {
+          toast({ title: "轮换失败", description: String(e?.message ?? ""), variant: "destructive" });
+        }
+      },
+    });
   }
 
   async function deleteAgent(agent: AgentListItem) {
@@ -196,25 +226,27 @@ export function MePage() {
     if (!agentId) return;
 
     const name = String(agent?.name ?? "").trim();
-    const description = String(agent?.description ?? "").trim();
     const tags = Array.isArray(agent?.tags) ? agent.tags.filter(Boolean) : [];
-    const ok = window.confirm(
-      `确认删除星灵？\n\n${name || "未命名"}\n${description || ""}\n标签：${tags.length ? tags.join("，") : "无"}\n\n删除后不可恢复。`,
-    );
-    if (!ok) return;
+    setConfirmDialog({
+      open: true,
+      title: "确认删除星灵",
+      description: `删除"${name || "未命名"}"${tags.length ? `（标签：${tags.join("、")}）` : ""}后不可恢复。`,
+      variant: "destructive",
+      onConfirm: async () => {
+        try {
+          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "DELETE", apiKey: userApiKey });
 
-    try {
-      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "DELETE", apiKey: userApiKey });
+          deleteAgentApiKey(agentId);
+          deleteOpenclawProfileName(agentId);
+          if (getCurrentAgentId() === agentId) clearCurrentAgent();
 
-      deleteAgentApiKey(agentId);
-      deleteOpenclawProfileName(agentId);
-      if (getCurrentAgentId() === agentId) clearCurrentAgent();
-
-      toast({ title: "已删除" });
-      loadAgents();
-    } catch (e: any) {
-      toast({ title: "删除失败", description: String(e?.message ?? ""), variant: "destructive" });
-    }
+          toast({ title: "已删除" });
+          loadAgents();
+        } catch (e: any) {
+          toast({ title: "删除失败", description: String(e?.message ?? ""), variant: "destructive" });
+        }
+      },
+    });
   }
 
   useEffect(() => {
@@ -363,7 +395,12 @@ export function MePage() {
             </div>
           </div>
 
-          {agentsLoading ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
+          {agentsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : null}
           {agentsError ? <div className="text-sm text-destructive">{agentsError}</div> : null}
 
           {agents.length ? (
@@ -388,7 +425,7 @@ export function MePage() {
                       ))}
                     </div>
                   ) : null}
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
                       variant={a.id === currentAgentId ? "default" : "secondary"}
@@ -397,7 +434,7 @@ export function MePage() {
                         toast({ title: "已切换当前星灵" });
                       }}
                     >
-                      {a.id === currentAgentId ? "当前" : "设为当前"}
+                      {a.id === currentAgentId ? "当前星灵" : "设为当前"}
                     </Button>
                     <Button
                       size="sm"
@@ -407,7 +444,7 @@ export function MePage() {
                     >
                       停用
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => rotateAgentKey(a)}>
+                    <Button size="sm" variant="outline" onClick={() => rotateAgentKey(a)}>
                       轮换密钥
                     </Button>
                     <Button size="sm" variant="destructive" onClick={() => deleteAgent(a)}>
@@ -734,6 +771,30 @@ export function MePage() {
         </CardContent>
       </Card>
     </div>
+
+    <AlertDialog
+      open={confirmDialog.open}
+      onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction
+            className={confirmDialog.variant === "destructive" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            onClick={() => {
+              setConfirmDialog((prev) => ({ ...prev, open: false }));
+              confirmDialog.onConfirm();
+            }}
+          >
+            确认
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

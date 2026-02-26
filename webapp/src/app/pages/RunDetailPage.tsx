@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetchJson, getApiBaseUrl } from "@/lib/api";
 import { fmtArtifactKind, fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
@@ -65,6 +68,36 @@ function safeText(payload: Record<string, unknown>): string {
   }
 }
 
+// Time-axis style event card
+function EventCard({ ev }: { ev: EventDTO }) {
+  return (
+    <div className="flex gap-3">
+      {/* timeline line */}
+      <div className="flex flex-col items-center">
+        <div
+          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full border-2 ${
+            ev.is_key_node ? "border-primary bg-primary" : "border-muted-foreground/40 bg-background"
+          }`}
+        />
+        <div className="mt-1 w-px flex-1 bg-border" />
+      </div>
+      {/* content */}
+      <div className="mb-4 min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant={ev.is_key_node ? "default" : "secondary"} className="shrink-0">
+            {fmtEventKind(ev.kind)}
+          </Badge>
+          {ev.persona ? <span className="font-medium text-foreground">{ev.persona}</span> : null}
+          <span>{fmtTime(ev.created_at)}</span>
+        </div>
+        <pre className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/80">
+          {safeText(ev.payload)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function ProgressView({ runId }: { runId: string }) {
   const [events, setEvents] = useState<EventDTO[]>([]);
   const [error, setError] = useState("");
@@ -92,7 +125,7 @@ function ProgressView({ runId }: { runId: string }) {
       }
     });
     es.addEventListener("error", () => {
-      setError("进度流连接中断（可切到“记录”查看历史）。");
+      setError("进度流连接中断（可切到"记录"查看历史）。");
     });
 
     return () => es.close();
@@ -131,18 +164,9 @@ function ProgressView({ runId }: { runId: string }) {
       </Card>
 
       {shown.length ? (
-        <div className="space-y-2">
+        <div className="pl-1">
           {shown.map((ev) => (
-            <Card key={ev.seq}>
-              <CardContent className="pt-4">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant={ev.is_key_node ? "default" : "secondary"}>{fmtEventKind(ev.kind)}</Badge>
-                  {ev.persona ? <span className="font-medium text-foreground">{ev.persona}</span> : null}
-                  <span>{fmtTime(ev.created_at)}</span>
-                </div>
-                <pre className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{safeText(ev.payload)}</pre>
-              </CardContent>
-            </Card>
+            <EventCard key={ev.seq} ev={ev} />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -158,9 +182,12 @@ function ReplayView({ runId }: { runId: string }) {
   const [keyNodes, setKeyNodes] = useState<EventDTO[]>([]);
   const [afterSeq, setAfterSeq] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState("");
+  const observerTarget = useRef<HTMLDivElement>(null);
 
   async function load({ reset }: { reset: boolean }) {
+    if (loading) return;
     setLoading(true);
     setError("");
     try {
@@ -173,6 +200,7 @@ function ReplayView({ runId }: { runId: string }) {
       if (reset) setKeyNodes(res.key_nodes ?? []);
       const last = list.length ? list[list.length - 1].seq : after;
       setAfterSeq(last);
+      setHasMore(list.length >= 200);
     } catch (e: any) {
       setError(String(e?.message ?? "加载失败"));
     } finally {
@@ -184,6 +212,23 @@ function ReplayView({ runId }: { runId: string }) {
     load({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
+
+  // Infinite scroll for replay
+  useEffect(() => {
+    const currentTarget = observerTarget.current;
+    if (!currentTarget) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          void load({ reset: false });
+        }
+      },
+      { threshold: 0.1, rootMargin: "120px" },
+    );
+    observer.observe(currentTarget);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, loading, afterSeq]);
 
   return (
     <div className="space-y-3">
@@ -210,32 +255,38 @@ function ReplayView({ runId }: { runId: string }) {
       ) : null}
 
       {events.length ? (
-        <div className="space-y-2">
+        <div className="pl-1">
           {events.map((ev) => (
-            <Card key={ev.seq}>
-              <CardContent className="pt-4">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant={ev.is_key_node ? "default" : "secondary"}>{fmtEventKind(ev.kind)}</Badge>
-                  {ev.persona ? <span className="font-medium text-foreground">{ev.persona}</span> : null}
-                  <span>{fmtTime(ev.created_at)}</span>
-                </div>
-                <pre className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{safeText(ev.payload)}</pre>
-              </CardContent>
-            </Card>
+            <EventCard key={ev.seq} ev={ev} />
           ))}
         </div>
       ) : (
         !loading && !error ? <div className="text-sm text-muted-foreground">暂无记录。</div> : null
       )}
 
-      <Button
-        disabled={loading}
-        variant="secondary"
-        className="w-full"
-        onClick={() => load({ reset: false })}
-      >
-        {loading ? "加载中…" : "加载更多"}
-      </Button>
+      {loading && (
+        <div className="space-y-3 pl-1">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <Skeleton className="mt-1 h-2.5 w-2.5 rounded-full" />
+                <div className="mt-1 w-px flex-1 bg-border" />
+              </div>
+              <div className="mb-4 flex-1 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Sentinel */}
+      <div ref={observerTarget} className="h-4 w-full" />
+
+      {!hasMore && events.length > 0 && (
+        <div className="py-4 text-center text-xs text-muted-foreground/50">- 已经到底了 -</div>
+      )}
     </div>
   );
 }
@@ -246,6 +297,7 @@ function OutputView({ runId }: { runId: string }) {
   const [selected, setSelected] = useState<RunArtifact | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [renderMarkdown, setRenderMarkdown] = useState(true);
 
   async function loadLatest() {
     setLoading(true);
@@ -323,17 +375,41 @@ function OutputView({ runId }: { runId: string }) {
             </div>
           ) : null}
           {error ? <div className="mt-3 text-sm text-destructive">{error}</div> : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            {kind ? <span>类型：{fmtArtifactKind(kind)}</span> : null}
-            {author ? <span>作者：{author}</span> : null}
-            {createdAt ? <span>时间：{fmtTime(createdAt)}</span> : null}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-2">
+              {kind ? <span>类型：{fmtArtifactKind(kind)}</span> : null}
+              {author ? <span>作者：{author}</span> : null}
+              {createdAt ? <span>时间：{fmtTime(createdAt)}</span> : null}
+            </div>
+            {content ? (
+              <Button size="sm" variant="ghost" onClick={() => setRenderMarkdown((v) => !v)} className="h-6 px-2 text-xs">
+                {renderMarkdown ? "原文" : "渲染"}
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="pt-4">
-          <pre className="whitespace-pre-wrap text-sm leading-relaxed">{content || "（暂无作品）"}</pre>
+          {loading && !content ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-4/6" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ) : content ? (
+            renderMarkdown ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{content}</pre>
+            )
+          ) : (
+            <div className="text-sm text-muted-foreground">（暂无作品）</div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -379,7 +455,13 @@ export function RunDetailPage() {
           <CardTitle className="text-base">任务摘要</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {loading && !run ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
+          {loading && !run ? (
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-1/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : null}
           {error ? <div className="text-sm text-destructive">{error}</div> : null}
           {run ? (
             <>
@@ -417,4 +499,3 @@ export function RunDetailPage() {
     </div>
   );
 }
-

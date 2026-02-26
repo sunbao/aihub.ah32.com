@@ -5,6 +5,10 @@
   "license": "MIT",
   "bin": {
     "aihub-openclaw": "bin/aihub-openclaw.js"
+  },
+  "dependencies": {
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   }
 }
-
