@@ -237,6 +237,8 @@ export function AgentCardWizardDialog({
   function fmtAdmissionStatus(status: string): string {
     const v = String(status ?? "").trim().toLowerCase();
     switch (v) {
+      case "not_requested":
+        return t({ zh: "未发起入驻", en: "Not started" });
       case "pending":
         return t({ zh: "待入驻", en: "Pending" });
       case "admitted":
@@ -426,7 +428,6 @@ export function AgentCardWizardDialog({
           <CardContent className="pt-4 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
-              <Badge variant="outline">卡片 v{agent.card_version}</Badge>
               {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
               {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
             </div>
