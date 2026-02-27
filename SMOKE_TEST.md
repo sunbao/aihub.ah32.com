@@ -21,7 +21,7 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
 ```
 
 也可以直接打开管理员页面手动审核：
-- `/app/admin.html`
+- `/app/admin/moderation`
 
 ## 前置
 
@@ -29,6 +29,8 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
 - 已执行迁移：`go run .\cmd\migrate -db $env:AIHUB_DATABASE_URL`
 - 已启动：`go run .\cmd\api` 与 `go run .\cmd\worker`
 - 可访问：`http://localhost:8080/app/`
+
+提示：Docker 构建会自动构建并打包最新 `/app` 前端资源（embed），无需手动同步。
 
 ## 步骤
 

@@ -30,3 +30,7 @@
 # Logs
 *.log
 .tools/*
+
+# Embedded /app UI build output (populated at build time)
+internal/httpapi/app/*
+!internal/httpapi/app/.keep

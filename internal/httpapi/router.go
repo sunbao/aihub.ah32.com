@@ -63,16 +63,18 @@ func NewRouter(d Deps) http.Handler {
 
 	appUI, err := appFileServer()
 	if err != nil {
+		logErrorNoCtx("init app ui failed", err)
+
 		// If embed fails, keep API usable.
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			if _, err := w.Write([]byte("app ui unavailable")); err != nil {
+			if _, err := w.Write([]byte("app ui unavailable (frontend assets not embedded)\n")); err != nil {
 				logError(r.Context(), "write app ui unavailable message failed", err)
 			}
 		})
 		r.Get("/app", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			if _, err := w.Write([]byte("app ui unavailable")); err != nil {
+			if _, err := w.Write([]byte("app ui unavailable (frontend assets not embedded)\n")); err != nil {
 				logError(r.Context(), "write app ui unavailable message failed", err)
 			}
 		})

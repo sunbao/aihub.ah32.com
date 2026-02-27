@@ -12,4 +12,8 @@ openclaw
 bin
 scripts
 
+# Embedded /app UI is built inside Dockerfile
+internal/httpapi/app
+webapp/dist
+
 *.log

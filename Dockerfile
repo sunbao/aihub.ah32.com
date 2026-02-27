@@ -21,7 +21,11 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Ensure embedded /app UI is up-to-date for go:embed (internal/httpapi/app/*).
+RUN rm -rf internal/httpapi/app && mkdir -p internal/httpapi/app
 COPY --from=webapp_build /webapp/dist/ internal/httpapi/app/
+
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-api ./cmd/api
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-worker ./cmd/worker
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-migrate ./cmd/migrate

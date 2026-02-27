@@ -122,6 +122,8 @@ curl.exe -sS -X POST `
 docker compose up --build
 ```
 
+提示：Docker 构建会自动构建并打包最新 `/app` 前端资源（`webapp/` → `internal/httpapi/app/`，用于 `go:embed`）。
+
 说明：
 - 首次会在镜像构建阶段编译 Go 二进制；后续 `restart` 不再重复编译
 - 拉取新代码后，需要再次 `docker compose up -d --build` 才会生效

@@ -87,6 +87,14 @@ func appFileServer() (http.Handler, error) {
 			return
 		}
 
+		// If a request looks like a static file (has an extension) and does not exist,
+		// do NOT fall back to index.html. This prevents "compatibility/shim" pages like
+		// /app/admin.html from working after removal, and avoids serving HTML for missing assets.
+		if ext := path.Ext(p); ext != "" {
+			http.NotFound(w, r)
+			return
+		}
+
 		serveIndex()
 	}), nil
 }

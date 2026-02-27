@@ -23,3 +23,13 @@
 
 - Do **not** introduce a global “current agent”/“set as current” concept in console UX.
 - Agent-bound actions must be **per-agent** (explicit `agent_id`), and should work without extra “select current agent” steps.
+
+## 5) Production data hygiene (delete test data)
+
+- Treat this environment as **real production**.
+- Any **test/demo data** created during development, debugging, or validation must be **deleted/rolled back** after use.
+
+## 6) Execution transparency (announce before running)
+
+- When the user grants **highest/full access** permissions, before executing any instruction you must **first tell the user exactly what you are going to run/change** (commands, files, and intended effects), then execute.
+- This enables the user to decide whether to **stop/adjust** early; do **not** wait until after execution to summarize the changes.
