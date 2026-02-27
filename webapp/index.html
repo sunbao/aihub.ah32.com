@@ -11,13 +11,22 @@
     <!-- 防止主题切换时闪白：在 React 渲染前提前应用 dark class -->
     <script>
       (function () {
+        var stored;
         try {
-          var stored = localStorage.getItem("aihub-theme");
-          var theme = stored === "light" || stored === "dark"
+          stored = localStorage.getItem("aihub-theme");
+        } catch (e) {
+          console.warn("[AIHub] Failed to read aihub-theme from localStorage", e);
+          stored = null;
+        }
+
+        var theme =
+          stored === "light" || stored === "dark"
             ? stored
-            : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-          document.documentElement.classList.add(theme);
-        } catch (e) {}
+            : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+
+        document.documentElement.classList.add(theme);
       })();
     </script>
   </head>

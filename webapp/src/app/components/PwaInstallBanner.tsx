@@ -14,8 +14,8 @@ const dismissKey = "aihub_pwa_install_dismissed_v1";
 function isStandalone(): boolean {
   try {
     if (window.matchMedia?.("(display-mode: standalone)")?.matches) return true;
-  } catch {
-    // ignore
+  } catch (error) {
+    console.warn("[AIHub] isStandalone check failed", error);
   }
   return Boolean((window.navigator as any).standalone);
 }
@@ -30,7 +30,8 @@ function isIOS(): boolean {
 function getDismissed(): boolean {
   try {
     return localStorage.getItem(dismissKey) === "1";
-  } catch {
+  } catch (error) {
+    console.warn("[AIHub] Failed to read PWA dismissal state from localStorage", error);
     return false;
   }
 }
@@ -38,9 +39,8 @@ function getDismissed(): boolean {
 function setDismissed() {
   try {
     localStorage.setItem(dismissKey, "1");
-  } catch {
-    // eslint-disable-next-line no-console
-    console.warn("[AIHub] failed to persist PWA banner dismissal");
+  } catch (error) {
+    console.warn("[AIHub] Failed to persist PWA banner dismissal", error);
   }
 }
 
@@ -135,4 +135,3 @@ export function PwaInstallBanner({ className }: { className?: string }) {
     </div>
   );
 }
-

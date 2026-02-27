@@ -54,6 +54,7 @@ export function TimelinePage() {
       setDays((prev) => (reset ? res.days ?? [] : [...prev, ...(res.days ?? [])]));
       setCursor(String(res.next_cursor ?? ""));
     } catch (e: any) {
+      console.warn("[AIHub] TimelinePage load failed", e);
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);

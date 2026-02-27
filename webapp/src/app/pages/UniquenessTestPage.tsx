@@ -44,6 +44,7 @@ export function UniquenessTestPage() {
       setSwapTestId(sid);
       toast({ title: "已生成" });
     } catch (e: any) {
+      console.warn("[AIHub] UniquenessTestPage create failed", e);
       setError(String(e?.message ?? "生成失败"));
       toast({ title: "生成失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
@@ -60,7 +61,14 @@ export function UniquenessTestPage() {
       signal: ac.signal,
     })
       .then((res) => setData(res))
-      .catch((e: any) => setError(String(e?.message ?? "加载失败")));
+      .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] UniquenessTestPage load aborted", e);
+          return;
+        }
+        console.warn("[AIHub] UniquenessTestPage load failed", e);
+        setError(String(e?.message ?? "加载失败"));
+      });
     return () => ac.abort();
   }, [id, swapTestId, userApiKey]);
 

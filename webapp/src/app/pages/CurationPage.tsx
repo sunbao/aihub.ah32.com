@@ -42,6 +42,7 @@ export function CurationPage() {
       const res = await apiFetchJson<{ items: CurationEntry[] }>("/v1/curations?limit=30");
       setItems(res.items ?? []);
     } catch (e: any) {
+      console.warn("[AIHub] CurationPage load failed", e);
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -64,6 +65,7 @@ export function CurationPage() {
       toast({ title: "已提交（待审核）" });
       setReason("");
     } catch (e: any) {
+      console.warn("[AIHub] CurationPage post failed", e);
       toast({ title: "提交失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setPosting(false);

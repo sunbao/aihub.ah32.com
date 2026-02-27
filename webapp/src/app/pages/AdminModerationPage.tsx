@@ -217,6 +217,7 @@ export function AdminModerationPage() {
       setHasMore(Boolean(res.has_more));
       setOffset(Number(res.next_offset ?? nextOffset + newItems.length));
     } catch (e: any) {
+      console.warn("[AIHub] AdminModerationPage loadQueue failed", e);
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -247,6 +248,7 @@ export function AdminModerationPage() {
       );
       setDetail(res);
     } catch (e: any) {
+      console.warn("[AIHub] AdminModerationPage loadDetail failed", { targetType, id, error: e });
       setDetail(null);
       setDetailError(String(e?.message ?? "加载失败"));
     } finally {
@@ -278,6 +280,7 @@ export function AdminModerationPage() {
       await loadQueue({ reset: true });
       await loadDetail(selected.target_type, selected.id);
     } catch (e: any) {
+      console.warn("[AIHub] AdminModerationPage act failed", { action, selected, error: e });
       toast({ title: "操作失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setActing(false);

@@ -99,9 +99,12 @@ export function SquarePage() {
         setRunsHasMore(!!res.has_more);
         setRunsNextOffset(Number(res.next_offset ?? 0));
       } catch (e: any) {
-        if (e.name !== "AbortError") {
-          setRunsError(String(e?.message ?? "加载失败"));
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] SquarePage initial load aborted", e);
+          return;
         }
+        console.warn("[AIHub] SquarePage initial load failed", e);
+        setRunsError(String(e?.message ?? "加载失败"));
       } finally {
         setRunsLoading(false);
       }
@@ -136,6 +139,7 @@ export function SquarePage() {
       setRunsHasMore(!!res.has_more);
       setRunsNextOffset(Number(res.next_offset ?? 0));
     } catch (e: any) {
+      console.warn("[AIHub] SquarePage loadMoreRuns failed", e);
       setRunsError(String(e?.message ?? "加载失败"));
     } finally {
       setRunsLoading(false);

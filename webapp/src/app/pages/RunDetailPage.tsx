@@ -63,7 +63,8 @@ function safeText(payload: Record<string, unknown>): string {
   if (typeof v === "string") return v;
   try {
     return JSON.stringify(payload ?? {}, null, 2);
-  } catch {
+  } catch (error) {
+    console.warn("[AIHub] Failed to stringify event payload", error);
     return String(payload ?? "");
   }
 }
@@ -125,6 +126,7 @@ function ProgressView({ runId }: { runId: string }) {
       }
     });
     es.addEventListener("error", () => {
+      console.warn("[AIHub] SSE stream error", { runId, url });
       setError("进度流连接中断（可切到【记录】查看历史）。");
     });
 
@@ -202,6 +204,7 @@ function ReplayView({ runId }: { runId: string }) {
       setAfterSeq(last);
       setHasMore(list.length >= 200);
     } catch (e: any) {
+      console.warn("[AIHub] RunDetailPage replay load failed", { runId, reset, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -307,6 +310,7 @@ function OutputView({ runId }: { runId: string }) {
       setLatest(out);
       if (!selectedVersion) setSelectedVersion(out.version);
     } catch (e: any) {
+      console.warn("[AIHub] RunDetailPage output loadLatest failed", { runId, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -326,7 +330,10 @@ function OutputView({ runId }: { runId: string }) {
       `/v1/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(String(selectedVersion))}`,
     )
       .then((a) => setSelected(a))
-      .catch((e: any) => setError(String(e?.message ?? "加载失败")));
+      .catch((e: any) => {
+        console.warn("[AIHub] RunDetailPage artifact load failed", { runId, version: selectedVersion, error: e });
+        setError(String(e?.message ?? "加载失败"));
+      });
   }, [runId, selectedVersion]);
 
   const maxVersion = latest?.version ?? 0;
@@ -441,7 +448,14 @@ export function RunDetailPage() {
     setError("");
     apiFetchJson<RunPublic>(`/v1/runs/${encodeURIComponent(rid)}`, { signal: ac.signal })
       .then((res) => setRun(res))
-      .catch((e: any) => setError(String(e?.message ?? "加载失败")))
+      .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] RunDetailPage load aborted", e);
+          return;
+        }
+        console.warn("[AIHub] RunDetailPage load failed", { runId: rid, error: e });
+        setError(String(e?.message ?? "加载失败"));
+      })
       .finally(() => setLoading(false));
     return () => ac.abort();
   }, [rid]);

@@ -294,6 +294,7 @@ export function AgentCardWizardDialog({
       });
       setPersonalityPresetId(preset?.id ?? "");
     } catch (e: any) {
+      console.warn("[AIHub] AgentCardWizardDialog loadAll failed", { agentId, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -351,6 +352,7 @@ export function AgentCardWizardDialog({
       await loadAll(false);
       setStep(6);
     } catch (e: any) {
+      console.warn("[AIHub] AgentCardWizardDialog save failed", { agentId, error: e });
       setError(String(e?.message ?? "保存失败"));
       toast({ title: "保存失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DimensionsRadar } from "@/app/components/DimensionsRadar";
@@ -87,7 +86,14 @@ export function AgentDetailPage() {
     setError("");
     apiFetchJson<AgentDiscoverDetail>(`/v1/agents/discover/${encodeURIComponent(id)}`, { signal: ac.signal })
       .then((res) => setAgent(res))
-      .catch((e: any) => setError(String(e?.message ?? "加载失败")))
+      .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] AgentDetailPage load aborted", e);
+          return;
+        }
+        console.warn("[AIHub] AgentDetailPage load agent failed", { agentId: id, error: e });
+        setError(String(e?.message ?? "加载失败"));
+      })
       .finally(() => setLoading(false));
     return () => ac.abort();
   }, [id]);
@@ -98,7 +104,14 @@ export function AgentDetailPage() {
     setDimsError("");
     apiFetchJson<AgentDimensions>(`/v1/agents/${encodeURIComponent(id)}/dimensions`, { signal: ac.signal })
       .then((res) => setDims(res))
-      .catch((e: any) => setDimsError(String(e?.message ?? "加载失败")));
+      .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] AgentDetailPage dimensions load aborted", e);
+          return;
+        }
+        console.warn("[AIHub] AgentDetailPage dimensions load failed", { agentId: id, error: e });
+        setDimsError(String(e?.message ?? "加载失败"));
+      });
     return () => ac.abort();
   }, [id]);
 
@@ -112,7 +125,14 @@ export function AgentDetailPage() {
       { signal: ac.signal },
     )
       .then((res) => setThought(res))
-      .catch((e: any) => setThoughtError(String(e?.message ?? "暂无哲思")));
+      .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] AgentDetailPage daily-thought load aborted", e);
+          return;
+        }
+        console.warn("[AIHub] AgentDetailPage daily-thought load failed", { agentId: id, date, error: e });
+        setThoughtError(String(e?.message ?? "暂无哲思"));
+      });
     return () => ac.abort();
   }, [id]);
 
@@ -122,7 +142,14 @@ export function AgentDetailPage() {
     setHighlightsError("");
     apiFetchJson<Highlights>(`/v1/agents/${encodeURIComponent(id)}/highlights`, { signal: ac.signal })
       .then((res) => setHighlights(res))
-      .catch((e: any) => setHighlightsError(String(e?.message ?? "暂无高光")));
+      .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] AgentDetailPage highlights load aborted", e);
+          return;
+        }
+        console.warn("[AIHub] AgentDetailPage highlights load failed", { agentId: id, error: e });
+        setHighlightsError(String(e?.message ?? "暂无高光"));
+      });
     return () => ac.abort();
   }, [id]);
 

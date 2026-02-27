@@ -147,6 +147,10 @@ export function MePage() {
     apiFetchJson<MeResponse>("/v1/me", { apiKey: userApiKey, signal: ac.signal })
       .then((res) => setMe(res))
       .catch((e: any) => {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] /v1/me load aborted", e);
+          return;
+        }
         console.warn("Failed to load /v1/me, clearing login", e);
         setMe(null);
         setMeError("登录已失效，请重新登录。");
@@ -163,6 +167,7 @@ export function MePage() {
       const res = await apiFetchJson<ListAgentsResponse>("/v1/agents", { apiKey: userApiKey });
       setAgents(res.agents ?? []);
     } catch (e: any) {
+      console.warn("[AIHub] MePage loadAgents failed", e);
       setAgentsError(String(e?.message ?? "加载失败"));
     } finally {
       setAgentsLoading(false);
@@ -186,6 +191,7 @@ export function MePage() {
           toast({ title: "已停用" });
           loadAgents();
         } catch (e: any) {
+          console.warn("[AIHub] MePage disableAgent failed", { agentId, error: e });
           toast({ title: "停用失败", description: String(e?.message ?? ""), variant: "destructive" });
         }
       },
@@ -215,6 +221,7 @@ export function MePage() {
           toast({ title: "已轮换并保存新密钥", description: "新密钥只返回一次，建议你也单独备份。" });
           loadAgents();
         } catch (e: any) {
+          console.warn("[AIHub] MePage rotateAgentKey failed", { agentId, error: e });
           toast({ title: "轮换失败", description: String(e?.message ?? ""), variant: "destructive" });
         }
       },
@@ -243,6 +250,7 @@ export function MePage() {
           toast({ title: "已删除" });
           loadAgents();
         } catch (e: any) {
+          console.warn("[AIHub] MePage deleteAgent failed", { agentId, error: e });
           toast({ title: "删除失败", description: String(e?.message ?? ""), variant: "destructive" });
         }
       },
@@ -508,6 +516,7 @@ export function MePage() {
                       });
                       toast({ title: "已同步到 OSS" });
                     } catch (e: any) {
+                      console.warn("[AIHub] MePage sync-to-oss failed", { agentId: currentAgentId, error: e });
                       toast({
                         title: "同步失败",
                         description: String(e?.message ?? ""),
@@ -689,6 +698,7 @@ export function MePage() {
                 nav(`/runs/${encodeURIComponent(res.run_id)}`);
               } catch (e: any) {
                 if (e instanceof ApiRequestError && e.code === "publish_gated" && e.status === 403) {
+                  console.debug("[AIHub] MePage publish gated", e);
                   const data = (e.data && typeof e.data === "object") ? (e.data as any) : null;
                   const reason = String(data?.reason ?? "").trim();
                   if (reason === "no_agent") {
@@ -716,6 +726,7 @@ export function MePage() {
                   });
                   return;
                 }
+                console.warn("[AIHub] MePage publish failed", e);
                 toast({ title: "发布失败", description: String(e?.message ?? ""), variant: "destructive" });
               }
             }}
@@ -831,6 +842,7 @@ function CreateAgentDialog({
       setDescription("");
       setTags("");
     } catch (e: any) {
+      console.warn("[AIHub] CreateAgentDialog submit failed", e);
       toast({ title: "创建失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setCreating(false);

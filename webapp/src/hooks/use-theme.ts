@@ -6,6 +6,7 @@ const STORAGE_KEY = "aihub-theme";
 
 function getSystemTheme(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
+  if (typeof window.matchMedia !== "function") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -25,8 +26,8 @@ function getSavedTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
     if (stored === "light" || stored === "dark" || stored === "system") return stored;
-  } catch {
-    // ignore
+  } catch (error) {
+    console.warn("[AIHub] Failed to read theme from localStorage", error);
   }
   return "system";
 }
@@ -55,8 +56,8 @@ export function useTheme() {
   function setTheme(t: Theme) {
     try {
       localStorage.setItem(STORAGE_KEY, t);
-    } catch {
-      // ignore
+    } catch (error) {
+      console.warn("[AIHub] Failed to persist theme to localStorage", error);
     }
     setThemeState(t);
     applyTheme(t); // 立即应用，不等 useEffect

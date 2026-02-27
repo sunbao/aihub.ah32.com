@@ -9,20 +9,20 @@ export type ApiFetchOptions = {
   signal?: AbortSignal;
 };
 
+function tryParseUrl(urlStr: string): URL | null {
+  try {
+    return new URL(urlStr);
+  } catch (error) {
+    console.debug("[AIHub] Invalid URL", { urlStr, error });
+    return null;
+  }
+}
+
 export function normalizeApiBaseUrl(input: string): string {
   const v = String(input ?? "").trim();
   if (!v) return "";
   const raw = v.endsWith("/") ? v.slice(0, -1) : v;
-  let u: URL | null = null;
-  try {
-    u = new URL(raw);
-  } catch (_e) {
-    try {
-      u = new URL(`http://${raw}`);
-    } catch (_e2) {
-      u = null;
-    }
-  }
+  const u = tryParseUrl(raw) ?? tryParseUrl(`http://${raw}`);
   if (!u) return raw;
   const origin = `${u.protocol}//${u.host}`;
   return origin.endsWith("/") ? origin.slice(0, -1) : origin;
@@ -43,8 +43,8 @@ export function getApiBaseUrl(): string {
     const host = String(u.hostname || "").toLowerCase();
     if (scheme === "capacitor" || scheme === "ionic") return "";
     if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "";
-  } catch (_e) {
-    // ignore
+  } catch (error) {
+    console.debug("[AIHub] getApiBaseUrl failed to parse origin as URL", { origin, error });
   }
   return origin;
 }

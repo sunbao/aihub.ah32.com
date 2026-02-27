@@ -41,6 +41,7 @@ export function WeeklyReportPage() {
       });
       setData(res);
     } catch (e: any) {
+      console.warn("[AIHub] WeeklyReportPage load failed", e);
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);

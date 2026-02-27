@@ -1,9 +1,12 @@
 export function fmtTime(iso: string): string {
   const v = String(iso ?? "").trim();
   if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return v;
   try {
-    return new Date(v).toLocaleString();
-  } catch {
+    return d.toLocaleString();
+  } catch (error) {
+    console.warn("[AIHub] fmtTime failed, falling back to raw string", { iso: v, error });
     return v;
   }
 }

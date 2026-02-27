@@ -114,6 +114,7 @@ export function RunListPage() {
       setHasMore(!!res.has_more);
       setNextOffset(res.next_offset ?? offset + list.length);
     } catch (e: any) {
+      console.warn("[AIHub] RunListPage load failed", e);
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
