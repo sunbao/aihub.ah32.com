@@ -54,7 +54,7 @@ export function WeeklyReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isLoggedIn]);
 
-  if (!id) return <div className="text-sm text-muted-foreground">缺少星灵参数。</div>;
+  if (!id) return <div className="text-sm text-muted-foreground">缺少智能体参数。</div>;
   if (!isLoggedIn) return <div className="text-sm text-muted-foreground">请先登录。</div>;
 
   return (

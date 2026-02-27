@@ -14,19 +14,20 @@ import { PwaInstallBanner } from "@/app/components/PwaInstallBanner";
 import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
-import { NAMING } from "@/lib/naming";
+import { useI18n } from "@/lib/i18n";
 import { setUserApiKey } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
-function useAppTitle(pathname: string): { title: string; showBack: boolean; backTo?: string } {
-  if (pathname.startsWith("/runs/")) return { title: "任务详情", showBack: true, backTo: "/" };
-  if (pathname === "/runs") return { title: "任务列表", showBack: true, backTo: "/" };
-  if (pathname.startsWith("/agents/") && pathname.endsWith("/timeline")) return { title: "时间线", showBack: true, backTo: "/me" };
-  if (pathname.startsWith("/agents/")) return { title: NAMING.nouns.agent, showBack: true, backTo: "/" };
-  if (pathname.startsWith("/curations")) return { title: "策展广场", showBack: true, backTo: "/" };
-  if (pathname.startsWith("/admin/")) return { title: "管理员", showBack: true, backTo: "/me" };
-  if (pathname.startsWith("/me")) return { title: NAMING.tabs.me, showBack: false };
-  return { title: NAMING.tabs.square, showBack: false };
+function useAppTitle(pathname: string, isZh: boolean): { title: string; showBack: boolean; backTo?: string } {
+  if (pathname.startsWith("/runs/")) return { title: isZh ? "任务详情" : "Run details", showBack: true, backTo: "/" };
+  if (pathname === "/runs") return { title: isZh ? "任务列表" : "Runs", showBack: true, backTo: "/" };
+  if (pathname.startsWith("/agents/") && pathname.endsWith("/timeline"))
+    return { title: isZh ? "时间线" : "Timeline", showBack: true, backTo: "/me" };
+  if (pathname.startsWith("/agents/")) return { title: isZh ? "智能体" : "Agent", showBack: true, backTo: "/" };
+  if (pathname.startsWith("/curations")) return { title: isZh ? "策展广场" : "Curations", showBack: true, backTo: "/" };
+  if (pathname.startsWith("/admin/")) return { title: isZh ? "管理员" : "Admin", showBack: true, backTo: "/me" };
+  if (pathname.startsWith("/me")) return { title: isZh ? "我的" : "Me", showBack: false };
+  return { title: isZh ? "广场" : "Square", showBack: false };
 }
 
 function parseAppGitHubExchangeToken(urlStr: string): string {
@@ -45,7 +46,7 @@ function parseAppGitHubExchangeToken(urlStr: string): string {
   }
 }
 
-function BottomNav() {
+function BottomNav({ squareLabel, meLabel }: { squareLabel: string; meLabel: string }) {
   const { pathname } = useLocation();
   const active = pathname.startsWith("/me") || pathname.startsWith("/admin") ? "me" : "square";
   return (
@@ -63,7 +64,7 @@ function BottomNav() {
           >
             <Home className={cn("h-5 w-5", active === "square" ? "fill-primary stroke-primary" : "stroke-muted-foreground")} />
             <span className={cn("text-[10px] font-medium", active === "square" ? "text-primary" : "text-muted-foreground")}>
-              {NAMING.tabs.square}
+              {squareLabel}
             </span>
           </Button>
         </Link>
@@ -74,7 +75,7 @@ function BottomNav() {
           >
             <User className={cn("h-5 w-5", active === "me" ? "fill-primary stroke-primary" : "stroke-muted-foreground")} />
             <span className={cn("text-[10px] font-medium", active === "me" ? "text-primary" : "text-muted-foreground")}>
-              {NAMING.tabs.me}
+              {meLabel}
             </span>
           </Button>
         </Link>
@@ -87,8 +88,9 @@ export function AppShell({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const nav = useNavigate();
   const { toast } = useToast();
+  const { t, isZh } = useI18n();
   const { resolved, setTheme } = useTheme();
-  const meta = useMemo(() => useAppTitle(pathname), [pathname]);
+  const meta = useMemo(() => useAppTitle(pathname, isZh), [pathname, isZh]);
   const lastExchangeToken = useRef("");
 
   const showBack = meta.showBack;
@@ -111,7 +113,9 @@ export function AppShell({ children }: PropsWithChildren) {
           body: { exchange_token: exchangeToken },
         });
         const apiKey = String(res?.api_key ?? "").trim();
-        if (!apiKey) throw new Error("登录失败：缺少 api_key");
+        if (!apiKey) {
+          throw new Error(t({ zh: "登录失败：缺少 api_key", en: "Login failed: missing api_key" }));
+        }
 
         setUserApiKey(apiKey);
         try {
@@ -121,13 +125,13 @@ export function AppShell({ children }: PropsWithChildren) {
         }
 
         if (disposed) return;
-        toast({ title: "登录成功" });
+        toast({ title: t({ zh: "登录成功", en: "Signed in" }) });
         nav("/me", { replace: true });
       } catch (e: any) {
         console.warn("[AIHub] app exchange failed", e);
         if (disposed) return;
         toast({
-          title: "登录失败",
+          title: t({ zh: "登录失败", en: "Sign-in failed" }),
           description: String(e?.message ?? ""),
           variant: "destructive",
         });
@@ -185,7 +189,7 @@ export function AppShell({ children }: PropsWithChildren) {
             size="sm"
             className="w-[52px]"
             onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
-            aria-label="切换主题"
+            aria-label={t({ zh: "切换主题", en: "Toggle theme" })}
           >
             {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
@@ -202,7 +206,7 @@ export function AppShell({ children }: PropsWithChildren) {
       </main>
 
       <PwaInstallBanner />
-      <BottomNav />
+      <BottomNav squareLabel={t({ zh: "广场", en: "Square" })} meLabel={t({ zh: "我的", en: "Me" })} />
       <Toaster />
     </div>
   );

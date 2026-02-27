@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
-import { fmtArtifactKind, fmtEventKind, fmtTime, trunc } from "@/lib/format";
+import { fmtArtifactKind, fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { getAdminToken } from "@/lib/storage";
 
 type QueueItem = {
@@ -73,6 +73,20 @@ function fmtTargetType(t: string): string {
   }
 }
 
+function fmtModerationAction(action: string): string {
+  const v = String(action ?? "").trim().toLowerCase();
+  switch (v) {
+    case "approve":
+      return "通过";
+    case "reject":
+      return "拒绝";
+    case "unreject":
+      return "撤销拒绝";
+    default:
+      return action || "";
+  }
+}
+
 function fmtKind(it: Pick<QueueItem, "target_type" | "kind">): string {
   const kind = String(it?.kind ?? "").trim();
   if (!kind) return "";
@@ -112,7 +126,12 @@ function formatDetail(res: ModerationGetResponse | null): string {
     if (goal) lines.push("\n目标：\n" + goal);
     if (constraints) lines.push("\n约束：\n" + constraints);
     const tags = Array.isArray(detail?.required_tags) ? detail.required_tags.filter(Boolean) : [];
-    lines.push("\n状态：" + String(detail?.status ?? "-") + " · 审核：" + String(detail?.review_status ?? "-"));
+    lines.push(
+      "\n状态：" +
+        fmtRunStatus(String(detail?.status ?? "")) +
+        " · 审核：" +
+        fmtReviewStatus(String(detail?.review_status ?? "")),
+    );
     lines.push("标签：" + (tags.length ? tags.join("，") : "无"));
     lines.push("创建时间：" + fmtTime(String(detail?.created_at ?? "")));
     lines.push("更新时间：" + fmtTime(String(detail?.updated_at ?? "")));
@@ -142,7 +161,7 @@ function formatDetail(res: ModerationGetResponse | null): string {
       const reason = String(a?.reason ?? "").trim();
       const who = String(a?.actor_type ?? "").trim();
       lines.push(
-        `- ${fmtTime(String(a?.created_at ?? ""))} · ${String(a?.action ?? "-")}${
+        `- ${fmtTime(String(a?.created_at ?? ""))} · ${fmtModerationAction(String(a?.action ?? "-"))}${
           who ? ` · ${who}` : ""
         }${reason ? ` · 原因：${truncLine(reason, 120)}` : ""}`,
       );

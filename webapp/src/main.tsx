@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
+import { I18nProvider } from "@/lib/i18n";
+
 import "./index.css";
 import App from "./App.tsx";
 
@@ -30,8 +32,10 @@ registerServiceWorker();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter basename={getBasename()}>
-      <App />
-    </BrowserRouter>
+    <I18nProvider>
+      <BrowserRouter basename={getBasename()}>
+        <App />
+      </BrowserRouter>
+    </I18nProvider>
   </StrictMode>,
 );

@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
 import { fmtAgentStatus, trunc } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import { getAgentCardCatalogs, renderCatalogTemplate, type AgentCardCatalogs, type CatalogLabeledItem, type CatalogTextTemplate } from "@/app/lib/agentCardCatalogs";
 
 type Personality = {
@@ -192,6 +193,7 @@ export function AgentCardWizardDialog({
   onSaved?: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = useI18n();
 
   const [step, setStep] = useState(0);
   const [agent, setAgent] = useState<AgentFull | null>(null);
@@ -217,6 +219,34 @@ export function AgentCardWizardDialog({
 
   const [interests, setInterests] = useState<string[]>([]);
   const [capabilities, setCapabilities] = useState<string[]>([]);
+
+  function fmtReviewStatus(status: string): string {
+    const v = String(status ?? "").trim().toLowerCase();
+    switch (v) {
+      case "pending":
+        return t({ zh: "待审核", en: "Pending" });
+      case "approved":
+        return t({ zh: "已通过", en: "Approved" });
+      case "rejected":
+        return t({ zh: "已拒绝", en: "Rejected" });
+      default:
+        return status || "";
+    }
+  }
+
+  function fmtAdmissionStatus(status: string): string {
+    const v = String(status ?? "").trim().toLowerCase();
+    switch (v) {
+      case "pending":
+        return t({ zh: "待入驻", en: "Pending" });
+      case "admitted":
+        return t({ zh: "已入驻", en: "Admitted" });
+      case "rejected":
+        return t({ zh: "已拒绝", en: "Rejected" });
+      default:
+        return status || "";
+    }
+  }
 
   const [bioTemplateId, setBioTemplateId] = useState<string>("");
   const [greetingTemplateId, setGreetingTemplateId] = useState<string>("");
@@ -365,7 +395,7 @@ export function AgentCardWizardDialog({
       case 0:
         return "基础信息";
       case 1:
-        return "Persona（风格参考）";
+        return t({ zh: "人设（风格参考）", en: "Persona (style reference)" });
       case 2:
         return "性格预设";
       case 3:
@@ -385,7 +415,7 @@ export function AgentCardWizardDialog({
   return (
     <DialogContent className="max-h-[80vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>Agent Card 向导：{stepTitle()}</DialogTitle>
+        <DialogTitle>智能体卡片向导：{stepTitle()}</DialogTitle>
       </DialogHeader>
 
       {loading && !agent ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
@@ -397,11 +427,11 @@ export function AgentCardWizardDialog({
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
               <Badge variant="outline">卡片 v{agent.card_version}</Badge>
-              {agent.card_review_status ? <Badge variant="outline">{agent.card_review_status}</Badge> : null}
-              {agent.admission?.status ? <Badge variant="outline">{agent.admission.status}</Badge> : null}
+              {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
+              {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
             </div>
             <div className="mt-2">
-              <div className="font-medium text-foreground">prompt_view</div>
+              <div className="font-medium text-foreground">{t({ zh: "提示预览", en: "Prompt preview" })}</div>
               <div className="mt-1 whitespace-pre-wrap">{agent.prompt_view || "（空）"}</div>
             </div>
           </CardContent>
@@ -617,25 +647,34 @@ export function AgentCardWizardDialog({
               <CardContent className="pt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-muted-foreground">当前审核状态</div>
-                  <div className="font-medium">{agent.card_review_status || "-"}</div>
+                  <div className="font-medium">{agent.card_review_status ? fmtReviewStatus(agent.card_review_status) : "-"}</div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-muted-foreground">预计本次保存后</div>
-                  <div className="font-medium">{willNeedReview ? "pending（需审核）" : "approved（自动通过）"}</div>
+                  <div className="font-medium">
+                    {willNeedReview
+                      ? t({ zh: "待审核（需要审核）", en: "Pending (needs review)" })
+                      : t({ zh: "已通过（自动通过）", en: "Approved (auto)" })}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-muted-foreground">可同步到 OSS</div>
-                  <div className="font-medium">{agent.card_review_status === "approved" ? "是" : "否"}</div>
+                  <div className="font-medium">
+                    {agent.card_review_status === "approved" ? t({ zh: "是", en: "Yes" }) : t({ zh: "否", en: "No" })}
+                  </div>
                 </div>
                 {agent.card_review_status !== "approved" ? (
                   <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    提示：只有 `card_review_status=approved` 才能同步到 OSS 并进入公开发现。
+                    {t({
+                      zh: "提示：只有审核通过后才能同步到 OSS 并进入公开发现。",
+                      en: "Tip: only approved cards can be synced to OSS and shown in discovery.",
+                    })}
                   </div>
                 ) : null}
 
                 <div className="pt-2">
                   <Button variant="secondary" size="sm" onClick={() => loadAll(true)} disabled={loading || saving}>
-                    刷新目录数据
+                    {t({ zh: "刷新目录数据", en: "Refresh catalogs" })}
                   </Button>
                 </div>
               </CardContent>

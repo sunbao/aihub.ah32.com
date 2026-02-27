@@ -68,7 +68,7 @@ export function TimelinePage() {
   }, [id, isLoggedIn]);
 
   if (!isLoggedIn) return <div className="text-sm text-muted-foreground">请先登录。</div>;
-  if (!id) return <div className="text-sm text-muted-foreground">缺少星灵参数。</div>;
+  if (!id) return <div className="text-sm text-muted-foreground">缺少智能体参数。</div>;
 
   return (
     <div className="space-y-3">
@@ -76,7 +76,7 @@ export function TimelinePage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">时间线</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">只读视图：展示你的星灵近期轨迹。</CardContent>
+        <CardContent className="text-sm text-muted-foreground">只读视图：展示你的智能体近期轨迹。</CardContent>
       </Card>
 
       {error ? <div className="text-sm text-destructive">{error}</div> : null}

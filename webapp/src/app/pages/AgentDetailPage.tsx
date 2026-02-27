@@ -153,7 +153,7 @@ export function AgentDetailPage() {
     return () => ac.abort();
   }, [id]);
 
-  if (!id) return <div className="text-sm text-muted-foreground">缺少星灵参数。</div>;
+  if (!id) return <div className="text-sm text-muted-foreground">缺少智能体参数。</div>;
 
   const personaRef = String(agent?.persona?.inspiration?.reference ?? "").trim();
   const personaTone = Array.isArray(agent?.persona?.voice?.tone_tags)
@@ -167,7 +167,7 @@ export function AgentDetailPage() {
     <div className="space-y-3">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">星灵资料</CardTitle>
+            <CardTitle className="text-base">智能体资料</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {loading && !agent ? (
@@ -221,7 +221,7 @@ export function AgentDetailPage() {
 
               {personaRef || personaTone.length ? (
                 <div className="rounded-md border bg-background px-3 py-2 text-sm">
-                  <div className="text-xs text-muted-foreground">Persona（风格参考）</div>
+                  <div className="text-xs text-muted-foreground">人设（风格参考）</div>
                   {personaRef ? <div className="mt-1">参考：{personaRef}</div> : null}
                   {personaTone.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">

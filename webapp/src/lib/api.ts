@@ -1,4 +1,5 @@
 import { getStored, getUserApiKey, STORAGE_KEYS } from "@/lib/storage";
+import { getPreferredLocale, isZhLocale } from "@/lib/i18n";
 
 export type ApiErrorCode = string;
 
@@ -60,34 +61,48 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
   const c = String(code ?? "").trim();
   const t = String(fallbackText ?? "").trim();
 
-  const map: Record<string, string> = {
-    unauthorized: "未登录或登录已过期，请先登录。",
-    forbidden: "没有权限执行该操作。",
-    publish_gated: "暂不可发布：未满足平台发布门槛。",
-    "invalid run id": "任务参数无效，请返回重试。",
-    "invalid agent id": "智能体参数无效，请返回重试。",
-    "invalid version": "作品版本无效。",
-    "not found": "未找到相关内容。",
-    "no output": "暂无作品输出。",
-    "platform signing not configured": "平台签名配置缺失，请联系管理员。",
-    "oss not configured": "OSS 尚未配置，请联系管理员。",
-  };
+  const isZh = isZhLocale(getPreferredLocale());
+  const map: Record<string, string> = isZh
+    ? {
+        unauthorized: "未登录或登录已过期，请先登录。",
+        forbidden: "没有权限执行该操作。",
+        publish_gated: "暂不可发布：未满足平台发布门槛。",
+        "invalid run id": "任务参数无效，请返回重试。",
+        "invalid agent id": "智能体参数无效，请返回重试。",
+        "invalid version": "作品版本无效。",
+        "not found": "未找到相关内容。",
+        "no output": "暂无作品输出。",
+        "platform signing not configured": "平台签名配置缺失，请联系管理员。",
+        "oss not configured": "OSS 尚未配置，请联系管理员。",
+      }
+    : {
+        unauthorized: "Not logged in or session expired. Please sign in.",
+        forbidden: "You don't have permission to perform this action.",
+        publish_gated: "Publishing is not available yet (platform gating).",
+        "invalid run id": "Invalid run parameter. Please go back and retry.",
+        "invalid agent id": "Invalid agent parameter. Please go back and retry.",
+        "invalid version": "Invalid artifact version.",
+        "not found": "Not found.",
+        "no output": "No output yet.",
+        "platform signing not configured": "Platform signing is not configured. Please contact the admin.",
+        "oss not configured": "OSS is not configured. Please contact the admin.",
+      };
 
   if (c) {
     if (map[c]) return map[c];
     if (status === 401) return map.unauthorized;
     if (status === 403) return map.forbidden;
     if (status === 404) return map["not found"];
-    if (status >= 500) return "服务繁忙，请稍后再试。";
-    return "操作失败，请稍后再试。";
+    if (status >= 500) return isZh ? "服务繁忙，请稍后再试。" : "Server is busy. Please try again later.";
+    return isZh ? "操作失败，请稍后再试。" : "Request failed. Please try again later.";
   }
 
   if (status === 401) return map.unauthorized;
   if (status === 403) return map.forbidden;
   if (status === 404) return map["not found"];
-  if (status >= 500) return "服务繁忙，请稍后再试。";
+  if (status >= 500) return isZh ? "服务繁忙，请稍后再试。" : "Server is busy. Please try again later.";
   if (t) return t;
-  return "请求失败，请稍后再试。";
+  return isZh ? "请求失败，请稍后再试。" : "Request failed. Please try again later.";
 }
 
 export class ApiRequestError extends Error {
@@ -106,10 +121,15 @@ export class ApiRequestError extends Error {
 export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const apiKey = String(options.apiKey ?? getUserApiKey()).trim();
+  const isZh = isZhLocale(getPreferredLocale());
 
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
-    throw new Error("未配置服务器地址，请到「我的」里先填写服务器地址（例如：http://你的服务器:8080）。");
+    throw new Error(
+      isZh
+        ? "未配置服务器地址，请到「我的」里先填写服务器地址（例如：http://你的服务器:8080）。"
+        : "Server address is not configured. Please set it in “Me” (e.g. http://your-server:8080).",
+    );
   }
   const url = joinUrl(baseUrl, path);
 
@@ -150,9 +170,17 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
       /^<!doctype html/i.test(text) ||
       /<html[\s>]/i.test(text);
     if (looksLikeHTML) {
-      throw new Error("接口返回了网页而不是数据：服务器地址可能填错了（不要带 /app 或 /ui），请到「我的」里改为 http://你的服务器:8080。");
+      throw new Error(
+        isZh
+          ? "接口返回了网页而不是数据：服务器地址可能填错了（不要带 /app 或 /ui），请到「我的」里改为 http://你的服务器:8080。"
+          : "The API returned HTML instead of JSON. The server address might be wrong (do not include /app or /ui). Update it in “Me” to http://your-server:8080.",
+      );
     }
-    throw new Error("接口响应为空或不是 JSON，请检查服务器是否可访问、以及服务器地址是否正确。");
+    throw new Error(
+      isZh
+        ? "接口响应为空或不是 JSON，请检查服务器是否可访问、以及服务器地址是否正确。"
+        : "The API response is empty or not JSON. Please check server connectivity and the server address.",
+    );
   }
   return json as T;
 }

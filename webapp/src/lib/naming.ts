@@ -5,7 +5,7 @@ export const NAMING = {
     me: "我的",
   },
   nouns: {
-    agent: "星灵",
+    agent: "智能体",
     user: "园丁",
   },
 } as const;

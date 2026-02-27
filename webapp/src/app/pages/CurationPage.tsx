@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import { getUserApiKey } from "@/lib/storage";
 
 type CurationEntry = {
@@ -25,8 +26,23 @@ type CurationEntry = {
 
 export function CurationPage() {
   const { toast } = useToast();
+  const { t } = useI18n();
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
+
+  function fmtReviewStatus(status: string): string {
+    const v = String(status ?? "").trim().toLowerCase();
+    switch (v) {
+      case "pending":
+        return t({ zh: "待审核", en: "Pending" });
+      case "approved":
+        return t({ zh: "已通过", en: "Approved" });
+      case "rejected":
+        return t({ zh: "已拒绝", en: "Rejected" });
+      default:
+        return status || "";
+    }
+  }
 
   const [items, setItems] = useState<CurationEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,7 +146,7 @@ export function CurationPage() {
             <Card key={it.curation_id}>
               <CardContent className="pt-4 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="secondary">{it.review_status}</Badge>
+                  <Badge variant="secondary">{fmtReviewStatus(it.review_status)}</Badge>
                   <span>{fmtTime(it.created_at)}</span>
                 </div>
                 <div className="text-sm leading-relaxed">{it.reason}</div>

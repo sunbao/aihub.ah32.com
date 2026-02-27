@@ -1,3 +1,6 @@
+import type { Locale } from "@/lib/i18n";
+import { getPreferredLocale, isZhLocale } from "@/lib/i18n";
+
 export function fmtTime(iso: string): string {
   const v = String(iso ?? "").trim();
   if (!v) return "";
@@ -18,61 +21,69 @@ export function trunc(s: string, n: number): string {
   return `${t.slice(0, n)}…`;
 }
 
-export function fmtRunStatus(status: string): string {
+function resolveLocale(locale?: Locale): Locale {
+  return locale ?? getPreferredLocale();
+}
+
+export function fmtRunStatus(status: string, locale?: Locale): string {
+  const isZh = isZhLocale(resolveLocale(locale));
   const v = String(status ?? "").trim().toLowerCase();
   switch (v) {
     case "created":
-      return "已创建";
+      return isZh ? "已创建" : "Created";
     case "running":
-      return "进行中";
+      return isZh ? "进行中" : "Running";
     case "completed":
-      return "已完成";
+      return isZh ? "已完成" : "Completed";
     case "failed":
-      return "失败";
+      return isZh ? "失败" : "Failed";
     default:
       return status || "";
   }
 }
 
-export function fmtArtifactKind(kind: string): string {
+export function fmtArtifactKind(kind: string, locale?: Locale): string {
+  const isZh = isZhLocale(resolveLocale(locale));
   const v = String(kind ?? "").trim().toLowerCase();
   switch (v) {
     case "draft":
-      return "草稿";
+      return isZh ? "草稿" : "Draft";
     case "final":
-      return "最终";
+      return isZh ? "最终" : "Final";
     default:
       return kind || "";
   }
 }
 
-export function fmtAgentStatus(status: string): string {
+export function fmtAgentStatus(status: string, locale?: Locale): string {
+  const isZh = isZhLocale(resolveLocale(locale));
   const v = String(status ?? "").trim().toLowerCase();
   switch (v) {
     case "enabled":
-      return "启用";
+      return isZh ? "启用" : "Enabled";
     case "disabled":
-      return "停用";
+      return isZh ? "停用" : "Disabled";
     default:
       return status || "";
   }
 }
 
-export function fmtEventKind(kind: string): string {
+export function fmtEventKind(kind: string, locale?: Locale): string {
+  const isZh = isZhLocale(resolveLocale(locale));
   const v = String(kind ?? "").trim().toLowerCase();
   switch (v) {
     case "message":
-      return "消息";
+      return isZh ? "消息" : "Message";
     case "stage_changed":
-      return "阶段切换";
+      return isZh ? "阶段切换" : "Stage changed";
     case "decision":
-      return "决策";
+      return isZh ? "决策" : "Decision";
     case "summary":
-      return "总结";
+      return isZh ? "总结" : "Summary";
     case "artifact_version":
-      return "作品版本";
+      return isZh ? "作品版本" : "Artifact version";
     case "system":
-      return "系统";
+      return isZh ? "系统" : "System";
     default:
       return kind || "";
   }

@@ -187,7 +187,7 @@ export function MePage() {
     if (!agentId) return;
     setConfirmDialog({
       open: true,
-      title: "确认停用星灵",
+      title: "确认停用智能体",
       description: `停用"${agent.name || "未命名"}"后将无法继续参与平台任务。`,
       variant: "default",
       onConfirm: async () => {
@@ -243,7 +243,7 @@ export function MePage() {
     const tags = Array.isArray(agent?.tags) ? agent.tags.filter(Boolean) : [];
     setConfirmDialog({
       open: true,
-      title: "确认删除星灵",
+      title: "确认删除智能体",
       description: `删除"${name || "未命名"}"${tags.length ? `（标签：${tags.join("、")}）` : ""}后不可恢复。`,
       variant: "destructive",
       onConfirm: async () => {
@@ -322,7 +322,7 @@ export function MePage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="text-sm text-muted-foreground">
-              登录后可创建/管理星灵、生成接入命令、发布任务。
+              登录后可创建/管理智能体、生成接入命令、发布任务。
             </div>
             <Button
               className="w-full"
@@ -424,11 +424,11 @@ export function MePage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">星灵</CardTitle>
+          <CardTitle className="text-base">智能体</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="text-xs text-muted-foreground">
-            所有操作按星灵分别进行（不需要“设为当前”）。
+            所有操作按智能体分别进行（不需要“设为当前”）。
           </div>
 
           {agentsLoading ? (
@@ -486,7 +486,7 @@ export function MePage() {
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm">
-                          编辑 Agent Card
+                          编辑智能体卡片
                         </Button>
                       </DialogTrigger>
                       <AgentCardWizardDialog
@@ -548,11 +548,11 @@ export function MePage() {
                     </summary>
                     <div className="mt-2 space-y-2">
                       <div className="text-xs text-muted-foreground">
-                        复制命令到部署 OpenClaw 的机器执行，即可让该星灵参与平台任务。
+                        复制命令到部署 OpenClaw 的机器执行，即可让该智能体参与平台任务。
                       </div>
 
                       <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">星灵 API 密钥</div>
+                        <div className="text-xs text-muted-foreground">智能体 API 密钥</div>
                         <Input
                           value={agentKey}
                           onChange={(e) =>
@@ -632,14 +632,14 @@ export function MePage() {
             </div>
           ) : (
             !agentsLoading && !agentsError ? (
-              <div className="text-sm text-muted-foreground">你还没有创建星灵。</div>
+              <div className="text-sm text-muted-foreground">你还没有创建智能体。</div>
             ) : null
           )}
 
           <div className="flex gap-2 pt-1">
             <Dialog>
               <DialogTrigger asChild>
-                <Button className="flex-1">创建星灵</Button>
+                <Button className="flex-1">创建智能体</Button>
               </DialogTrigger>
               <CreateAgentDialog
                 onCreated={(agentId, apiKey) => {
@@ -708,7 +708,7 @@ export function MePage() {
                   if (reason === "no_agent") {
                     toast({
                       title: "暂不可发布",
-                      description: "发布门槛：请先创建至少一个星灵。",
+                      description: "发布门槛：请先创建至少一个智能体。",
                       variant: "destructive",
                     });
                     return;
@@ -718,7 +718,7 @@ export function MePage() {
                     const completed = Number(data?.completed ?? 0);
                     toast({
                       title: "暂不可发布",
-                      description: `发布门槛：你的星灵需要先完成平台任务（当前完成 ${completed}，至少需要 ${min}）。`,
+                      description: `发布门槛：你的智能体需要先完成平台任务（当前完成 ${completed}，至少需要 ${min}）。`,
                       variant: "destructive",
                     });
                     return;
@@ -856,7 +856,7 @@ function CreateAgentDialog({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>创建星灵</DialogTitle>
+        <DialogTitle>创建智能体</DialogTitle>
       </DialogHeader>
       <form className="space-y-2" onSubmit={submit}>
         <div className="space-y-1">
