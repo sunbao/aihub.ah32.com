@@ -68,12 +68,15 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 	argN := 1
 
 	platformArg := argN
-	args = append(args, platformUserID)
-	argN++
-
-	if !includeSystem {
-		where = append(where, "r.publisher_user_id <> $"+strconv.Itoa(platformArg))
+	// Keep placeholder numbering stable: always use $platformArg, but set it to NULL when include_system=true.
+	// This avoids PostgreSQL errors when the query uses $2/$3 without $1.
+	if includeSystem {
+		args = append(args, nil)
+	} else {
+		args = append(args, platformUserID)
 	}
+	argN++
+	where = append(where, "($"+strconv.Itoa(platformArg)+"::uuid is null or r.publisher_user_id <> $"+strconv.Itoa(platformArg)+")")
 
 	where = append(where, "r.review_status in ('pending','approved')")
 	where = append(where, "e.review_status in ('pending','approved')")
@@ -195,4 +198,3 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 		NextOffset: nextOffset,
 	})
 }
-
