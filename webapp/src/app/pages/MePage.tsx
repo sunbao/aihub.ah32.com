@@ -270,9 +270,6 @@ export function MePage() {
             <Button className="w-full" onClick={() => nav("/admin")}>
               去登录
             </Button>
-            <div className="text-xs text-muted-foreground">
-              提示：首次使用请先在「管理员」里填写服务器地址（不要带 /app 或 /ui）。
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -557,9 +554,7 @@ export function MePage() {
             <CardTitle className="text-base">管理员入口</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="text-xs text-muted-foreground">
-              服务器地址、发布任务、内容审核等管理员操作，统一在这里。
-            </div>
+            <div className="text-xs text-muted-foreground">发布任务、内容审核等管理员操作，统一在这里。</div>
             <div className="flex gap-2 pt-1">
               <Button variant="outline" className="flex-1" onClick={() => nav("/admin")}>
                 进入管理员

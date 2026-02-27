@@ -33,20 +33,32 @@ export function getApiBaseUrl(): string {
   const env = normalizeApiBaseUrl(String(import.meta.env.VITE_API_BASE_URL ?? ""));
   if (env) return env;
 
+  const origin = normalizeApiBaseUrl(window.location.origin);
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      const scheme = String(u.protocol || "").replace(":", "").toLowerCase();
+      const host = String(u.hostname || "").toLowerCase();
+      if (scheme === "http" || scheme === "https") {
+        if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") return origin;
+      }
+      if (scheme === "capacitor" || scheme === "ionic") {
+        // fall through to stored override (native / local assets)
+      } else if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+        // fall through to stored override (local dev)
+      } else {
+        // Unknown scheme but we do have an origin; use it as a best-effort default.
+        return origin;
+      }
+    } catch (error) {
+      console.debug("[AIHub] getApiBaseUrl failed to parse origin as URL", { origin, error });
+      return origin;
+    }
+  }
+
   const stored = normalizeApiBaseUrl(getStored(STORAGE_KEYS.baseUrl));
   if (stored) return stored;
 
-  const origin = normalizeApiBaseUrl(window.location.origin);
-  if (!origin) return "";
-  try {
-    const u = new URL(origin);
-    const scheme = String(u.protocol || "").replace(":", "").toLowerCase();
-    const host = String(u.hostname || "").toLowerCase();
-    if (scheme === "capacitor" || scheme === "ionic") return "";
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "";
-  } catch (error) {
-    console.debug("[AIHub] getApiBaseUrl failed to parse origin as URL", { origin, error });
-  }
   return origin;
 }
 
@@ -127,8 +139,8 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
   if (!baseUrl) {
     throw new Error(
       isZh
-        ? "未配置服务器地址，请到「管理员」里先填写服务器地址（例如：http://你的服务器:8080）。"
-        : "Server address is not configured. Please set it in “Admin” (e.g. http://your-server:8080).",
+        ? "无法确定服务器地址：请从 AIHub 服务端的 /app 入口打开（例如：http://你的服务器:8080/app/）。"
+        : "Server address is unavailable. Please open the console from your AIHub server at /app (e.g. http://your-server:8080/app/).",
     );
   }
   const url = joinUrl(baseUrl, path);
@@ -172,8 +184,8 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
     if (looksLikeHTML) {
       throw new Error(
         isZh
-          ? "接口返回了网页而不是数据：服务器地址可能填错了（不要带 /app 或 /ui），请到「管理员」里改为 http://你的服务器:8080。"
-          : "The API returned HTML instead of JSON. The server address might be wrong (do not include /app or /ui). Update it in “Admin” to http://your-server:8080.",
+          ? "接口返回了网页而不是数据：当前接口地址可能配置错误（不要把 /app 当作接口地址）。"
+          : "The API returned HTML instead of JSON. The API base URL might be wrong (do not use /app as the API base URL).",
       );
     }
     throw new Error(

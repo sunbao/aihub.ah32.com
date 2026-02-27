@@ -7,12 +7,11 @@ import { Capacitor } from "@capacitor/core";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetchJson, ApiRequestError, getApiBaseUrl, normalizeApiBaseUrl } from "@/lib/api";
-import { getUserApiKey, setStored, setUserApiKey, STORAGE_KEYS } from "@/lib/storage";
+import { apiFetchJson, ApiRequestError, getApiBaseUrl } from "@/lib/api";
+import { getUserApiKey, setUserApiKey } from "@/lib/storage";
 
 type MeResponse = {
   provider: string;
@@ -48,8 +47,6 @@ export function AdminPage() {
   const [meError, setMeError] = useState("");
   const [meLoading, setMeLoading] = useState(false);
   const [meReloadNonce, setMeReloadNonce] = useState(0);
-
-  const [baseUrl, setBaseUrl] = useState(() => getApiBaseUrl() || "");
 
   // publish form state
   const [goal, setGoal] = useState("");
@@ -96,34 +93,6 @@ export function AdminPage() {
       <div className="space-y-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">服务器地址</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-xs text-muted-foreground">
-              填写 AIHub 服务端地址（不要带 <span className="font-mono">/app</span> 或{" "}
-              <span className="font-mono">/ui</span>）。APK / PWA 登录与请求数据都依赖它。
-            </div>
-            <Input
-              value={baseUrl}
-              onChange={(e) => {
-                const v = e.target.value;
-                setBaseUrl(v);
-                setStored(STORAGE_KEYS.baseUrl, v.trim());
-              }}
-              onBlur={() => {
-                const normalized = normalizeApiBaseUrl(baseUrl);
-                if (normalized && normalized !== baseUrl.trim()) {
-                  setBaseUrl(normalized);
-                  setStored(STORAGE_KEYS.baseUrl, normalized);
-                }
-              }}
-              placeholder="例如：http://你的服务器:8080"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
             <CardTitle className="text-base">登录</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -136,8 +105,8 @@ export function AdminPage() {
                   : buildGitHubStartUrl({ redirectTo: "/app/admin" });
                 if (!url) {
                   toast({
-                    title: "请先填写服务器地址",
-                    description: "例如：http://你的服务器:8080（不要带 /app 或 /ui）",
+                    title: "无法确定服务器地址",
+                    description: "请从 AIHub 服务端的 /app 入口打开（例如：http://你的服务器:8080/app/）。",
                     variant: "destructive",
                   });
                   return;
@@ -214,34 +183,6 @@ export function AdminPage() {
               </Button>
             </div>
           ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">服务器地址</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="text-xs text-muted-foreground">
-            填写 AIHub 服务端地址（不要带 <span className="font-mono">/app</span> 或{" "}
-            <span className="font-mono">/ui</span>）。APK / PWA 登录与请求数据都依赖它。
-          </div>
-          <Input
-            value={baseUrl}
-            onChange={(e) => {
-              const v = e.target.value;
-              setBaseUrl(v);
-              setStored(STORAGE_KEYS.baseUrl, v.trim());
-            }}
-            onBlur={() => {
-              const normalized = normalizeApiBaseUrl(baseUrl);
-              if (normalized && normalized !== baseUrl.trim()) {
-                setBaseUrl(normalized);
-                setStored(STORAGE_KEYS.baseUrl, normalized);
-              }
-            }}
-            placeholder="例如：http://你的服务器:8080"
-          />
         </CardContent>
       </Card>
 
