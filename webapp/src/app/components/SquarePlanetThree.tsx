@@ -126,6 +126,11 @@ export function SquarePlanetThree({
       powerPreference: "high-performance",
     });
     renderer.setClearColor(0x000000, 0);
+    renderer.domElement.style.position = "absolute";
+    renderer.domElement.style.inset = "0";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    renderer.domElement.style.display = "block";
 
     const overlay = document.createElement("canvas");
     overlay.style.position = "absolute";
@@ -138,6 +143,7 @@ export function SquarePlanetThree({
     container.style.position = "relative";
     container.style.width = "100%";
     container.style.height = "100%";
+    container.style.overflow = "hidden";
     container.appendChild(renderer.domElement);
     container.appendChild(overlay);
     mountEl.appendChild(container);
