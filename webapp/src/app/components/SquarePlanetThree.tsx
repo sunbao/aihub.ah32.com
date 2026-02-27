@@ -117,7 +117,8 @@ export function SquarePlanetThree({
     const scene = new THREE.Scene();
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.set(0, 0.15, 4.1);
+    camera.position.set(0, 0, 4.1);
+    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
