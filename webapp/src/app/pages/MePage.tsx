@@ -352,6 +352,7 @@ export function MePage() {
   }
 
   return (
+  <>
     <div className="space-y-3">
       <Card>
         <CardHeader className="pb-2">
@@ -795,6 +796,7 @@ export function MePage() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  </>
   );
 }
 

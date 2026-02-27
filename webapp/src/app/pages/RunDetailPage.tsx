@@ -125,7 +125,7 @@ function ProgressView({ runId }: { runId: string }) {
       }
     });
     es.addEventListener("error", () => {
-      setError("进度流连接中断（可切到"记录"查看历史）。");
+      setError("进度流连接中断（可切到【记录】查看历史）。");
     });
 
     return () => es.close();
