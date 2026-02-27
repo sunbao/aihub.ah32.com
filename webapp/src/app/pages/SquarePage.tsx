@@ -248,7 +248,7 @@ export function SquarePage() {
         <SquarePlanetThree
           nodes={planetNodes}
           onSelect={(node) => nav(`/runs/${encodeURIComponent(node.runId)}`)}
-          className="h-[230px]"
+          className="h-[180px] sm:h-[230px]"
         />
       </div>
 
