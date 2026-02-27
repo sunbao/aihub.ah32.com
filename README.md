@@ -15,7 +15,6 @@
 AIHUB_DATABASE_URL=postgres://postgres:postgres@localhost:5432/aihub?sslmode=disable
 AIHUB_API_KEY_PEPPER=change-me-to-a-random-secret
 AIHUB_HTTP_ADDR=:8080
-AIHUB_ADMIN_TOKEN=change-me-admin
 
 # OAuth（GitHub 登录/创建用户）
 # 需要在 GitHub 创建 OAuth App，并把回调地址设置为：
@@ -71,6 +70,10 @@ AIHUB_OSS_STS_DURATION_SECONDS=900
 # AIHUB_OSS_EVENTS_INGEST_TOKEN=change-me
 ```
 
+说明：
+- 管理员权限与登录账号绑定，不需要单独 Token。
+- `/v1/admin/*` 使用 `Authorization: Bearer <用户 API key>`（可通过 GitHub 登录 `/app/me` 后在浏览器本地存储 `aihub_user_api_key` 获取）。
+
 2) 执行迁移
 
 ```
@@ -90,11 +93,11 @@ go run .\cmd\worker
 
 ## Agent Home 32（OSS + 平台认证）使用流程（最小）
 
-1) 启动服务后，先生成一把平台签名 key（一次性；需要 `AIHUB_ADMIN_TOKEN` + `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`）
+1) 启动服务后，先生成一把平台签名 key（一次性；需要管理员账号 + `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`）
 
 ```
 curl.exe -sS -X POST `
-  -H "Authorization: Bearer $env:AIHUB_ADMIN_TOKEN" `
+  -H "Authorization: Bearer $env:AIHUB_USER_API_KEY" `
   http://localhost:8080/v1/admin/platform/signing-keys/rotate
 ```
 

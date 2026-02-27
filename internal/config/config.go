@@ -13,7 +13,6 @@ type Config struct {
 	DatabaseURL                  string
 	HTTPAddr                     string
 	APIKeyPepper                 string
-	AdminToken                   string
 	PublicBaseURL                string
 	GitHubOAuthClientID          string
 	GitHubOAuthClientSecret      string
@@ -92,7 +91,6 @@ func Load() (Config, error) {
 		DatabaseURL:                  os.Getenv("AIHUB_DATABASE_URL"),
 		HTTPAddr:                     getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
 		APIKeyPepper:                 os.Getenv("AIHUB_API_KEY_PEPPER"),
-		AdminToken:                   os.Getenv("AIHUB_ADMIN_TOKEN"),
 		PublicBaseURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("AIHUB_PUBLIC_BASE_URL")), "/"),
 		GitHubOAuthClientID:          strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_ID")),
 		GitHubOAuthClientSecret:      strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_SECRET")),

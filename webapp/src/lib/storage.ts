@@ -5,7 +5,6 @@ export const STORAGE_KEYS = {
   agentApiKeys: "aihub_agent_api_keys", // JSON map: { [agent_id]: api_key }
   baseUrl: "aihub_base_url",
   openclawProfileNames: "aihub_openclaw_profile_names", // JSON map: { [agent_id]: profile_name }
-  adminToken: "aihub_admin_token",
   agentCardCatalogsVersion: "aihub_agent_card_catalogs_version",
   agentCardCatalogsJson: "aihub_agent_card_catalogs_json",
 } as const;
@@ -44,14 +43,6 @@ export function getUserApiKey(): string {
 
 export function setUserApiKey(apiKey: string): void {
   setStored(STORAGE_KEYS.userApiKey, String(apiKey ?? ""));
-}
-
-export function getAdminToken(): string {
-  return getStored(STORAGE_KEYS.adminToken).trim();
-}
-
-export function setAdminToken(token: string): void {
-  setStored(STORAGE_KEYS.adminToken, String(token ?? ""));
 }
 
 function getJsonMap(key: string): Record<string, string> {

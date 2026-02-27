@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8080}"
-ADMIN_TOKEN="${ADMIN_TOKEN:-change-me-admin}"
+ADMIN_API_KEY="${ADMIN_API_KEY:-}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }
@@ -11,6 +11,11 @@ need() {
 need curl
 need jq
 
+if [[ -z "$ADMIN_API_KEY" ]]; then
+  echo "missing ADMIN_API_KEY (admin user api key). Login via /app first to obtain one." >&2
+  exit 1
+fi
+
 health="$(curl -fsS -m 2 "$BASE/healthz")"
 if [[ "$health" != "." ]]; then
   echo "healthz unexpected: $health" >&2
@@ -18,7 +23,7 @@ if [[ "$health" != "." ]]; then
 fi
 
 echo "== create user =="
-user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_TOKEN")"
+user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_API_KEY")"
 user_key="$(echo "$user_json" | jq -r .api_key)"
 
 echo "== create agent =="
@@ -85,11 +90,11 @@ echo "artifact_version=$version"
 
 echo "== find moderation targets from admin queue =="
 event_id="$(curl -fsS "$BASE/v1/admin/moderation/queue?status=pending&types=event&limit=200&offset=0" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r --arg rid "$run_id" --argjson seq "$seq" '.items[] | select(.run_id==$rid and .seq==$seq) | .id' | head -n 1)"
+  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rid "$run_id" --argjson seq "$seq" '.items[] | select(.run_id==$rid and .seq==$seq) | .id' | head -n 1)"
 artifact_id="$(curl -fsS "$BASE/v1/admin/moderation/queue?status=pending&types=artifact&limit=200&offset=0" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r --arg rid "$run_id" --argjson v "$version" '.items[] | select(.run_id==$rid and .version==$v) | .id' | head -n 1)"
+  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rid "$run_id" --argjson v "$version" '.items[] | select(.run_id==$rid and .version==$v) | .id' | head -n 1)"
 run_target_id="$(curl -fsS "$BASE/v1/admin/moderation/queue?status=pending&types=run&limit=200&offset=0" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" | jq -r --arg rid "$run_id" '.items[] | select(.id==$rid) | .id' | head -n 1)"
+  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rid "$run_id" '.items[] | select(.id==$rid) | .id' | head -n 1)"
 
 if [[ -z "$event_id" || -z "$artifact_id" || -z "$run_target_id" ]]; then
   echo "failed to locate targets (event_id=$event_id artifact_id=$artifact_id run_id=$run_target_id)" >&2
@@ -98,9 +103,9 @@ fi
 
 echo "== reject event/artifact/run =="
 reason_body='{"reason":"smoke: reject"}'
-curl -fsS -X POST "$BASE/v1/admin/moderation/event/$event_id/reject" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
-curl -fsS -X POST "$BASE/v1/admin/moderation/artifact/$artifact_id/reject" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
-curl -fsS -X POST "$BASE/v1/admin/moderation/run/$run_target_id/reject" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
+curl -fsS -X POST "$BASE/v1/admin/moderation/event/$event_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
+curl -fsS -X POST "$BASE/v1/admin/moderation/artifact/$artifact_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
+curl -fsS -X POST "$BASE/v1/admin/moderation/run/$run_target_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
 
 echo "== public checks (no leaks) =="
 curl -fsS "$BASE/v1/runs/$run_id/replay?after_seq=0&limit=200" | jq -e --argjson seq "$seq" '.events[] | select(.seq==$seq) | (.payload._redacted==true and .payload.text=="该内容已被管理员审核后屏蔽")' >/dev/null

@@ -23,7 +23,6 @@ import (
 type server struct {
 	db                     *pgxpool.Pool
 	pepper                 string
-	adminToken             string
 	publicBaseURL          string
 	githubClientID         string
 	githubClientSecret     string
@@ -161,6 +160,14 @@ func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		DisplayName string `json:"display_name,omitempty"`
 		AvatarURL   string `json:"avatar_url,omitempty"`
 		ProfileURL  string `json:"profile_url,omitempty"`
+		IsAdmin     bool   `json:"is_admin"`
+	}
+
+	var isAdmin bool
+	if err := s.db.QueryRow(ctx, `select is_admin from users where id = $1`, userID).Scan(&isAdmin); err != nil {
+		logError(ctx, "me admin query failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
 	}
 
 	var login, name, avatar, profile string
@@ -172,7 +179,7 @@ func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		limit 1
 	`, userID).Scan(&login, &name, &avatar, &profile)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeJSON(w, http.StatusOK, meResponse{})
+		writeJSON(w, http.StatusOK, meResponse{IsAdmin: isAdmin})
 		return
 	}
 	if err != nil {
@@ -192,6 +199,7 @@ func (s server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		DisplayName: display,
 		AvatarURL:   strings.TrimSpace(avatar),
 		ProfileURL:  strings.TrimSpace(profile),
+		IsAdmin:     isAdmin,
 	})
 }
 

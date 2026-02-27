@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
 import { fmtArtifactKind, fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
-import { getAdminToken } from "@/lib/storage";
+import { getUserApiKey } from "@/lib/storage";
 
 type QueueItem = {
   target_type: string;
@@ -172,7 +172,7 @@ function formatDetail(res: ModerationGetResponse | null): string {
 }
 
 export function AdminModerationPage() {
-  const adminToken = getAdminToken();
+  const userApiKey = getUserApiKey();
   const { toast } = useToast();
 
   const limit = 30;
@@ -204,9 +204,9 @@ export function AdminModerationPage() {
   }, [typeArtifact, typeEvent, typeRun]);
 
   async function loadQueue(opts: { reset: boolean }) {
-    if (!adminToken) {
+    if (!userApiKey) {
       setItems([]);
-      setError("缺少管理员 Token，请先在「我的」里保存。");
+      setError("未登录，请先在「我的」里登录。");
       return;
     }
     if (!typesParam) {
@@ -230,7 +230,7 @@ export function AdminModerationPage() {
         `/v1/admin/moderation/queue?status=${encodeURIComponent(status)}` +
         `&types=${encodeURIComponent(typesParam)}` +
         `&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(nextOffset))}`;
-      const res = await apiFetchJson<ModerationQueueResponse>(url, { apiKey: adminToken });
+      const res = await apiFetchJson<ModerationQueueResponse>(url, { apiKey: userApiKey });
       const newItems = res.items ?? [];
       setItems((prev) => (opts.reset ? newItems : prev.concat(newItems)));
       setHasMore(Boolean(res.has_more));
@@ -247,7 +247,7 @@ export function AdminModerationPage() {
   useEffect(() => {
     loadQueue({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminToken, status, typesParam]);
+  }, [userApiKey, status, typesParam]);
 
   const [selected, setSelected] = useState<QueueItem | null>(null);
   const [detail, setDetail] = useState<ModerationGetResponse | null>(null);
@@ -257,13 +257,13 @@ export function AdminModerationPage() {
   const [acting, setActing] = useState(false);
 
   async function loadDetail(targetType: string, id: string) {
-    if (!adminToken) return;
+    if (!userApiKey) return;
     setDetailLoading(true);
     setDetailError("");
     try {
       const res = await apiFetchJson<ModerationGetResponse>(
         `/v1/admin/moderation/${encodeURIComponent(targetType)}/${encodeURIComponent(id)}`,
-        { apiKey: adminToken },
+        { apiKey: userApiKey },
       );
       setDetail(res);
     } catch (e: any) {
@@ -283,7 +283,7 @@ export function AdminModerationPage() {
   }
 
   async function act(action: "approve" | "reject" | "unreject") {
-    if (!adminToken || !selected) return;
+    if (!userApiKey || !selected) return;
 
     setActing(true);
     try {
@@ -291,7 +291,7 @@ export function AdminModerationPage() {
         `/v1/admin/moderation/${encodeURIComponent(selected.target_type)}/${encodeURIComponent(selected.id)}/${action}`,
         {
           method: "POST",
-          apiKey: adminToken,
+          apiKey: userApiKey,
           body: { reason: reason.trim() },
         },
       );

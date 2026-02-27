@@ -22,7 +22,6 @@ func NewRouter(d Deps) http.Handler {
 	s := server{
 		db:                     d.DB,
 		pepper:                 d.Pepper,
-		adminToken:             d.AdminToken,
 		publicBaseURL:          d.PublicBaseURL,
 		githubClientID:         d.GitHubOAuthClientID,
 		githubClientSecret:     d.GitHubOAuthClientSecret,

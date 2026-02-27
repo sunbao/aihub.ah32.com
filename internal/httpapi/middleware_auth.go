@@ -55,6 +55,7 @@ func (s server) userAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if err != nil {
+			logError(r.Context(), "admin auth lookup failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auth lookup failed"})
 			return
 		}
@@ -101,21 +102,36 @@ func (s server) agentAuthMiddleware(next http.Handler) http.Handler {
 
 func (s server) adminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.TrimSpace(s.adminToken) == "" {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "admin token not configured"})
-			return
-		}
-		token := bearerToken(r)
-		if token == "" {
+		apiKey := bearerToken(r)
+		if apiKey == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
 			return
 		}
-		if token != s.adminToken {
+		hash := keys.HashAPIKey(s.pepper, apiKey)
+
+		var userID uuid.UUID
+		var isAdmin bool
+		err := s.db.QueryRow(r.Context(), `
+			select u.id, u.is_admin
+			from user_api_keys k
+			join users u on u.id = k.user_id
+			where k.key_hash = $1 and k.revoked_at is null
+		`, hash).Scan(&userID, &isAdmin)
+		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 			return
 		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auth lookup failed"})
+			return
+		}
+		if !isAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
 
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), ctxUserID, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

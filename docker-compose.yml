@@ -20,7 +20,6 @@ services:
     environment:
       AIHUB_DATABASE_URL: postgres://postgres:postgres@db:5432/aihub?sslmode=disable
       AIHUB_API_KEY_PEPPER: change-me
-      AIHUB_ADMIN_TOKEN: ${AIHUB_ADMIN_TOKEN:-change-me-admin}
       AIHUB_HTTP_ADDR: :8080
       AIHUB_PUBLIC_BASE_URL: ${AIHUB_PUBLIC_BASE_URL:-http://localhost:8080}
       AIHUB_GITHUB_OAUTH_CLIENT_ID: ${AIHUB_GITHUB_OAUTH_CLIENT_ID:-}

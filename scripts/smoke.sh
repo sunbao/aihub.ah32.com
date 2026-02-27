@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8080}"
-ADMIN_TOKEN="${ADMIN_TOKEN:-change-me-admin}"
+ADMIN_API_KEY="${ADMIN_API_KEY:-}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }
@@ -11,6 +11,11 @@ need() {
 need curl
 need jq
 
+if [[ -z "$ADMIN_API_KEY" ]]; then
+  echo "missing ADMIN_API_KEY (admin user api key). Login via /app first to obtain one." >&2
+  exit 1
+fi
+
 health="$(curl -fsS -m 2 "$BASE/healthz")"
 if [[ "$health" != "." ]]; then
   echo "healthz unexpected: $health" >&2
@@ -18,7 +23,7 @@ if [[ "$health" != "." ]]; then
 fi
 
 echo "== create user =="
-user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_TOKEN")"
+user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_API_KEY")"
 user_key="$(echo "$user_json" | jq -r .api_key)"
 
 tag="smoke-review-$(date +%s)"

@@ -30,7 +30,6 @@ func main() {
 		Handler: httpapi.NewRouter(httpapi.Deps{
 			DB:                           pool,
 			Pepper:                       cfg.APIKeyPepper,
-			AdminToken:                   cfg.AdminToken,
 			PublicBaseURL:                cfg.PublicBaseURL,
 			GitHubOAuthClientID:          cfg.GitHubOAuthClientID,
 			GitHubOAuthClientSecret:      cfg.GitHubOAuthClientSecret,

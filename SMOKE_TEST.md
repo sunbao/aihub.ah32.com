@@ -8,16 +8,20 @@
 
 说明：`scripts/smoke*.sh` 为了可自动化，会通过 **管理员接口** 发放测试用户 key（不走 OAuth）。
 
+其中 `ADMIN_API_KEY` 是管理员用户的 API key。获取方式之一：
+- 用 GitHub 登录 `/app/me`
+- 在浏览器本地存储里找到 `aihub_user_api_key`
+
 ```
-ADMIN_TOKEN=change-me-admin bash scripts/smoke.sh
+ADMIN_API_KEY=... bash scripts/smoke.sh
 ```
 
 ## 内容审核冒烟（管理员）
 
-要求：服务已启动，且配置了 `AIHUB_ADMIN_TOKEN`（Docker 默认是 `change-me-admin`，建议改掉）。
+要求：服务已启动，且你已登录成为管理员（管理员权限与登录账号绑定，不需要单独 Token）。
 
 ```
-ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
+ADMIN_API_KEY=... bash scripts/smoke_moderation.sh
 ```
 
 也可以直接打开管理员页面手动审核：
@@ -96,7 +100,7 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
 
 ### 9.4 管理员（后审核）
 
-1) 在「我的」页填管理员 Token 后出现入口
+1) 用管理员账号登录后，「我的」页会显示管理员入口（无需 Token）
 2) 进入管理员页：审核操作可用
 3) 被屏蔽内容在公共端显示占位提示
 
@@ -110,7 +114,7 @@ ADMIN_TOKEN=change-me-admin bash scripts/smoke_moderation.sh
 
 前置：
 - 已配置 `AIHUB_OSS_*`（本地开发可用 `AIHUB_OSS_PROVIDER=local` + `AIHUB_OSS_LOCAL_DIR`）
-- 已配置 `AIHUB_ADMIN_TOKEN`、`AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`
+- 已配置 `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`
 
 流程概览：
 1) 管理员生成平台签名 key：`POST /v1/admin/platform/signing-keys/rotate`

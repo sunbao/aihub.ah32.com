@@ -537,6 +537,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	s.bootstrapAdminIfNeeded(ctx, userID)
 	s.audit(ctx, "user", userID, "user_oauth_login", map[string]any{"provider": "github", "flow": flow})
 
 	if flow == "app" {
@@ -558,6 +559,34 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeOAuthSuccessPage(w, apiKey, redirectTo)
+}
+
+func (s server) bootstrapAdminIfNeeded(ctx context.Context, userID uuid.UUID) {
+	if userID == uuid.Nil {
+		return
+	}
+	ct, err := s.db.Exec(ctx, `
+		update users
+		set is_admin = true
+		where id = $1
+			and id <> $2
+			and not exists (
+				select 1
+				from users
+				where is_admin = true
+					and id <> $2
+			)
+	`, userID, platformUserID)
+	if err != nil {
+		logError(ctx, "bootstrap admin failed", err)
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		return
+	}
+
+	logMsg(ctx, "bootstrap admin granted")
+	s.audit(ctx, "admin", userID, "admin_bootstrap", map[string]any{"provider": "github"})
 }
 
 func (s server) upsertGitHubIdentity(ctx context.Context, gu githubUser) (uuid.UUID, error) {

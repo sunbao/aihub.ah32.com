@@ -32,9 +32,7 @@ import {
   deleteAgentApiKey,
   deleteOpenclawProfileName,
   getOpenclawProfileName,
-  getStored,
   getUserApiKey,
-  setAdminToken,
   setAgentApiKey,
   setOpenclawProfileName,
   setStored,
@@ -49,6 +47,7 @@ type MeResponse = {
   display_name: string;
   avatar_url: string;
   profile_url: string;
+  is_admin: boolean;
 };
 
 type AgentListItem = {
@@ -121,9 +120,6 @@ export function MePage() {
   const [goal, setGoal] = useState("");
   const [constraints, setConstraints] = useState("");
   const [requiredTags, setRequiredTags] = useState("");
-
-  // admin token
-  const [adminTokenInput, setAdminTokenInput] = useState(() => (getStored(STORAGE_KEYS.adminToken) || "").trim());
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -740,52 +736,21 @@ export function MePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">管理员</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="text-xs text-muted-foreground">
-            仅在你保存管理员 Token 后才显示入口。Token 只保存在本地存储中。
-          </div>
-          <Input
-            value={adminTokenInput}
-            onChange={(e) => setAdminTokenInput(e.target.value)}
-            placeholder="管理员 Token"
-            type="password"
-          />
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => {
-                setAdminToken(adminTokenInput.trim());
-                toast({ title: "已保存管理员 Token" });
-              }}
-            >
-              保存
-            </Button>
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => {
-                setAdminToken("");
-                setAdminTokenInput("");
-                toast({ title: "已清空管理员 Token" });
-              }}
-            >
-              清空
-            </Button>
-          </div>
-          {adminTokenInput.trim() ? (
+      {me?.is_admin ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">管理员</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="text-xs text-muted-foreground">管理员权限绑定当前登录账号，不需要额外 Token。</div>
             <div className="flex gap-2 pt-1">
               <Button variant="outline" className="flex-1" onClick={() => nav("/admin/moderation")}>
                 内容审核
               </Button>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
 
     <AlertDialog
