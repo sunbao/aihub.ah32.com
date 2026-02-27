@@ -2,8 +2,6 @@ const isBrowser = typeof window !== "undefined";
 
 export const STORAGE_KEYS = {
   userApiKey: "aihub_user_api_key",
-  currentAgentId: "aihub_current_agent_id",
-  currentAgentLabel: "aihub_current_agent_label",
   agentApiKeys: "aihub_agent_api_keys", // JSON map: { [agent_id]: api_key }
   baseUrl: "aihub_base_url",
   openclawProfileNames: "aihub_openclaw_profile_names", // JSON map: { [agent_id]: profile_name }
@@ -122,41 +120,4 @@ export function deleteOpenclawProfileName(agentId: string): void {
   if (!(id in map)) return;
   delete map[id];
   setJsonMap(STORAGE_KEYS.openclawProfileNames, map);
-}
-
-export function getCurrentAgentId(): string {
-  return getStored(STORAGE_KEYS.currentAgentId).trim();
-}
-
-export function setCurrentAgent(agentId: string, label: string): void {
-  setStored(STORAGE_KEYS.currentAgentId, String(agentId ?? "").trim());
-  setStored(STORAGE_KEYS.currentAgentLabel, sanitizeLabel(label));
-}
-
-export function clearCurrentAgent(): void {
-  setStored(STORAGE_KEYS.currentAgentId, "");
-  setStored(STORAGE_KEYS.currentAgentLabel, "");
-}
-
-export function getCurrentAgentLabel(): string {
-  return sanitizeLabel(getStored(STORAGE_KEYS.currentAgentLabel));
-}
-
-function isUUIDLike(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    String(value ?? "").trim(),
-  );
-}
-
-export function sanitizeLabel(label: string): string {
-  const t = String(label ?? "").trim();
-  if (!t) return "";
-  const parts = t
-    .split(" / ")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length >= 2 && isUUIDLike(parts[parts.length - 1])) {
-    return parts.slice(0, -1).join(" / ");
-  }
-  return t;
 }

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
-import { getCurrentAgentId, getUserApiKey } from "@/lib/storage";
+import { getUserApiKey } from "@/lib/storage";
 
 type TimelineEvent = {
   type: string;
@@ -31,9 +31,10 @@ type TimelineResponse = {
 };
 
 export function TimelinePage() {
+  const { agentId } = useParams();
+  const id = String(agentId ?? "").trim();
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
-  const agentId = getCurrentAgentId();
 
   const [days, setDays] = useState<TimelineDay[]>([]);
   const [cursor, setCursor] = useState<string>("");
@@ -42,13 +43,13 @@ export function TimelinePage() {
 
   async function load(reset = false) {
     if (!isLoggedIn) return;
-    if (!agentId) return;
+    if (!id) return;
     setLoading(true);
     setError("");
     try {
       const cur = reset ? "" : cursor;
       const res = await apiFetchJson<TimelineResponse>(
-        `/v1/agents/${encodeURIComponent(agentId)}/timeline?limit=10&cursor=${encodeURIComponent(cur)}`,
+        `/v1/agents/${encodeURIComponent(id)}/timeline?limit=10&cursor=${encodeURIComponent(cur)}`,
         { apiKey: userApiKey },
       );
       setDays((prev) => (reset ? res.days ?? [] : [...prev, ...(res.days ?? [])]));
@@ -64,10 +65,10 @@ export function TimelinePage() {
   useEffect(() => {
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, isLoggedIn]);
+  }, [id, isLoggedIn]);
 
   if (!isLoggedIn) return <div className="text-sm text-muted-foreground">请先登录。</div>;
-  if (!agentId) return <div className="text-sm text-muted-foreground">请先在「我的」选择当前星灵。</div>;
+  if (!id) return <div className="text-sm text-muted-foreground">缺少星灵参数。</div>;
 
   return (
     <div className="space-y-3">
@@ -126,4 +127,3 @@ export function TimelinePage() {
     </div>
   );
 }
-

@@ -28,14 +28,34 @@ func appFileServer() (http.Handler, error) {
 
 	indexBytes, err := fs.ReadFile(sub, "index.html")
 	if err != nil {
-		logError(context.Background(), "read app index.html failed", err)
-		return nil, err
-	}
-	feedBytes, err := fs.ReadFile(sub, "feed.html")
-	if err != nil {
-		// Keep UI usable even if feed.html is missing; fall back to index.html.
-		logError(context.Background(), "read app feed.html failed", err)
-		feedBytes = nil
+		logError(context.Background(), "read app index.html failed (ui not built?)", err)
+		indexBytes = []byte(`<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AIHub /app 未构建</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; padding: 24px; line-height: 1.5; }
+      code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+      .box { max-width: 720px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      p { margin: 8px 0; }
+      ul { margin: 8px 0 0 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h1>/app UI 未构建</h1>
+      <p>当前服务端二进制缺少前端静态资源（<code>internal/httpapi/app/index.html</code>）。</p>
+      <p>请先构建 WebApp（<code>webapp/</code>）并将产物放入 <code>internal/httpapi/app/</code>，或使用 Docker 构建镜像（会自动构建）。</p>
+      <ul>
+        <li><code>cd webapp && npm ci && npm run build</code></li>
+      </ul>
+    </div>
+  </body>
+</html>
+`)
 	}
 
 	fileServer := http.FileServer(http.FS(sub))
@@ -46,30 +66,18 @@ func appFileServer() (http.Handler, error) {
 			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexBytes))
 		}
-		serveFeed := func() {
-			if feedBytes == nil {
-				serveIndex()
-				return
-			}
-			w.Header().Set("Cache-Control", "no-cache")
-			http.ServeContent(w, r, "feed.html", time.Time{}, bytes.NewReader(feedBytes))
-		}
 
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		p = path.Clean("/" + p)
 		p = strings.TrimPrefix(p, "/")
 		if p == "" {
-			serveFeed()
+			serveIndex()
 			return
 		}
 
 		if _, err := fs.Stat(sub, p); err == nil {
 			if p == "index.html" {
 				serveIndex()
-				return
-			}
-			if p == "feed.html" {
-				serveFeed()
 				return
 			}
 			rr := r.Clone(r.Context())

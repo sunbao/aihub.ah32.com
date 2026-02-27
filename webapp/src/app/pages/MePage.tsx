@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -29,9 +29,6 @@ import { copyText } from "@/lib/copy";
 import { fmtAgentStatus } from "@/lib/format";
 import {
   getAgentApiKey,
-  clearCurrentAgent,
-  getCurrentAgentId,
-  getCurrentAgentLabel,
   deleteAgentApiKey,
   deleteOpenclawProfileName,
   getOpenclawProfileName,
@@ -39,7 +36,6 @@ import {
   getUserApiKey,
   setAdminToken,
   setAgentApiKey,
-  setCurrentAgent,
   setOpenclawProfileName,
   setStored,
   setUserApiKey,
@@ -117,16 +113,9 @@ export function MePage() {
     variant?: "destructive" | "default";
   }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
-  const currentAgentId = getCurrentAgentId();
-  const currentAgentLabel = getCurrentAgentLabel();
-  const savedAgentKey = currentAgentId ? getAgentApiKey(currentAgentId) : "";
-
-  // connect form state
   const [baseUrl, setBaseUrl] = useState(() => getApiBaseUrl() || "");
-  const [agentKeyInput, setAgentKeyInput] = useState(savedAgentKey);
-  const [profileName, setProfileName] = useState(() =>
-    currentAgentId ? getOpenclawProfileName(currentAgentId) : "",
-  );
+  const [agentKeyInputs, setAgentKeyInputs] = useState<Record<string, string>>({});
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
   // publish form state
   const [goal, setGoal] = useState("");
@@ -165,7 +154,26 @@ export function MePage() {
     setAgentsError("");
     try {
       const res = await apiFetchJson<ListAgentsResponse>("/v1/agents", { apiKey: userApiKey });
-      setAgents(res.agents ?? []);
+      const list = res.agents ?? [];
+      setAgents(list);
+      setAgentKeyInputs((prev) => {
+        const next = { ...(prev ?? {}) };
+        for (const a of list) {
+          const id = String(a?.id ?? "").trim();
+          if (!id) continue;
+          if (next[id] === undefined) next[id] = getAgentApiKey(id);
+        }
+        return next;
+      });
+      setProfileNames((prev) => {
+        const next = { ...(prev ?? {}) };
+        for (const a of list) {
+          const id = String(a?.id ?? "").trim();
+          if (!id) continue;
+          if (next[id] === undefined) next[id] = getOpenclawProfileName(id);
+        }
+        return next;
+      });
     } catch (e: any) {
       console.warn("[AIHub] MePage loadAgents failed", e);
       setAgentsError(String(e?.message ?? "加载失败"));
@@ -216,8 +224,7 @@ export function MePage() {
           if (!apiKey) throw new Error("轮换成功但未返回新密钥");
 
           setAgentApiKey(agentId, apiKey);
-          setCurrentAgent(agentId, agent.name || "已选择");
-          setAgentKeyInput(apiKey);
+          setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentId]: apiKey }));
           toast({ title: "已轮换并保存新密钥", description: "新密钥只返回一次，建议你也单独备份。" });
           loadAgents();
         } catch (e: any) {
@@ -245,7 +252,16 @@ export function MePage() {
 
           deleteAgentApiKey(agentId);
           deleteOpenclawProfileName(agentId);
-          if (getCurrentAgentId() === agentId) clearCurrentAgent();
+          setAgentKeyInputs((prev) => {
+            const next = { ...(prev ?? {}) };
+            delete next[agentId];
+            return next;
+          });
+          setProfileNames((prev) => {
+            const next = { ...(prev ?? {}) };
+            delete next[agentId];
+            return next;
+          });
 
           toast({ title: "已删除" });
           loadAgents();
@@ -263,25 +279,11 @@ export function MePage() {
   }, [isLoggedIn, userApiKey]);
 
   useEffect(() => {
-    // update connect state when current agent changes
-    setAgentKeyInput(savedAgentKey);
-    setProfileName(currentAgentId ? getOpenclawProfileName(currentAgentId) : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentAgentId]);
-
-  useEffect(() => {
     if (!hash) return;
     const id = hash.replace("#", "");
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ block: "start" });
   }, [hash]);
-
-  const npxCmd = useMemo(() => {
-    if (!currentAgentId) return "";
-    const apiKey = agentKeyInput.trim();
-    if (!apiKey) return "";
-    return buildNpxCmd({ baseUrl: baseUrl.trim(), apiKey, profileName });
-  }, [agentKeyInput, baseUrl, currentAgentId, profileName]);
 
   if (!isLoggedIn) {
     return (
@@ -394,14 +396,39 @@ export function MePage() {
 
       <Card>
         <CardHeader className="pb-2">
+          <CardTitle className="text-base">服务器地址</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="text-xs text-muted-foreground">
+            填写 AIHub 服务端地址（不要带 <span className="font-mono">/app</span> 或{" "}
+            <span className="font-mono">/ui</span>）。APK / PWA 登录与请求数据都依赖它。
+          </div>
+          <Input
+            value={baseUrl}
+            onChange={(e) => {
+              const v = e.target.value;
+              setBaseUrl(v);
+              setStored(STORAGE_KEYS.baseUrl, v.trim());
+            }}
+            onBlur={() => {
+              const normalized = normalizeApiBaseUrl(baseUrl);
+              if (normalized && normalized !== baseUrl.trim()) {
+                setBaseUrl(normalized);
+                setStored(STORAGE_KEYS.baseUrl, normalized);
+              }
+            }}
+            placeholder="例如：http://你的服务器:8080"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">星灵</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs text-muted-foreground">当前星灵</div>
-            <div className="max-w-[70%] truncate text-sm font-medium">
-              {currentAgentId ? currentAgentLabel || "已选择" : "未选择"}
-            </div>
+          <div className="text-xs text-muted-foreground">
+            所有操作按星灵分别进行（不需要“设为当前”）。
           </div>
 
           {agentsLoading ? (
@@ -414,8 +441,22 @@ export function MePage() {
 
           {agents.length ? (
             <div className="space-y-2">
-              {agents.slice(0, 50).map((a) => (
-                <div key={a.id} className="rounded-md border bg-background px-3 py-2">
+              {agents.slice(0, 50).map((a) => {
+                const agentId = String(a?.id ?? "").trim();
+                if (!agentId) return null;
+
+                const agentKey = String(agentKeyInputs[agentId] ?? getAgentApiKey(agentId) ?? "");
+                const profileName = String(profileNames[agentId] ?? getOpenclawProfileName(agentId) ?? "");
+                const npxCmd = agentKey.trim()
+                  ? buildNpxCmd({
+                      baseUrl: baseUrl.trim(),
+                      apiKey: agentKey.trim(),
+                      profileName: profileName.trim(),
+                    })
+                  : "";
+
+                return (
+                <div key={agentId} className="rounded-md border bg-background px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold">{a.name || "未命名"}</div>
@@ -437,13 +478,53 @@ export function MePage() {
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
-                      variant={a.id === currentAgentId ? "default" : "secondary"}
-                      onClick={() => {
-                        setCurrentAgent(a.id, a.name || "已选择");
-                        toast({ title: "已切换当前星灵" });
+                      variant="outline"
+                      onClick={() => nav(`/agents/${encodeURIComponent(agentId)}`)}
+                    >
+                      查看资料
+                    </Button>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          编辑 Agent Card
+                        </Button>
+                      </DialogTrigger>
+                      <AgentCardWizardDialog
+                        agentId={agentId}
+                        userApiKey={userApiKey}
+                        onSaved={() => loadAgents()}
+                      />
+                    </Dialog>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/sync-to-oss`, {
+                            method: "POST",
+                            apiKey: userApiKey,
+                          });
+                          toast({ title: "已同步到 OSS" });
+                        } catch (e: any) {
+                          console.warn("[AIHub] MePage sync-to-oss failed", { agentId, error: e });
+                          toast({
+                            title: "同步失败",
+                            description: String(e?.message ?? ""),
+                            variant: "destructive",
+                          });
+                        }
                       }}
                     >
-                      {a.id === currentAgentId ? "当前星灵" : "设为当前"}
+                      同步到 OSS
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/timeline`)}>
+                      时间线
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/uniqueness`)}>
+                      测试独特性
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/weekly-report`)}>
+                      园丁周报
                     </Button>
                     <Button
                       size="sm"
@@ -460,8 +541,94 @@ export function MePage() {
                       删除
                     </Button>
                   </div>
+
+                  <details className="mt-3 rounded-md border bg-muted/20 px-3 py-2">
+                    <summary className="cursor-pointer select-none text-sm font-medium">
+                      一键接入（OpenClaw）
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        复制命令到部署 OpenClaw 的机器执行，即可让该星灵参与平台任务。
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-xs text-muted-foreground">星灵 API 密钥</div>
+                        <Input
+                          value={agentKey}
+                          onChange={(e) =>
+                            setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentId]: e.target.value }))
+                          }
+                          placeholder="粘贴后可保存"
+                          type="password"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-xs text-muted-foreground">接入名称（可选，多套配置不覆盖）</div>
+                        <Input
+                          value={profileName}
+                          onChange={(e) =>
+                            setProfileNames((prev) => ({ ...(prev ?? {}), [agentId]: e.target.value }))
+                          }
+                          placeholder="例如：agent-1"
+                        />
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          variant="secondary"
+                          className="flex-1"
+                          onClick={() => {
+                            if (!agentKey.trim()) {
+                              toast({ title: "密钥为空", variant: "destructive" });
+                              return;
+                            }
+                            setAgentApiKey(agentId, agentKey.trim());
+                            setOpenclawProfileName(agentId, profileName);
+                            toast({ title: "已保存密钥到本地存储" });
+                          }}
+                        >
+                          保存密钥
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          className="flex-1"
+                          onClick={async () => {
+                            if (!agentKey.trim()) {
+                              toast({ title: "没有可复制的密钥", variant: "destructive" });
+                              return;
+                            }
+                            const ok = await copyText(agentKey.trim());
+                            toast({ title: ok ? "已复制密钥" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
+                          }}
+                        >
+                          复制密钥
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2 pt-2">
+                        <div className="text-xs text-muted-foreground">npx 命令</div>
+                        <Textarea value={npxCmd} readOnly className="min-h-[84px] font-mono text-xs" />
+                        <Button
+                          className="w-full"
+                          disabled={!npxCmd}
+                          onClick={async () => {
+                            if (!npxCmd) {
+                              toast({ title: "请先补齐接入参数", variant: "destructive" });
+                              return;
+                            }
+                            const ok = await copyText(npxCmd);
+                            toast({ title: ok ? "已复制命令" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
+                          }}
+                        >
+                          复制命令
+                        </Button>
+                      </div>
+                    </div>
+                  </details>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             !agentsLoading && !agentsError ? (
@@ -475,9 +642,9 @@ export function MePage() {
                 <Button className="flex-1">创建星灵</Button>
               </DialogTrigger>
               <CreateAgentDialog
-                onCreated={(agentId, apiKey, agentName) => {
+                onCreated={(agentId, apiKey) => {
                   setAgentApiKey(agentId, apiKey);
-                  setCurrentAgent(agentId, agentName);
+                  setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentId]: apiKey }));
                   toast({ title: "创建成功", description: "已把接入密钥保存在本地存储中。" });
                   loadAgents();
                 }}
@@ -487,172 +654,9 @@ export function MePage() {
               刷新
             </Button>
           </div>
-
-          {currentAgentId ? (
-            <div className="space-y-2 pt-1">
-              <div className="flex gap-2">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="flex-1">
-                      编辑 Agent Card
-                    </Button>
-                  </DialogTrigger>
-                  <AgentCardWizardDialog
-                    agentId={currentAgentId}
-                    userApiKey={userApiKey}
-                    onSaved={() => {
-                      loadAgents();
-                    }}
-                  />
-                </Dialog>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={async () => {
-                    try {
-                      await apiFetchJson(`/v1/agents/${encodeURIComponent(currentAgentId)}/sync-to-oss`, {
-                        method: "POST",
-                        apiKey: userApiKey,
-                      });
-                      toast({ title: "已同步到 OSS" });
-                    } catch (e: any) {
-                      console.warn("[AIHub] MePage sync-to-oss failed", { agentId: currentAgentId, error: e });
-                      toast({
-                        title: "同步失败",
-                        description: String(e?.message ?? ""),
-                        variant: "destructive",
-                      });
-                    }
-                  }}
-                >
-                  同步到 OSS
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={() => nav("/me/timeline")}>
-                  时间线
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={() => nav(`/agents/${encodeURIComponent(currentAgentId)}/uniqueness`)}
-                >
-                  测试独特性
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={() => nav(`/agents/${encodeURIComponent(currentAgentId)}/weekly-report`)}
-                >
-                  园丁周报
-                </Button>
-                <Button variant="secondary" className="flex-1" onClick={() => nav("/curations")}>
-                  策展广场
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card id="connect">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">一键接入（OpenClaw）</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="text-xs text-muted-foreground">
-            复制命令到部署 OpenClaw 的机器执行，即可让该星灵参与平台任务。
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs text-muted-foreground">服务器地址（baseUrl）</div>
-            <Input
-              value={baseUrl}
-              onChange={(e) => {
-                const v = e.target.value;
-                setBaseUrl(v);
-                setStored(STORAGE_KEYS.baseUrl, v.trim());
-              }}
-              onBlur={() => {
-                const normalized = normalizeApiBaseUrl(baseUrl);
-                if (normalized && normalized !== baseUrl.trim()) {
-                  setBaseUrl(normalized);
-                  setStored(STORAGE_KEYS.baseUrl, normalized);
-                }
-              }}
-              placeholder="例如：http://你的服务器:8080"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs text-muted-foreground">星灵 API 密钥</div>
-            <Input
-              value={agentKeyInput}
-              onChange={(e) => setAgentKeyInput(e.target.value)}
-              placeholder="粘贴后可保存"
-              type="password"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs text-muted-foreground">接入名称（可选，多套配置不覆盖）</div>
-            <Input value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="例如：agent-1" />
-          </div>
-
           <div className="flex gap-2 pt-1">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => {
-                if (!currentAgentId) {
-                  toast({ title: "请先选择当前星灵", variant: "destructive" });
-                  return;
-                }
-                if (!agentKeyInput.trim()) {
-                  toast({ title: "密钥为空", variant: "destructive" });
-                  return;
-                }
-                setAgentApiKey(currentAgentId, agentKeyInput.trim());
-                setOpenclawProfileName(currentAgentId, profileName);
-                toast({ title: "已保存密钥到本地存储" });
-              }}
-            >
-              保存密钥
-            </Button>
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={async () => {
-                if (!agentKeyInput.trim()) {
-                  toast({ title: "没有可复制的密钥", variant: "destructive" });
-                  return;
-                }
-                const ok = await copyText(agentKeyInput.trim());
-                toast({ title: ok ? "已复制密钥" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
-              }}
-            >
-              复制密钥
-            </Button>
-          </div>
-
-          <div className="space-y-2 pt-2">
-            <div className="text-xs text-muted-foreground">npx 命令</div>
-            <Textarea value={npxCmd} readOnly className="min-h-[84px] font-mono text-xs" />
-            <Button
-              className="w-full"
-              disabled={!npxCmd}
-              onClick={async () => {
-                if (!npxCmd) {
-                  toast({ title: "请先补齐接入参数", variant: "destructive" });
-                  return;
-                }
-                const ok = await copyText(npxCmd);
-                toast({ title: ok ? "已复制命令" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
-              }}
-            >
-              复制命令
+            <Button variant="secondary" className="flex-1" onClick={() => nav("/curations")}>
+              策展广场
             </Button>
           </div>
         </CardContent>
@@ -786,7 +790,7 @@ export function MePage() {
 
     <AlertDialog
       open={confirmDialog.open}
-      onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+      onOpenChange={(open: boolean) => setConfirmDialog((prev) => ({ ...prev, open }))}
     >
       <AlertDialogContent>
         <AlertDialogHeader>

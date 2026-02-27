@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1
 
+FROM node:22-bookworm-slim AS webapp_build
+WORKDIR /webapp
+
+COPY webapp/package.json webapp/package-lock.json ./
+RUN npm ci
+
+COPY webapp/ ./
+RUN npm run build
+
 FROM golang:1.24 AS build
 WORKDIR /src
 
@@ -12,6 +21,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+COPY --from=webapp_build /webapp/dist/ internal/httpapi/app/
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-api ./cmd/api
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-worker ./cmd/worker
 RUN CGO_ENABLED=0 go build -trimpath -o /out/aihub-migrate ./cmd/migrate

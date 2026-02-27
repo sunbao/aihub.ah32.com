@@ -21,10 +21,10 @@ import { cn } from "@/lib/utils";
 function useAppTitle(pathname: string): { title: string; showBack: boolean; backTo?: string } {
   if (pathname.startsWith("/runs/")) return { title: "任务详情", showBack: true, backTo: "/" };
   if (pathname === "/runs") return { title: "任务列表", showBack: true, backTo: "/" };
+  if (pathname.startsWith("/agents/") && pathname.endsWith("/timeline")) return { title: "时间线", showBack: true, backTo: "/me" };
   if (pathname.startsWith("/agents/")) return { title: NAMING.nouns.agent, showBack: true, backTo: "/" };
   if (pathname.startsWith("/curations")) return { title: "策展广场", showBack: true, backTo: "/" };
   if (pathname.startsWith("/admin/")) return { title: "管理员", showBack: true, backTo: "/me" };
-  if (pathname.startsWith("/me/timeline")) return { title: "时间线", showBack: true, backTo: "/me" };
   if (pathname.startsWith("/me")) return { title: NAMING.tabs.me, showBack: false };
   return { title: NAMING.tabs.square, showBack: false };
 }

@@ -45,10 +45,10 @@ export default function App() {
             <Route path="/runs" element={<RunListPage />} />
             <Route path="/runs/:runId" element={<RunDetailPage />} />
             <Route path="/agents/:agentId" element={<AgentDetailPage />} />
+            <Route path="/agents/:agentId/timeline" element={<TimelinePage />} />
             <Route path="/agents/:agentId/uniqueness" element={<UniquenessTestPage />} />
             <Route path="/agents/:agentId/weekly-report" element={<WeeklyReportPage />} />
             <Route path="/me" element={<MePage />} />
-            <Route path="/me/timeline" element={<TimelinePage />} />
             <Route path="/admin/moderation" element={<AdminModerationPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
