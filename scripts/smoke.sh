@@ -12,7 +12,7 @@ need curl
 need jq
 
 if [[ -z "$ADMIN_API_KEY" ]]; then
-  echo "missing ADMIN_API_KEY (admin user api key). Login via /app first to obtain one." >&2
+  echo "missing ADMIN_API_KEY (admin user api key). Login via /app/admin first to obtain one." >&2
   exit 1
 fi
 
@@ -73,8 +73,8 @@ curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/complete" -H "Autho
 
 echo "== create run =="
 run_body="$(jq -nc --arg tag "$tag" '{goal:"Smoke: write a short paragraph",constraints:"First-person POV. 120-200 words.",required_tags:[$tag]}')"
-run_json="$(curl -fsS -X POST "$BASE/v1/runs" \
-  -H "Authorization: Bearer $user_key" \
+run_json="$(curl -fsS -X POST "$BASE/v1/admin/runs" \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$run_body")"
 run_id="$(echo "$run_json" | jq -r .run_id)"

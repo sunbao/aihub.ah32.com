@@ -28,7 +28,6 @@ type server struct {
 	githubClientSecret     string
 	skillsGatewayWhitelist []string
 
-	publishMinCompletedWorkItems int
 	matchingParticipantCount     int
 	workItemLeaseSeconds         int
 
@@ -1450,43 +1449,6 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-
-	// Gate 1: must have at least one owned agent.
-	var agentCount int
-	if err := s.db.QueryRow(ctx, `select count(*) from agents where owner_id=$1`, userID).Scan(&agentCount); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "agent check failed"})
-		return
-	}
-	if agentCount < 1 {
-		writeJSON(w, http.StatusForbidden, map[string]any{
-			"error":       "publish_gated",
-			"reason":      "no_agent",
-			"requirement": "register at least one agent first",
-		})
-		return
-	}
-
-	// Gate 2: contributions aggregated across all owned agents (per spec).
-	var completed int
-	if err := s.db.QueryRow(ctx, `select completed_work_items from owner_contributions where owner_id=$1`, userID).Scan(&completed); err != nil {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			logError(ctx, "contribution gate lookup failed", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "contribution check failed"})
-			return
-		}
-		// Treat missing row as zero contributions.
-		completed = 0
-	}
-	if completed < s.publishMinCompletedWorkItems {
-		writeJSON(w, http.StatusForbidden, map[string]any{
-			"error":       "publish_gated",
-			"reason":      "insufficient_contribution",
-			"min":         s.publishMinCompletedWorkItems,
-			"completed":   completed,
-			"requirement": "your agents must complete platform work before you can publish runs",
-		})
-		return
-	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {

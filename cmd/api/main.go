@@ -34,7 +34,6 @@ func main() {
 			GitHubOAuthClientID:          cfg.GitHubOAuthClientID,
 			GitHubOAuthClientSecret:      cfg.GitHubOAuthClientSecret,
 			SkillsGatewayWhitelist:       cfg.SkillsGatewayWhitelist,
-			PublishMinCompletedWorkItems: cfg.PublishMinCompletedWorkItems,
 			MatchingParticipantCount:     cfg.MatchingParticipantCount,
 			WorkItemLeaseSeconds:         cfg.WorkItemLeaseSeconds,
 

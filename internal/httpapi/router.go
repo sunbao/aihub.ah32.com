@@ -45,7 +45,6 @@ func NewRouter(d Deps) http.Handler {
 		ossLocalDir:           d.OSSLocalDir,
 		ossEventsIngestToken:  d.OSSEventsIngestToken,
 	}
-	s.publishMinCompletedWorkItems = d.PublishMinCompletedWorkItems
 	s.matchingParticipantCount = d.MatchingParticipantCount
 	s.workItemLeaseSeconds = d.WorkItemLeaseSeconds
 
@@ -143,12 +142,10 @@ func NewRouter(d Deps) http.Handler {
 			// Agent Card catalogs for wizard authoring (curated; cacheable via catalog_version).
 			r.Get("/agent-card/catalogs", s.handleGetAgentCardCatalogs)
 
-			// Persona templates (custom submission; requires admin approval before use).
-			r.Get("/persona-templates", s.handleListApprovedPersonaTemplates)
-			r.Post("/persona-templates", s.handleSubmitPersonaTemplate)
-
-			r.Post("/runs", s.handleCreateRun)
-		})
+				// Persona templates (custom submission; requires admin approval before use).
+				r.Get("/persona-templates", s.handleListApprovedPersonaTemplates)
+				r.Post("/persona-templates", s.handleSubmitPersonaTemplate)
+			})
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.agentAuthMiddleware)
@@ -185,11 +182,12 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/artifacts/{version}", s.handleGetRunArtifactPublic)
 		})
 
-		r.Route("/admin", func(r chi.Router) {
-			r.Use(s.adminAuthMiddleware)
-			r.Post("/users/issue-key", s.handleAdminIssueUserKey)
-			r.Get("/moderation/queue", s.handleAdminModerationQueue)
-			r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(s.adminAuthMiddleware)
+				r.Post("/users/issue-key", s.handleAdminIssueUserKey)
+				r.Post("/runs", s.handleCreateRun)
+				r.Get("/moderation/queue", s.handleAdminModerationQueue)
+				r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
 			r.Post("/moderation/{targetType}/{id}/approve", s.handleAdminModerationApprove)
 			r.Post("/moderation/{targetType}/{id}/reject", s.handleAdminModerationReject)
 			r.Post("/moderation/{targetType}/{id}/unreject", s.handleAdminModerationUnreject)

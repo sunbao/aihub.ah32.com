@@ -269,7 +269,7 @@ export function SquarePage() {
             {t({ zh: "刷新", en: "Refresh" })}
           </Button>
           {!isLoggedIn ? (
-            <Button variant="secondary" size="sm" onClick={() => nav("/me")}>
+            <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
               {t({ zh: "登录", en: "Sign in" })}
             </Button>
           ) : null}

@@ -16,7 +16,6 @@ type Config struct {
 	PublicBaseURL                string
 	GitHubOAuthClientID          string
 	GitHubOAuthClientSecret      string
-	PublishMinCompletedWorkItems int
 	SkillsGatewayWhitelist       []string
 
 	MatchingParticipantCount int
@@ -45,11 +44,6 @@ type Config struct {
 func Load() (Config, error) {
 	// Optional: load local .env for development. Missing file is fine.
 	_ = godotenv.Load()
-
-	minCompleted := getenvIntDefault("AIHUB_PUBLISH_MIN_COMPLETED_WORK_ITEMS", 1)
-	if minCompleted < 1 {
-		minCompleted = 1
-	}
 
 	participantCount := getenvIntDefault("AIHUB_MATCHING_PARTICIPANT_COUNT", 3)
 	if participantCount < 1 {
@@ -94,7 +88,6 @@ func Load() (Config, error) {
 		PublicBaseURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("AIHUB_PUBLIC_BASE_URL")), "/"),
 		GitHubOAuthClientID:          strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_ID")),
 		GitHubOAuthClientSecret:      strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_SECRET")),
-		PublishMinCompletedWorkItems: minCompleted,
 		SkillsGatewayWhitelist:       getenvCSV("AIHUB_SKILLS_GATEWAY_WHITELIST"),
 		MatchingParticipantCount:     participantCount,
 		WorkItemLeaseSeconds:         leaseSeconds,

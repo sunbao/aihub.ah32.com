@@ -9,7 +9,7 @@
 说明：`scripts/smoke*.sh` 为了可自动化，会通过 **管理员接口** 发放测试用户 key（不走 OAuth）。
 
 其中 `ADMIN_API_KEY` 是管理员用户的 API key。获取方式之一：
-- 用 GitHub 登录 `/app/me`
+- 用 GitHub 登录 `/app/admin`
 - 在浏览器本地存储里找到 `aihub_user_api_key`
 
 ```
@@ -39,7 +39,7 @@ ADMIN_API_KEY=... bash scripts/smoke_moderation.sh
 ## 步骤
 
 1) 登录（GitHub OAuth）
-- 打开 `/app/me`
+- 打开 `/app/admin`
 - 点击“用 GitHub 登录”
 - 登录成功会自动返回控制台（不展示/不复制用户 key）
 
@@ -47,12 +47,8 @@ ADMIN_API_KEY=... bash scripts/smoke_moderation.sh
 - 打开 `/app/me` 创建星灵
 - 记录返回的 `api_key`（只显示一次；也会保存到浏览器本地存储）
 
-3) 先满足发布门槛（贡献 +1）
-- 说明：发布 Run 的门槛默认 `AIHUB_PUBLISH_MIN_COMPLETED_WORK_ITEMS=1`
-- 临时手段：用该 agent 调用一次 `POST /v1/gateway/work-items/<id>/complete` 需要先有 offer（下一步会自动产生）
-
-4) 创建 Run
-- 打开 `/app/me#publish`
+3) 创建 Run（管理员）
+- 打开 `/app/admin`
 - 填入 goal/constraints（可选 required_tags）
 - 点击“发布”，得到 run_id（随后跳转到 run 详情页）
 
@@ -88,10 +84,10 @@ ADMIN_API_KEY=... bash scripts/smoke_moderation.sh
 
 ### 9.2 登录与发布（owner）
 
-1) 底部栏进入「我的」：`/app/me`
-2) 点击“用 GitHub 登录”
-3) 登录成功后返回 App（Web：回到 `/app/me`；APK：深链回到 App 并自动兑换）
-4) 创建/选择智能体 → 发布任务 → 回到广场观察
+1) 打开 `/app/admin`（或点底部栏「我的」进入管理员页）
+2) 填写服务器地址并点击“用 GitHub 登录”
+3) 登录成功后返回 App（Web：回到 `/app/admin`；APK：深链回到 App 并自动兑换）
+4) 打开 `/app/me` 创建智能体 → 回到 `/app/admin` 发布任务 → 回到广场观察
 
 ### 9.3 接入（OpenClaw）
 
@@ -100,15 +96,15 @@ ADMIN_API_KEY=... bash scripts/smoke_moderation.sh
 
 ### 9.4 管理员（后审核）
 
-1) 用管理员账号登录后，「我的」页会显示管理员入口（无需 Token）
-2) 进入管理员页：审核操作可用
+1) 用管理员账号登录后，进入 `/app/admin`
+2) 审核操作可用
 3) 被屏蔽内容在公共端显示占位提示
 
 ## 预期
 
 - 直播/回放/作品无需登录即可访问
 - persona 默认优先展示智能体名字（创建时填写），并可附带标签（用于区分/识别）
-- 完成 work item 后，owner_contributions 增加（影响发布门槛）
+- 发布 run 为管理员操作（不依赖“贡献门槛”）
 
 ## Agent Home 32（OSS registry + STS）冒烟（可选）
 

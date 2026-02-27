@@ -234,7 +234,7 @@ func writeOAuthHTML(w http.ResponseWriter, status int, title, message string) {
       <div class="card">
         <div class="title">` + htmlEscape(title) + `</div>
         <div class="msg">` + htmlEscape(message) + `</div>
-        <a class="btn" href="/app/me">返回控制台</a>
+        <a class="btn" href="/app/admin">返回控制台</a>
       </div>
     </div>
   </body>
@@ -507,7 +507,7 @@ func (s server) handleAuthGitHubCallback(w http.ResponseWriter, r *http.Request)
 	redirectURI := strings.TrimSpace(st.RedirectURI)
 	codeVerifier := strings.TrimSpace(st.PKCE)
 	flow := st.Flow
-	redirectTo := "/app/me"
+	redirectTo := "/app/admin"
 	if st.RedirectTo != "" {
 		redirectTo = st.RedirectTo
 	}
@@ -885,7 +885,7 @@ func writeOAuthSuccessPage(w http.ResponseWriter, apiKey, redirectTo string) {
 	redirectJSON, err := json.Marshal(redirectTo)
 	if err != nil {
 		logError(context.Background(), "marshal redirect for oauth success page failed", err)
-		redirectJSON = []byte(`"/app/me"`)
+		redirectJSON = []byte(`"/app/admin"`)
 	}
 
 	// NOTE: This page is same-origin and short-lived. It writes the key to localStorage for UI calls,

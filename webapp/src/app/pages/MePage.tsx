@@ -2,9 +2,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { Browser } from "@capacitor/browser";
-import { Capacitor } from "@capacitor/core";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentCardWizardDialog } from "@/app/components/AgentCardWizardDialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetchJson, ApiRequestError, getApiBaseUrl, normalizeApiBaseUrl } from "@/lib/api";
+import { apiFetchJson, getApiBaseUrl } from "@/lib/api";
 import { copyText } from "@/lib/copy";
 import { fmtAgentStatus } from "@/lib/format";
 import {
@@ -35,9 +32,7 @@ import {
   getUserApiKey,
   setAgentApiKey,
   setOpenclawProfileName,
-  setStored,
   setUserApiKey,
-  STORAGE_KEYS,
 } from "@/lib/storage";
 
 type MeResponse = {
@@ -67,25 +62,12 @@ type CreateAgentResponse = {
   api_key: string;
 };
 
-type CreateRunResponse = {
-  run_id: string;
-};
-
 function buildNpxCmd(opts: { baseUrl: string; apiKey: string; profileName: string }): string {
   const baseUrl = String(opts.baseUrl ?? "").trim() || window.location.origin;
   const apiKey = String(opts.apiKey ?? "").trim();
   const profileName = String(opts.profileName ?? "").trim();
   const pArg = profileName ? ` --name \"${profileName.replaceAll("\"", "\\\"")}\"` : "";
   return `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl}${pArg}`;
-}
-
-function buildGitHubStartUrl(opts: { flow?: "app"; redirectTo?: string }): string {
-  const base = getApiBaseUrl();
-  if (!base) return "";
-  const url = new URL(`${base}/v1/auth/github/start`);
-  if (opts.flow) url.searchParams.set("flow", opts.flow);
-  if (opts.redirectTo) url.searchParams.set("redirect_to", opts.redirectTo);
-  return url.toString();
 }
 
 export function MePage() {
@@ -112,14 +94,9 @@ export function MePage() {
     variant?: "destructive" | "default";
   }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
-  const [baseUrl, setBaseUrl] = useState(() => getApiBaseUrl() || "");
+  const baseUrl = getApiBaseUrl() || "";
   const [agentKeyInputs, setAgentKeyInputs] = useState<Record<string, string>>({});
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
-
-  // publish form state
-  const [goal, setGoal] = useState("");
-  const [constraints, setConstraints] = useState("");
-  const [requiredTags, setRequiredTags] = useState("");
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -286,70 +263,15 @@ export function MePage() {
       <div className="space-y-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">服务器地址</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-xs text-muted-foreground">
-              填写 AIHub 服务端地址（不要带 <span className="font-mono">/app</span> 或{" "}
-              <span className="font-mono">/ui</span>）。APK / PWA 登录与请求数据都依赖它。
-            </div>
-            <Input
-              value={baseUrl}
-              onChange={(e) => {
-                const v = e.target.value;
-                setBaseUrl(v);
-                setStored(STORAGE_KEYS.baseUrl, v.trim());
-              }}
-              onBlur={() => {
-                const normalized = normalizeApiBaseUrl(baseUrl);
-                if (normalized && normalized !== baseUrl.trim()) {
-                  setBaseUrl(normalized);
-                  setStored(STORAGE_KEYS.baseUrl, normalized);
-                }
-              }}
-              placeholder="例如：http://你的服务器:8080"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
             <CardTitle className="text-base">登录</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="text-sm text-muted-foreground">
-              登录后可创建/管理智能体、生成接入命令、发布任务。
-            </div>
-            <Button
-              className="w-full"
-              onClick={async () => {
-                const url = Capacitor.isNativePlatform()
-                  ? buildGitHubStartUrl({ flow: "app" })
-                  : buildGitHubStartUrl({ redirectTo: "/app/me" });
-                if (!url) {
-                  toast({
-                    title: "请先填写服务器地址",
-                    description: "例如：http://你的服务器:8080（不要带 /app 或 /ui）",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await Browser.open({ url });
-                  } catch (e: any) {
-                    console.warn("[AIHub] open browser failed", e);
-                    toast({ title: "无法打开登录页面", description: String(e?.message ?? ""), variant: "destructive" });
-                  }
-                  return;
-                }
-                window.location.href = url;
-              }}
-            >
-              用 GitHub 登录
+            <div className="text-sm text-muted-foreground">登录入口已统一到「管理员」页面。</div>
+            <Button className="w-full" onClick={() => nav("/admin")}>
+              去登录
             </Button>
             <div className="text-xs text-muted-foreground">
-              提示：登录状态只保存在你的浏览器本地存储中。
+              提示：首次使用请先在「管理员」里填写服务器地址（不要带 /app 或 /ui）。
             </div>
           </CardContent>
         </Card>
@@ -387,34 +309,6 @@ export function MePage() {
               退出
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">服务器地址</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="text-xs text-muted-foreground">
-            填写 AIHub 服务端地址（不要带 <span className="font-mono">/app</span> 或{" "}
-            <span className="font-mono">/ui</span>）。APK / PWA 登录与请求数据都依赖它。
-          </div>
-          <Input
-            value={baseUrl}
-            onChange={(e) => {
-              const v = e.target.value;
-              setBaseUrl(v);
-              setStored(STORAGE_KEYS.baseUrl, v.trim());
-            }}
-            onBlur={() => {
-              const normalized = normalizeApiBaseUrl(baseUrl);
-              if (normalized && normalized !== baseUrl.trim()) {
-                setBaseUrl(normalized);
-                setStored(STORAGE_KEYS.baseUrl, normalized);
-              }
-            }}
-            placeholder="例如：http://你的服务器:8080"
-          />
         </CardContent>
       </Card>
 
@@ -657,95 +551,18 @@ export function MePage() {
           </div>
         </CardContent>
       </Card>
-
-      <Card id="publish">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">发布任务</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="text-xs text-muted-foreground">目标（goal）</div>
-          <Textarea value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="你希望产出什么？" />
-
-          <div className="text-xs text-muted-foreground">约束（constraints，可选）</div>
-          <Textarea
-            value={constraints}
-            onChange={(e) => setConstraints(e.target.value)}
-            placeholder="例如：输出格式、长度、风格、不能做什么…"
-          />
-
-          <div className="text-xs text-muted-foreground">所需标签（可选，逗号分隔）</div>
-          <Input
-            value={requiredTags}
-            onChange={(e) => setRequiredTags(e.target.value)}
-            placeholder="例如：写作, 总结, 编程"
-          />
-
-          <Button
-            className="w-full"
-            onClick={async () => {
-              try {
-                const tags = requiredTags
-                  .split(/[\\s,，]+/g)
-                  .map((t) => t.trim())
-                  .filter(Boolean)
-                  .slice(0, 24);
-                const res = await apiFetchJson<CreateRunResponse>("/v1/runs", {
-                  method: "POST",
-                  apiKey: userApiKey,
-                  body: { goal, constraints, required_tags: tags },
-                });
-                toast({ title: "发布成功" });
-                nav(`/runs/${encodeURIComponent(res.run_id)}`);
-              } catch (e: any) {
-                if (e instanceof ApiRequestError && e.code === "publish_gated" && e.status === 403) {
-                  console.debug("[AIHub] MePage publish gated", e);
-                  const data = (e.data && typeof e.data === "object") ? (e.data as any) : null;
-                  const reason = String(data?.reason ?? "").trim();
-                  if (reason === "no_agent") {
-                    toast({
-                      title: "暂不可发布",
-                      description: "发布门槛：请先创建至少一个智能体。",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  if (reason === "insufficient_contribution") {
-                    const min = Number(data?.min ?? 0);
-                    const completed = Number(data?.completed ?? 0);
-                    toast({
-                      title: "暂不可发布",
-                      description: `发布门槛：你的智能体需要先完成平台任务（当前完成 ${completed}，至少需要 ${min}）。`,
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  toast({
-                    title: "暂不可发布",
-                    description: "发布门槛：未满足平台前置条件。",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                console.warn("[AIHub] MePage publish failed", e);
-                toast({ title: "发布失败", description: String(e?.message ?? ""), variant: "destructive" });
-              }
-            }}
-          >
-            发布
-          </Button>
-        </CardContent>
-      </Card>
-
       {me?.is_admin ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">管理员</CardTitle>
+            <CardTitle className="text-base">管理员入口</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="text-xs text-muted-foreground">管理员权限绑定当前登录账号，不需要额外 Token。</div>
+            <div className="text-xs text-muted-foreground">
+              服务器地址、发布任务、内容审核等管理员操作，统一在这里。
+            </div>
             <div className="flex gap-2 pt-1">
-              <Button variant="outline" className="flex-1" onClick={() => nav("/admin/moderation")}>
-                内容审核
+              <Button variant="outline" className="flex-1" onClick={() => nav("/admin")}>
+                进入管理员
               </Button>
             </div>
           </CardContent>

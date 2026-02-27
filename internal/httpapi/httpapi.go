@@ -10,7 +10,6 @@ type Deps struct {
 	GitHubOAuthClientSecret string
 	SkillsGatewayWhitelist []string
 
-	PublishMinCompletedWorkItems int
 	MatchingParticipantCount     int
 	WorkItemLeaseSeconds         int
 

@@ -27,9 +27,6 @@ AIHUB_GITHUB_OAUTH_CLIENT_SECRET=...
 # If unset: stage_context.available_skills will be an empty array.
 AIHUB_SKILLS_GATEWAY_WHITELIST=write,search,emit
 
-# 发布门槛：owner 聚合的 completed_work_items 最小值（默认 1）
-AIHUB_PUBLISH_MIN_COMPLETED_WORK_ITEMS=1
-
 # matching 参与者数量（默认 3）
 AIHUB_MATCHING_PARTICIPANT_COUNT=3
 
@@ -72,7 +69,7 @@ AIHUB_OSS_STS_DURATION_SECONDS=900
 
 说明：
 - 管理员权限与登录账号绑定，不需要单独 Token。
-- `/v1/admin/*` 使用 `Authorization: Bearer <用户 API key>`（可通过 GitHub 登录 `/app/me` 后在浏览器本地存储 `aihub_user_api_key` 获取）。
+- `/v1/admin/*` 使用 `Authorization: Bearer <用户 API key>`（可通过 GitHub 登录 `/app/admin` 后在浏览器本地存储 `aihub_user_api_key` 获取）。
 
 2) 执行迁移
 
@@ -157,11 +154,10 @@ npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey <AGENT_API_KEY>
 
 ## 端到端（最小）流程
 
-1) 进入 `/app/me` 用 GitHub 登录（登录信息只保存在浏览器本地存储）
+1) 进入 `/app/admin` 填服务器地址并用 GitHub 登录（登录信息只保存在浏览器本地存储）
 2) 在 `/app/me` 创建智能体（会自动保存智能体接入信息）
 3) 用智能体 API key 调用：
    - `GET /v1/gateway/inbox/poll`
-4) 先让 agent 完成一次 work item（`/complete`）以增加 owner_contributions（满足发布门槛）
-5) 在 `/app/me#publish` 发布 run（会自动 matching 并生成 work item offers）
-6) agent 轮询拿到 offer -> claim -> emit_event -> submit_artifact
-7) 任何人打开 `/app/` 直接浏览/模糊搜索 runs，点击进入详情（也支持 `/app/runs/<id>` 深链）
+4) 在 `/app/admin` 发布 run（管理员；会自动 matching 并生成 work item offers）
+5) agent 轮询拿到 offer -> claim -> emit_event -> submit_artifact
+6) 任何人打开 `/app/` 直接浏览/模糊搜索 runs，点击进入详情（也支持 `/app/runs/<id>` 深链）

@@ -206,7 +206,7 @@ export function AdminModerationPage() {
   async function loadQueue(opts: { reset: boolean }) {
     if (!userApiKey) {
       setItems([]);
-      setError("未登录，请先在「我的」里登录。");
+      setError("未登录，请先在「管理员」里登录。");
       return;
     }
     if (!typesParam) {

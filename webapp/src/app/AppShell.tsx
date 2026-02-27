@@ -15,7 +15,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import { setUserApiKey } from "@/lib/storage";
+import { getUserApiKey, setUserApiKey } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 function useAppTitle(pathname: string, isZh: boolean): { title: string; showBack: boolean; backTo?: string } {
@@ -25,7 +25,8 @@ function useAppTitle(pathname: string, isZh: boolean): { title: string; showBack
     return { title: isZh ? "时间线" : "Timeline", showBack: true, backTo: "/me" };
   if (pathname.startsWith("/agents/")) return { title: isZh ? "智能体" : "Agent", showBack: true, backTo: "/" };
   if (pathname.startsWith("/curations")) return { title: isZh ? "策展广场" : "Curations", showBack: true, backTo: "/" };
-  if (pathname.startsWith("/admin/")) return { title: isZh ? "管理员" : "Admin", showBack: true, backTo: "/me" };
+  if (pathname === "/admin") return { title: isZh ? "管理员" : "Admin", showBack: false };
+  if (pathname.startsWith("/admin/")) return { title: isZh ? "管理员" : "Admin", showBack: true, backTo: "/admin" };
   if (pathname.startsWith("/me")) return { title: isZh ? "我的" : "Me", showBack: false };
   return { title: isZh ? "广场" : "Square", showBack: false };
 }
@@ -49,6 +50,8 @@ function parseAppGitHubExchangeToken(urlStr: string): string {
 
 function BottomNav({ squareLabel, meLabel }: { squareLabel: string; meLabel: string }) {
   const { pathname } = useLocation();
+  const isLoggedIn = !!getUserApiKey();
+  const meHref = isLoggedIn ? "/me" : "/admin";
   const active = pathname.startsWith("/me") || pathname.startsWith("/admin") ? "me" : "square";
   return (
     <nav
@@ -69,7 +72,7 @@ function BottomNav({ squareLabel, meLabel }: { squareLabel: string; meLabel: str
             </span>
           </Button>
         </Link>
-        <Link to="/me" className="block">
+        <Link to={meHref} className="block">
           <Button
             variant="ghost"
             className={cn("w-full flex-col gap-0.5 h-14 justify-center", active === "me" && "text-primary")}
@@ -107,27 +110,14 @@ export function AppShell({ children }: PropsWithChildren) {
       if (lastExchangeToken.current === exchangeToken) return;
       lastExchangeToken.current = exchangeToken;
 
+      let apiKey = "";
       try {
         const res = await apiFetchJson<{ api_key?: string }>("/v1/auth/app/exchange", {
           method: "POST",
           apiKey: "",
           body: { exchange_token: exchangeToken },
         });
-        const apiKey = String(res?.api_key ?? "").trim();
-        if (!apiKey) {
-          throw new Error(t({ zh: "登录失败：缺少 api_key", en: "Login failed: missing api_key" }));
-        }
-
-        setUserApiKey(apiKey);
-        try {
-          await Browser.close();
-        } catch (e) {
-          console.debug("[AIHub] browser close skipped", e);
-        }
-
-        if (disposed) return;
-        toast({ title: t({ zh: "登录成功", en: "Signed in" }) });
-        nav("/me", { replace: true });
+        apiKey = String(res?.api_key ?? "").trim();
       } catch (e: any) {
         console.warn("[AIHub] app exchange failed", e);
         if (disposed) return;
@@ -136,7 +126,40 @@ export function AppShell({ children }: PropsWithChildren) {
           description: String(e?.message ?? ""),
           variant: "destructive",
         });
+        return;
       }
+
+      if (!apiKey) {
+        console.warn("[AIHub] app exchange returned empty api_key");
+        if (disposed) return;
+        toast({
+          title: t({ zh: "登录失败", en: "Sign-in failed" }),
+          description: t({ zh: "缺少 api_key", en: "Missing api_key" }),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setUserApiKey(apiKey);
+      try {
+        await Browser.close();
+      } catch (e) {
+        console.debug("[AIHub] browser close skipped", e);
+      }
+
+      if (disposed) return;
+      toast({ title: t({ zh: "登录成功", en: "Signed in" }) });
+
+      let dest = "/me";
+      try {
+        const me = await apiFetchJson<{ is_admin?: boolean }>("/v1/me", { apiKey });
+        if (me?.is_admin) dest = "/admin";
+      } catch (e: any) {
+        console.warn("[AIHub] post-login /v1/me check failed", e);
+      }
+
+      if (disposed) return;
+      nav(dest, { replace: true });
     }
 
     function handleUrl(urlStr: string) {

@@ -127,8 +127,8 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
   if (!baseUrl) {
     throw new Error(
       isZh
-        ? "未配置服务器地址，请到「我的」里先填写服务器地址（例如：http://你的服务器:8080）。"
-        : "Server address is not configured. Please set it in “Me” (e.g. http://your-server:8080).",
+        ? "未配置服务器地址，请到「管理员」里先填写服务器地址（例如：http://你的服务器:8080）。"
+        : "Server address is not configured. Please set it in “Admin” (e.g. http://your-server:8080).",
     );
   }
   const url = joinUrl(baseUrl, path);
@@ -172,8 +172,8 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
     if (looksLikeHTML) {
       throw new Error(
         isZh
-          ? "接口返回了网页而不是数据：服务器地址可能填错了（不要带 /app 或 /ui），请到「我的」里改为 http://你的服务器:8080。"
-          : "The API returned HTML instead of JSON. The server address might be wrong (do not include /app or /ui). Update it in “Me” to http://your-server:8080.",
+          ? "接口返回了网页而不是数据：服务器地址可能填错了（不要带 /app 或 /ui），请到「管理员」里改为 http://你的服务器:8080。"
+          : "The API returned HTML instead of JSON. The server address might be wrong (do not include /app or /ui). Update it in “Admin” to http://your-server:8080.",
       );
     }
     throw new Error(

@@ -8,6 +8,7 @@ import { Loading } from "@/components/Loading";
 const AdminModerationPage = lazy(() =>
   import("@/app/pages/AdminModerationPage").then((m) => ({ default: m.AdminModerationPage })),
 );
+const AdminPage = lazy(() => import("@/app/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const AgentDetailPage = lazy(() =>
   import("@/app/pages/AgentDetailPage").then((m) => ({ default: m.AgentDetailPage })),
 );
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/agents/:agentId/uniqueness" element={<UniquenessTestPage />} />
             <Route path="/agents/:agentId/weekly-report" element={<WeeklyReportPage />} />
             <Route path="/me" element={<MePage />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/moderation" element={<AdminModerationPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
