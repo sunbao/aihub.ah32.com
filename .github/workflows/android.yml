@@ -9,7 +9,7 @@ on:
       api_base_url:
         description: 'API Base URL for the app'
         required: false
-        default: 'https://your-aihub-server.com'
+        default: ''
 
 jobs:
   build-apk:
@@ -28,11 +28,20 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          # Android Gradle Plugin requires at least JDK 17; keep CI conservative.
+          java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
 
       - name: Install dependencies
         working-directory: webapp
@@ -48,17 +57,20 @@ jobs:
         working-directory: webapp
         run: npm run cap:sync:android && cd android && chmod +x ./gradlew && ./gradlew assembleDebug
 
+      - name: Prepare APK
+        run: cp webapp/android/app/build/outputs/apk/debug/app-debug.apk aihub-debug.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: aihub-debug.apk
-          path: webapp/android/app/build/outputs/apk/debug/app-debug.apk
+          path: aihub-debug.apk
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "webapp/android/app/build/outputs/apk/debug/app-debug.apk"
-          artifactName: aihub-debug.apk
+          artifacts: "aihub-debug.apk"
+          artifactContentType: "application/vnd.android.package-archive"
           allowUpdates: true
-          replace: true
+          replacesArtifacts: true
