@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SquarePlanetThree, type SquarePlanetNode } from "@/app/components/SquarePlanetThree";
+import { useI18n } from "@/lib/i18n";
 import { apiFetchJson } from "@/lib/api";
-import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
+import { fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { getUserApiKey } from "@/lib/storage";
 
 type WorkItemsProgress = {
@@ -36,32 +38,27 @@ type ActivityResponse = {
   next_offset: number;
 };
 
-function fmtEventKind(kind: string): string {
-  const k = String(kind ?? "").trim().toLowerCase();
-  if (k === "stage_changed") return "阶段切换";
-  if (k === "decision") return "决策";
-  if (k === "summary") return "总结";
-  if (k === "artifact_version") return "作品版本";
-  if (!k) return "事件";
-  return k;
-}
-
-function previewPayloadText(payload: Record<string, any>): string {
+function previewPayloadText(payload: Record<string, any>, isZh: boolean): string {
   if (payload && typeof payload.text === "string") return String(payload.text).trim();
   if (payload && typeof payload.title === "string") return String(payload.title).trim();
-  if (payload && typeof payload.stage === "string") return `阶段：${String(payload.stage).trim()}`;
-  if (payload && typeof payload.version === "number") return `版本：v${payload.version}`;
-  if (payload && typeof payload.version === "string") return `版本：${String(payload.version).trim()}`;
-  try {
-    const s = JSON.stringify(payload ?? {});
-    if (s && s !== "{}") return s;
-  } catch {
-    // ignore
+  if (payload && typeof payload.message === "string") return String(payload.message).trim();
+  if (payload && typeof payload.status === "string") return String(payload.status).trim();
+  if (payload && typeof payload.stage === "string") {
+    const v = String(payload.stage).trim();
+    return isZh ? `阶段：${v}` : `Stage: ${v}`;
+  }
+  if (payload && typeof payload.version === "number") {
+    const v = String(payload.version);
+    return isZh ? `版本：v${v}` : `Version: v${v}`;
+  }
+  if (payload && typeof payload.version === "string") {
+    const v = String(payload.version).trim();
+    return isZh ? `版本：${v}` : `Version: ${v}`;
   }
   return "";
 }
 
-function fmtWorkItemsProgress(wi: WorkItemsProgress | null | undefined): string {
+function fmtWorkItemsProgress(wi: WorkItemsProgress | null | undefined, isZh: boolean): string {
   const total = Number(wi?.total ?? 0);
   const completed = Number(wi?.completed ?? 0);
   const claimed = Number(wi?.claimed ?? 0);
@@ -70,19 +67,34 @@ function fmtWorkItemsProgress(wi: WorkItemsProgress | null | undefined): string 
   const failed = Number(wi?.failed ?? 0);
 
   const parts: string[] = [];
-  if (total > 0) parts.push(`进度 ${completed}/${total}`);
-  else parts.push("进度 -");
+  if (total > 0) parts.push(isZh ? `进度 ${completed}/${total}` : `Progress ${completed}/${total}`);
+  else parts.push(isZh ? "进度 -" : "Progress -");
 
-  if (claimed) parts.push(`已领取 ${claimed}`);
-  if (offered) parts.push(`待领取 ${offered}`);
-  if (scheduled) parts.push(`排队 ${scheduled}`);
-  if (failed) parts.push(`失败 ${failed}`);
+  if (claimed) parts.push(isZh ? `已领取 ${claimed}` : `Claimed ${claimed}`);
+  if (offered) parts.push(isZh ? `待领取 ${offered}` : `Offered ${offered}`);
+  if (scheduled) parts.push(isZh ? `排队 ${scheduled}` : `Queued ${scheduled}`);
+  if (failed) parts.push(isZh ? `失败 ${failed}` : `Failed ${failed}`);
   return parts.join(" · ");
+}
+
+function isUuidLike(s: string): boolean {
+  const v = String(s ?? "").trim();
+  if (!v) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function isMostlyAscii(s: string): boolean {
+  const v = String(s ?? "").trim();
+  if (!v) return false;
+  let ascii = 0;
+  for (let i = 0; i < v.length; i++) if (v.charCodeAt(i) <= 0x7f) ascii++;
+  return ascii / v.length >= 0.9;
 }
 
 function ActivityRow({ item }: { item: ActivityItem }) {
   const nav = useNavigate();
-  const payloadText = previewPayloadText(item.payload ?? {});
+  const { locale, isZh } = useI18n();
+  const payloadText = previewPayloadText(item.payload ?? {}, isZh);
   return (
     <Card
       className="mb-3 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
@@ -92,8 +104,8 @@ function ActivityRow({ item }: { item: ActivityItem }) {
     >
       <CardContent className="pt-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary">{fmtEventKind(item.kind)}</Badge>
-          <Badge variant="outline">{fmtRunStatus(item.run_status)}</Badge>
+          <Badge variant="secondary">{fmtEventKind(item.kind, locale)}</Badge>
+          <Badge variant="outline">{fmtRunStatus(item.run_status, locale)}</Badge>
           <span>{fmtTime(item.created_at)}</span>
         </div>
         <div className="mt-2 text-sm font-medium leading-normal">
@@ -105,7 +117,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
           </div>
         ) : null}
         <div className="mt-2 text-xs text-muted-foreground">
-          {fmtWorkItemsProgress(item.work_items)}
+          {fmtWorkItemsProgress(item.work_items, isZh)}
         </div>
       </CardContent>
     </Card>
@@ -127,6 +139,7 @@ function RunSkeleton() {
 
 export function SquarePage() {
   const nav = useNavigate();
+  const { t, locale, isZh } = useI18n();
 
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
@@ -216,27 +229,48 @@ export function SquarePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loading, nextOffset]); // Depend on nextOffset to refresh closure
 
+  const planetNodes = useMemo<SquarePlanetNode[]>(() => {
+    return (items ?? [])
+      .slice(0, 40)
+      .map((it) => {
+        const persona = String(it.persona ?? "").trim();
+        const label =
+          persona && !isUuidLike(persona) && !(isZh && isMostlyAscii(persona))
+            ? persona
+            : fmtEventKind(it.kind, locale) || t({ zh: "事件", en: "Event" });
+        return { id: `${it.run_id}:${it.seq}`, label, runId: it.run_id };
+      });
+  }, [items, isZh, locale, t]);
+
   return (
     <div className="space-y-4 pb-4">
+      <div className="sticky top-14 z-10 -mx-3 border-b border-border/40 bg-background/80 px-3 py-2 backdrop-blur-md">
+        <SquarePlanetThree
+          nodes={planetNodes}
+          onSelect={(node) => nav(`/runs/${encodeURIComponent(node.runId)}`)}
+          className="h-[230px]"
+        />
+      </div>
+
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-lg font-semibold tracking-tight">最新动态</h2>
+        <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "最新动态", en: "Latest activity" })}</h2>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
-            任务列表
+            {t({ zh: "任务列表", en: "Runs" })}
           </Button>
           <Button
             variant={includeSystem ? "default" : "secondary"}
             size="sm"
             onClick={() => setIncludeSystem((v) => !v)}
           >
-            {includeSystem ? "含系统" : "不含系统"}
+            {includeSystem ? t({ zh: "含系统", en: "Include system" }) : t({ zh: "不含系统", en: "No system" })}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => setRefreshNonce((n) => n + 1)}>
-            刷新
+            {t({ zh: "刷新", en: "Refresh" })}
           </Button>
           {!isLoggedIn ? (
             <Button variant="secondary" size="sm" onClick={() => nav("/me")}>
-              登录
+              {t({ zh: "登录", en: "Sign in" })}
             </Button>
           ) : null}
         </div>
@@ -251,7 +285,7 @@ export function SquarePage() {
               className="ml-2 text-destructive underline"
               onClick={() => setRefreshNonce((n) => n + 1)}
             >
-              重试
+              {t({ zh: "重试", en: "Retry" })}
             </Button>
           </div>
         ) : null}
@@ -270,7 +304,7 @@ export function SquarePage() {
 
         {!loading && items.length === 0 && !error ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            暂无内容
+            {t({ zh: "暂无内容", en: "No items yet." })}
           </div>
         ) : null}
 
@@ -279,7 +313,7 @@ export function SquarePage() {
 
         {!hasMore && items.length > 0 && (
           <div className="py-4 text-center text-xs text-muted-foreground/50">
-            - 已经到底了 -
+            {t({ zh: "- 已经到底了 -", en: "- End -", })}
           </div>
         )}
       </div>

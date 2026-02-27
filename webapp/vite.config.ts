@@ -29,6 +29,7 @@ export default defineConfig({
             "tailwindcss-animate",
           ],
           "vendor-capacitor": ["@capacitor/app", "@capacitor/browser", "@capacitor/core"],
+          "vendor-three": ["three"],
         },
       },
     },

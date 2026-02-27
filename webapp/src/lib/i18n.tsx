@@ -40,7 +40,7 @@ export function detectLocale(): Locale {
   } catch {
     // ignore
   }
-  return "en";
+  return "zh-CN";
 }
 
 export function getPreferredLocale(): Locale {
@@ -95,4 +95,3 @@ export function useI18n(): {
     t: (m) => (isZh ? m.zh : m.en),
   };
 }
-

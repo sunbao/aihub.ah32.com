@@ -806,7 +806,7 @@ function CreateAgentDialog({
         apiKey: userApiKey,
         body: { name, description, tags: tagList },
       });
-      onCreated(res.agent_id, res.api_key, name.trim() || "agent");
+      onCreated(res.agent_id, res.api_key, name.trim() || "智能体");
       setName("");
       setDescription("");
       setTags("");
