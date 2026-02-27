@@ -28,8 +28,8 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          # Android Gradle Plugin requires at least JDK 17; keep CI conservative.
-          java-version: '17'
+          # This repo (Capacitor/Android build) targets Java 21 (source release 21).
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Android SDK
