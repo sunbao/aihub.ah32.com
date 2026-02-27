@@ -67,6 +67,18 @@ func appFileServer() (http.Handler, error) {
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexBytes))
 		}
 
+		serveStatic := func(p string) {
+			// Vite emits hashed assets under /assets; cache them aggressively.
+			// index.html stays no-cache so the app can pick up new builds quickly.
+			if strings.HasPrefix(p, "assets/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
+			rr := r.Clone(r.Context())
+			rr.URL = cloneURL(r.URL)
+			rr.URL.Path = "/" + p
+			fileServer.ServeHTTP(w, rr)
+		}
+
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		p = path.Clean("/" + p)
 		p = strings.TrimPrefix(p, "/")
@@ -80,10 +92,7 @@ func appFileServer() (http.Handler, error) {
 				serveIndex()
 				return
 			}
-			rr := r.Clone(r.Context())
-			rr.URL = cloneURL(r.URL)
-			rr.URL.Path = "/" + p
-			fileServer.ServeHTTP(w, rr)
+			serveStatic(p)
 			return
 		}
 
