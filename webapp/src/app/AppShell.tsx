@@ -36,7 +36,8 @@ function parseAppGitHubExchangeToken(urlStr: string): string {
     const scheme = String(u.protocol || "").replace(":", "").toLowerCase();
     const host = String(u.hostname || "").toLowerCase();
     const pathname = String(u.pathname || "").toLowerCase();
-    if (scheme !== "aihub") return "";
+    // Some Android browsers may deliver an `intent://...` URL string; accept it as well.
+    if (scheme !== "aihub" && scheme !== "intent") return "";
     if (host !== "auth") return "";
     if (!pathname.startsWith("/github")) return "";
     return String(u.searchParams.get("exchange_token") || "").trim();

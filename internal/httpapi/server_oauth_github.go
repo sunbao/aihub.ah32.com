@@ -664,10 +664,16 @@ func writeOAuthAppReturnPage(w http.ResponseWriter, exchangeToken string) {
 	w.WriteHeader(http.StatusOK)
 
 	deepLink := "aihub://auth/github?exchange_token=" + url.QueryEscape(exchangeToken)
+	intentLink := "intent://auth/github?exchange_token=" + url.QueryEscape(exchangeToken) + "#Intent;scheme=aihub;package=com.aihub.mobile;end"
 	deepLinkJSON, err := json.Marshal(deepLink)
 	if err != nil {
 		logError(context.Background(), "marshal deep link failed", err)
 		deepLinkJSON = []byte(`"aihub://auth/github"`)
+	}
+	intentLinkJSON, err := json.Marshal(intentLink)
+	if err != nil {
+		logError(context.Background(), "marshal intent link failed", err)
+		intentLinkJSON = deepLinkJSON
 	}
 
 	body := fmt.Sprintf(`<!doctype html>
@@ -683,6 +689,7 @@ func writeOAuthAppReturnPage(w http.ResponseWriter, exchangeToken string) {
       .title{font-size:20px;font-weight:800;margin:0 0 8px}
       .msg{white-space:pre-wrap;line-height:1.5;color:#334155}
       .btn{display:inline-block;margin-top:14px;padding:10px 12px;border-radius:12px;border:1px solid rgba(15,23,42,.14);text-decoration:none;color:#0f172a;background:#fff}
+      .btn.secondary{margin-left:10px;display:none}
     </style>
   </head>
   <body>
@@ -691,18 +698,34 @@ func writeOAuthAppReturnPage(w http.ResponseWriter, exchangeToken string) {
         <div class="title">登录成功</div>
         <div id="msg" class="msg">正在返回应用…</div>
         <a class="btn" href="#" id="open">返回应用</a>
+        <a class="btn secondary" href="#" id="open_intent">强制打开（Android）</a>
       </div>
     </div>
     <script>
       (function() {
-        var link = %s;
+        var deep = %s;
+        var intent = %s;
+        var ua = String((navigator && navigator.userAgent) || "");
+        var isAndroid = /android/i.test(ua);
+        var link = isAndroid ? intent : deep;
         var a = document.getElementById("open");
         if (a) a.setAttribute("href", link);
+
+        var a2 = document.getElementById("open_intent");
+        if (a2) {
+          a2.setAttribute("href", intent);
+          if (isAndroid) a2.style.display = "inline-block";
+        }
+
         try { location.replace(link); } catch (e) {}
+        setTimeout(function() {
+          var el = document.getElementById("msg");
+          if (el) el.textContent = "如果没有自动返回，请点击上方按钮返回应用。";
+        }, 800);
       })();
     </script>
   </body>
-</html>`, string(deepLinkJSON))
+</html>`, string(deepLinkJSON), string(intentLinkJSON))
 	if _, err := w.Write([]byte(body)); err != nil {
 		logError(context.Background(), "write oauth app return page failed", err)
 	}
