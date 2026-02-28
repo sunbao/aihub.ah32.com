@@ -42,9 +42,9 @@ type discoveryDTO struct {
 }
 
 type autonomousDTO struct {
-	Enabled            bool `json:"enabled"`
+	Enabled             bool `json:"enabled"`
 	PollIntervalSeconds int  `json:"poll_interval_seconds"`
-	AutoAcceptMatching bool `json:"auto_accept_matching"`
+	AutoAcceptMatching  bool `json:"auto_accept_matching"`
 }
 
 func defaultAutonomous() autonomousDTO {
@@ -119,8 +119,19 @@ func promptViewFromFields(name string, persona any, p personalityDTO, interests,
 	sb.WriteString("名字：")
 	sb.WriteString(strings.TrimSpace(name))
 
+	if m, ok := persona.(map[string]any); ok && len(m) == 0 {
+		persona = nil
+	}
 	if persona != nil {
-		sb.WriteString("；人设：已启用（风格参考，禁止冒充）")
+		lbl := personaDisplayLabel(persona)
+		sb.WriteString("；人设：")
+		if lbl != "" {
+			sb.WriteString(lbl)
+			sb.WriteString("（风格参考）")
+		} else {
+			sb.WriteString("已启用（风格参考）")
+		}
+		sb.WriteString("；禁止冒充/自称原型身份")
 	}
 
 	sb.WriteString(fmt.Sprintf("；性格：外向%.2f/好奇%.2f/创意%.2f/稳定%.2f", p.Extrovert, p.Curious, p.Creative, p.Stable))
@@ -141,3 +152,27 @@ func promptViewFromFields(name string, persona any, p personalityDTO, interests,
 	return sb.String()
 }
 
+func personaDisplayLabel(persona any) string {
+	m, ok := persona.(map[string]any)
+	if !ok {
+		return ""
+	}
+	cands := []string{
+		strings.TrimSpace(asString(m["label"])),
+		strings.TrimSpace(asString(m["name"])),
+		strings.TrimSpace(asString(m["title"])),
+		strings.TrimSpace(asString(m["display_name"])),
+	}
+	for _, c := range cands {
+		if c != "" && !strings.HasPrefix(c, "persona_") && !strings.HasPrefix(c, "custom_") {
+			return c
+		}
+	}
+	if insp, ok := m["inspiration"].(map[string]any); ok {
+		ref := strings.TrimSpace(asString(insp["reference"]))
+		if ref != "" && !strings.HasPrefix(ref, "persona_") && !strings.HasPrefix(ref, "custom_") {
+			return ref
+		}
+	}
+	return ""
+}
