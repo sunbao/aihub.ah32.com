@@ -12,18 +12,20 @@ import (
 )
 
 type personaTemplateDTO struct {
-	ID          string `json:"id"`
-	Source      string `json:"source"`
-	OwnerID     string `json:"owner_id,omitempty"`
+	ID           string `json:"id"`
+	Source       string `json:"source"`
+	OwnerID      string `json:"owner_id,omitempty"`
 	ReviewStatus string `json:"review_status"`
-	Persona     any    `json:"persona"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	Persona      any    `json:"persona"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 type approvedPersonaTemplateDTO struct {
 	TemplateID   string `json:"template_id"`
 	ReviewStatus string `json:"review_status"`
+	Label        string `json:"label,omitempty"`
+	LabelEn      string `json:"label_en,omitempty"`
 	Persona      any    `json:"persona"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -58,9 +60,9 @@ func (s server) handleListApprovedPersonaTemplates(w http.ResponseWriter, r *htt
 	out := make([]approvedPersonaTemplateDTO, 0, limit)
 	for rows.Next() {
 		var (
-			id        string
+			id         string
 			personaRaw []byte
-			updatedAt time.Time
+			updatedAt  time.Time
 		)
 		if err := rows.Scan(&id, &personaRaw, &updatedAt); err != nil {
 			logError(ctx, "scan approved persona_templates failed", err)
@@ -72,9 +74,44 @@ func (s server) handleListApprovedPersonaTemplates(w http.ResponseWriter, r *htt
 			logError(ctx, "unmarshal approved persona template failed", err)
 			persona = map[string]any{}
 		}
+
+		// Provide top-level labels for older clients; still return the full persona JSON.
+		// Avoid surfacing internal IDs as UI labels.
+		label := ""
+		labelEn := ""
+		if m, ok := persona.(map[string]any); ok {
+			cands := []string{}
+			if v, ok := m["label"].(string); ok {
+				cands = append(cands, strings.TrimSpace(v))
+			}
+			if v, ok := m["name"].(string); ok {
+				cands = append(cands, strings.TrimSpace(v))
+			}
+			if v, ok := m["title"].(string); ok {
+				cands = append(cands, strings.TrimSpace(v))
+			}
+			if v, ok := m["display_name"].(string); ok {
+				cands = append(cands, strings.TrimSpace(v))
+			}
+			for _, c := range cands {
+				if c == "" {
+					continue
+				}
+				if c == id || strings.HasPrefix(c, "persona_") || strings.HasPrefix(c, "custom_") {
+					continue
+				}
+				label = c
+				break
+			}
+			if v, ok := m["label_en"].(string); ok {
+				labelEn = strings.TrimSpace(v)
+			}
+		}
 		out = append(out, approvedPersonaTemplateDTO{
 			TemplateID:   id,
 			ReviewStatus: "approved",
+			Label:        label,
+			LabelEn:      labelEn,
 			Persona:      persona,
 			UpdatedAt:    updatedAt.UTC().Format(time.RFC3339),
 		})
@@ -132,13 +169,13 @@ func (s server) handleAdminListPersonaTemplates(w http.ResponseWriter, r *http.R
 	var out []personaTemplateDTO
 	for rows.Next() {
 		var (
-			id          string
-			source      string
-			ownerID     *uuid.UUID
-			personaRaw  []byte
+			id           string
+			source       string
+			ownerID      *uuid.UUID
+			personaRaw   []byte
 			reviewStatus string
-			createdAt   time.Time
-			updatedAt   time.Time
+			createdAt    time.Time
+			updatedAt    time.Time
 		)
 		if err := rows.Scan(&id, &source, &ownerID, &personaRaw, &reviewStatus, &createdAt, &updatedAt); err != nil {
 			logError(ctx, "scan persona_templates failed", err)
@@ -215,8 +252,8 @@ func (s server) handleAdminSetPersonaTemplateStatus(w http.ResponseWriter, r *ht
 
 // Owner endpoint (draft): submit a custom persona template for review.
 type submitPersonaTemplateRequest struct {
-	ID     string `json:"id,omitempty"`
-	Persona any   `json:"persona"`
+	ID      string `json:"id,omitempty"`
+	Persona any    `json:"persona"`
 }
 
 func (s server) handleSubmitPersonaTemplate(w http.ResponseWriter, r *http.Request) {

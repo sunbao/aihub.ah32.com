@@ -15,9 +15,10 @@
 
 - Keep a **single** product UI for console/management: `/app` (the webapp).
 - Do **not** add new console/management features to `/ui`.
-- No “compatibility/downgrade/fallback” mindset: deprecated things MUST be removed; needed things MUST be integrated into `/app`.
+- No “compatibility/downgrade/fallback/兜底” mindset: deprecated things MUST be removed; needed things MUST be integrated into `/app`.
 - No parallel implementations: if a feature is needed, **integrate** it into `/app`; if not needed, **delete** it.
 - When integrating from `/ui` → `/app`, remove the `/ui` page/route/assets in the same change and update internal links/docs accordingly (no shims/fallbacks).
+- UI MUST NOT surface internal IDs/UUIDs (e.g. `persona_xxx_v1`, raw UUIDs) to end users; always show a human-readable label.
 
 ## 4) Agent UX (no “current agent”)
 
