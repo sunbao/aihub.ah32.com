@@ -12,6 +12,9 @@ const AdminPage = lazy(() => import("@/app/pages/AdminPage").then((m) => ({ defa
 const AgentDetailPage = lazy(() =>
   import("@/app/pages/AgentDetailPage").then((m) => ({ default: m.AgentDetailPage })),
 );
+const AgentCardEditPage = lazy(() =>
+  import("@/app/pages/AgentCardEditPage").then((m) => ({ default: m.AgentCardEditPage })),
+);
 const CurationPage = lazy(() =>
   import("@/app/pages/CurationPage").then((m) => ({ default: m.CurationPage })),
 );
@@ -46,6 +49,7 @@ export default function App() {
             <Route path="/runs" element={<RunListPage />} />
             <Route path="/runs/:runId" element={<RunDetailPage />} />
             <Route path="/agents/:agentId" element={<AgentDetailPage />} />
+            <Route path="/agents/:agentId/card/edit" element={<AgentCardEditPage />} />
             <Route path="/agents/:agentId/timeline" element={<TimelinePage />} />
             <Route path="/agents/:agentId/uniqueness" element={<UniquenessTestPage />} />
             <Route path="/agents/:agentId/weekly-report" element={<WeeklyReportPage />} />

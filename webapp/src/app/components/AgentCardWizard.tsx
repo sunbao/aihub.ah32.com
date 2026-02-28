@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -236,26 +235,51 @@ function mapLabelsToEn(labels: string[], map: Map<string, string>): string[] {
     .filter(Boolean);
 }
 
-export function AgentCardWizardDialog({
+export function AgentCardWizard({
   agentId,
   userApiKey,
   onSaved,
-  open,
-  onRequestClose,
 }: {
   agentId: string;
   userApiKey: string;
   onSaved?: () => void;
-  open?: boolean;
-  onRequestClose?: () => void;
 }) {
   const { toast } = useToast();
   const { t, isZh } = useI18n();
   const nav = useNavigate();
-
-  const isOpen = open ?? true;
+  const [sp, setSp] = useSearchParams();
 
   const [step, setStep] = useState(0);
+  const stepFromUrl = useMemo(() => {
+    const raw = String(sp.get("step") ?? "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    const v = Math.max(0, Math.min(6, Math.floor(n)));
+    return v;
+  }, [sp]);
+
+  useEffect(() => {
+    if (stepFromUrl == null) return;
+    if (stepFromUrl === step) return;
+    setStep(stepFromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepFromUrl]);
+
+  useEffect(() => {
+    const cur = String(sp.get("step") ?? "").trim();
+    const next = new URLSearchParams(sp);
+    if (step === 0) {
+      if (!cur) return;
+      next.delete("step");
+      setSp(next, { replace: true });
+      return;
+    }
+    const want = String(step);
+    if (cur === want) return;
+    next.set("step", want);
+    setSp(next, { replace: true });
+  }, [setSp, sp, step]);
   const [agent, setAgent] = useState<AgentFull | null>(null);
   const [catalogs, setCatalogs] = useState<AgentCardCatalogs | null>(null);
   const [personaTemplates, setPersonaTemplates] = useState<ApprovedPersonaTemplate[]>([]);
@@ -451,7 +475,7 @@ export function AgentCardWizardDialog({
       });
       setPersonalityPresetId(preset?.id ?? "");
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog loadAll failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard loadAll failed", { agentId, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -459,14 +483,12 @@ export function AgentCardWizardDialog({
   }
 
   useEffect(() => {
-    if (!isOpen) return;
-    setStep(0);
     setError("");
     setPersonaTouched(false);
     setPersonaTemplateId("");
     void loadAll(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, isOpen]);
+  }, [agentId]);
 
   async function loadEvaluations() {
     if (!agentId) return;
@@ -479,7 +501,7 @@ export function AgentCardWizardDialog({
       );
       setEvals(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog load evaluations failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard load evaluations failed", { agentId, error: e });
       setEvalError(String(e?.message ?? t({ zh: "测评记录加载失败", en: "Failed to load evaluations" })));
     } finally {
       setEvalLoading(false);
@@ -505,7 +527,7 @@ export function AgentCardWizardDialog({
       );
       setRecentTopics(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog load recent topics failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard load recent topics failed", { agentId, error: e });
       setRecentTopicsError(String(e?.message ?? t({ zh: "加载失败", en: "Load failed" })));
       setRecentTopics([]);
     } finally {
@@ -520,7 +542,7 @@ export function AgentCardWizardDialog({
       const res = await apiFetchJson<ActivityResponseLite>(`/v1/activity?limit=10&offset=0`, { apiKey: userApiKey });
       setRecentRuns(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog load recent runs failed", { error: e });
+      console.warn("[AIHub] AgentCardWizard load recent runs failed", { error: e });
       setRecentRunsError(String(e?.message ?? t({ zh: "加载失败", en: "Load failed" })));
       setRecentRuns([]);
     } finally {
@@ -539,7 +561,7 @@ export function AgentCardWizardDialog({
       });
       setWorkItemRunItems(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog load run work items failed", { runId: rid, error: e });
+      console.warn("[AIHub] AgentCardWizard load run work items failed", { runId: rid, error: e });
       setWorkItemRunError(String(e?.message ?? t({ zh: "加载任务失败", en: "Failed to load work items" })));
       setWorkItemRunItems([]);
     } finally {
@@ -664,7 +686,7 @@ export function AgentCardWizardDialog({
       setWorkItemRunItems([]);
       await loadEvaluations();
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog create evaluation failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard create evaluation failed", { agentId, error: e });
       setEvalError(String(e?.message ?? t({ zh: "发起测评失败", en: "Failed to start evaluation" })));
     } finally {
       setEvalCreating(false);
@@ -686,7 +708,7 @@ export function AgentCardWizardDialog({
       );
       setSnapshotData(res);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog load evaluation snapshot failed", { agentId, evaluationId: ev.evaluation_id, error: e });
+      console.warn("[AIHub] AgentCardWizard load evaluation snapshot failed", { agentId, evaluationId: ev.evaluation_id, error: e });
       setSnapshotError(String(e?.message ?? t({ zh: "加载快照失败", en: "Failed to load snapshot" })));
     } finally {
       setSnapshotLoading(false);
@@ -706,7 +728,7 @@ export function AgentCardWizardDialog({
       toast({ title: t({ zh: "已删除", en: "Deleted" }) });
       await loadEvaluations();
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog delete evaluation failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard delete evaluation failed", { agentId, error: e });
       setEvalError(String(e?.message ?? t({ zh: "删除失败", en: "Delete failed" })));
     } finally {
       setEvalDeletingId("");
@@ -768,9 +790,8 @@ export function AgentCardWizardDialog({
 
       toast({ title: t({ zh: "已保存", en: "Saved" }) });
       onSaved?.();
-      onRequestClose?.();
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizardDialog save failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard save failed", { agentId, error: e });
       setError(String(e?.message ?? "保存失败"));
     } finally {
       setSaving(false);
@@ -967,12 +988,11 @@ export function AgentCardWizardDialog({
   ]);
 
   return (
-    <DialogContent className="max-h-[80vh] p-0">
-      <div className="flex max-h-[80vh] flex-col">
-        <DialogHeader className="px-6 pt-6">
-          <DialogTitle>{t({ zh: "智能体卡片向导", en: "Agent Card Wizard" })}</DialogTitle>
-          <div className="mt-1 text-sm text-muted-foreground">{stepTitle()}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
+    <div className="w-full">
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <div className="text-sm text-muted-foreground">{stepTitle()}</div>
+          <div className="flex flex-wrap gap-2">
             {[
               t({ zh: "基础", en: "Basics" }),
               t({ zh: "人设", en: "Persona" }),
@@ -1004,40 +1024,37 @@ export function AgentCardWizardDialog({
               </Button>
             ))}
           </div>
-        </DialogHeader>
+        </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-4">
-          <div className="sticky top-0 z-10 -mx-6 px-6 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            {loading && !agent ? <div className="text-sm text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
-            {error ? <div className="text-sm text-destructive">{error}</div> : null}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          {loading && !agent ? <div className="text-sm text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
+          {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-            {agent ? (
-              <Card className={`shadow-none ${toneCard}`}>
-                <CardContent className="pt-3 pb-3 text-xs text-muted-foreground">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
-                    {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
-                    {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
-                  </div>
-                  <details className="mt-2" open>
-                    <summary className="cursor-pointer select-none font-medium text-foreground">
-                      {t({ zh: "预览", en: "Preview" })}
+          {agent ? (
+            <Card className={`shadow-none ${toneCard}`}>
+              <CardContent className="pt-3 pb-3 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
+                  {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
+                  {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
+                </div>
+                <details className="mt-2" open>
+                  <summary className="cursor-pointer select-none font-medium text-foreground">{t({ zh: "预览", en: "Preview" })}</summary>
+                  {promptPreviewText ? <div className="mt-2 text-xs text-foreground break-words">{promptPreviewText}</div> : null}
+                  {requiredBlocker ? <div className="mt-2 text-xs text-destructive">{requiredBlocker}</div> : null}
+                  <details className="mt-2">
+                    <summary className="cursor-pointer select-none text-xs text-muted-foreground">
+                      {t({ zh: "已保存版本（prompt_view）", en: "Saved version (prompt_view)" })}
                     </summary>
-                    {promptPreviewText ? <div className="mt-2 text-xs text-foreground break-words">{promptPreviewText}</div> : null}
-                    {requiredBlocker ? <div className="mt-2 text-xs text-destructive">{requiredBlocker}</div> : null}
-                    <details className="mt-2">
-                      <summary className="cursor-pointer select-none text-xs text-muted-foreground">
-                        {t({ zh: "已保存版本（prompt_view）", en: "Saved version (prompt_view)" })}
-                      </summary>
-                      <div className="mt-1 whitespace-pre-wrap text-xs">{agent.prompt_view || t({ zh: "（空）", en: "(empty)" })}</div>
-                    </details>
+                    <div className="mt-1 whitespace-pre-wrap text-xs">{agent.prompt_view || t({ zh: "（空）", en: "(empty)" })}</div>
                   </details>
-                </CardContent>
-              </Card>
-            ) : null}
-          </div>
+                </details>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
 
-          <div className="space-y-3 pt-3">
+        <div className="space-y-3">
 
             {agent && catalogs ? (
               <>
@@ -1648,23 +1665,26 @@ export function AgentCardWizardDialog({
               </>
             ) : null}
           </div>
-        </div>
 
-        <DialogFooter className="gap-2 border-t bg-background/95 px-6 py-4 sm:gap-0">
-          <Button variant="secondary" disabled={!canGoPrev || saving} onClick={() => setStep((s) => Math.max(0, s - 1))}>
-            上一步
-          </Button>
-          {canGoNext ? (
-            <Button disabled={saving} onClick={() => setStep((s) => Math.min(6, s + 1))}>
-              下一步
+          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-2 border-t bg-background/95 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <Button
+              variant="secondary"
+              disabled={!canGoPrev || saving}
+              onClick={() => setStep((s) => Math.max(0, s - 1))}
+            >
+              {t({ zh: "上一步", en: "Back" })}
             </Button>
-          ) : (
-            <Button disabled={saving || loading || !agent} onClick={save}>
-              {saving ? "保存中…" : "保存"}
-            </Button>
-          )}
-        </DialogFooter>
-      </div>
+            {canGoNext ? (
+              <Button disabled={saving} onClick={() => setStep((s) => Math.min(6, s + 1))}>
+                {t({ zh: "下一步", en: "Next" })}
+              </Button>
+            ) : (
+              <Button disabled={saving || loading || !agent} onClick={save}>
+                {t({ zh: saving ? "保存中…" : "保存", en: saving ? "Saving…" : "Save" })}
+              </Button>
+            )}
+          </div>
+        </div>
 
       <AlertDialog
         open={Boolean(evalConfirmDelete)}
@@ -1797,6 +1817,6 @@ export function AgentCardWizardDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DialogContent>
+    </div>
   );
 }

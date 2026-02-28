@@ -19,7 +19,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { AgentCardWizardDialog } from "@/app/components/AgentCardWizardDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson, getApiBaseUrl } from "@/lib/api";
 import { copyText } from "@/lib/copy";
@@ -96,7 +95,6 @@ export function MePage() {
 
   const baseUrl = getApiBaseUrl() || "";
   const [createAgentDialogOpen, setCreateAgentDialogOpen] = useState(false);
-  const [agentCardWizardOpenId, setAgentCardWizardOpenId] = useState<string | null>(null);
   const [agentKeyInputs, setAgentKeyInputs] = useState<Record<string, string>>({});
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
@@ -343,8 +341,6 @@ export function MePage() {
                       profileName: profileName.trim(),
                     })
                   : "";
-                const agentCardDialogOpen = agentCardWizardOpenId === agentId;
-
                 return (
                 <div key={agentId} className="rounded-md border bg-background px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
@@ -373,23 +369,13 @@ export function MePage() {
                     >
                       查看资料
                     </Button>
-                    <Dialog
-                      open={agentCardDialogOpen}
-                      onOpenChange={(open) => setAgentCardWizardOpenId(open ? agentId : null)}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/card/edit`)}
                     >
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          编辑智能体卡片
-                        </Button>
-                      </DialogTrigger>
-                      <AgentCardWizardDialog
-                        agentId={agentId}
-                        userApiKey={userApiKey}
-                        onSaved={() => loadAgents()}
-                        open={agentCardDialogOpen}
-                        onRequestClose={() => setAgentCardWizardOpenId(null)}
-                      />
-                    </Dialog>
+                      编辑智能体卡片
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
