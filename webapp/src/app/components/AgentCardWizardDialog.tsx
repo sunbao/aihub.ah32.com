@@ -82,6 +82,8 @@ type UpdateAgentRequest = {
 type ApprovedPersonaTemplate = {
   template_id: string;
   review_status: "approved";
+  label?: string;
+  label_en?: string;
   persona: any;
   updated_at: string;
 };
@@ -306,6 +308,7 @@ export function AgentCardWizardDialog({
 
   const [personaTemplateId, setPersonaTemplateId] = useState<string>("");
   const [personaTouched, setPersonaTouched] = useState(false);
+  const [showAllPersonaTemplates, setShowAllPersonaTemplates] = useState(false);
 
   const [personalityPresetId, setPersonalityPresetId] = useState<string>("");
   const [pExtrovert, setPExtrovert] = useState(0.5);
@@ -603,26 +606,36 @@ export function AgentCardWizardDialog({
   }
 
   function fmtPersonaTemplateLabel(tpl: ApprovedPersonaTemplate, idx: number): string {
+    const direct = isZh ? String(tpl?.label ?? "").trim() : String(tpl?.label_en ?? "").trim();
+    if (direct) return direct;
+
     const p = (tpl?.persona ?? {}) as any;
-    const cand = (isZh
+    const raw = isZh
       ? [
           String(p?.label ?? "").trim(),
           String(p?.name ?? "").trim(),
           String(p?.title ?? "").trim(),
           String(p?.display_name ?? "").trim(),
+          String(p?.inspiration?.reference ?? "").trim(),
         ]
       : [
           String(p?.label_en ?? "").trim(),
           String(p?.name_en ?? "").trim(),
           String(p?.title_en ?? "").trim(),
           String(p?.display_name_en ?? "").trim(),
+          String(p?.inspiration?.reference_en ?? "").trim(),
           String(p?.label ?? "").trim(),
           String(p?.name ?? "").trim(),
           String(p?.title ?? "").trim(),
           String(p?.display_name ?? "").trim(),
-        ]
-    ).filter(Boolean);
-    if (cand.length) return cand[0];
+          String(p?.inspiration?.reference ?? "").trim(),
+        ];
+    const tid = String(tpl?.template_id ?? "").trim();
+    const cand = raw
+      .filter(Boolean)
+      .filter((s) => String(s).trim() !== tid)
+      .filter((s) => !/^persona_/.test(String(s)) && !/^custom_/.test(String(s)));
+    if (cand.length) return String(cand[0]);
     return t({ zh: `模板 ${idx + 1}`, en: `Template ${idx + 1}` });
   }
 
@@ -753,7 +766,7 @@ export function AgentCardWizardDialog({
                     >
                       {t({ zh: "不设置", en: "None" })}
                     </Button>
-                  {personaTemplates.slice(0, 40).map((tpl, idx) => (
+                  {(showAllPersonaTemplates ? personaTemplates : personaTemplates.slice(0, 40)).map((tpl, idx) => (
                     <Button
                       key={tpl.template_id}
                       variant={personaTemplateId === tpl.template_id ? "default" : "secondary"}
@@ -767,6 +780,21 @@ export function AgentCardWizardDialog({
                     </Button>
                   ))}
                 </div>
+
+                {personaTemplates.length > 40 ? (
+                  <div className="pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAllPersonaTemplates((v) => !v)}
+                      disabled={saving || loading}
+                    >
+                      {showAllPersonaTemplates
+                        ? t({ zh: "收起人设模板", en: "Show fewer templates" })
+                        : t({ zh: "显示更多人设模板", en: "Show more templates" })}
+                    </Button>
+                  </div>
+                ) : null}
 
                 {!personaTouched && agent.persona ? (
                   <div className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
