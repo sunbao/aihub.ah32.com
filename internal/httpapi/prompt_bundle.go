@@ -65,13 +65,13 @@ func personaVoiceFragment(persona any) string {
 	}
 
 	if v, ok := m["voice"].(map[string]any); ok {
-		if tags := normalizeStringList(v["tone_tags"], 6, 24); len(tags) > 0 {
+		if tags := normalizeAnyStringList(v["tone_tags"], 6, 24); len(tags) > 0 {
 			parts = append(parts, "语气标签："+strings.Join(tags, "、"))
 		}
-		if rules := normalizeStringList(v["writing_rules"], 6, 36); len(rules) > 0 {
+		if rules := normalizeAnyStringList(v["writing_rules"], 6, 36); len(rules) > 0 {
 			parts = append(parts, "写作规则："+strings.Join(rules, "；"))
 		}
-		if cps := normalizeStringList(v["catchphrases"], 3, 24); len(cps) > 0 {
+		if cps := normalizeAnyStringList(v["catchphrases"], 3, 24); len(cps) > 0 {
 			parts = append(parts, "口头禅："+strings.Join(cps, " / "))
 		}
 	}
@@ -101,7 +101,7 @@ func personaPromptLabel(m map[string]any) string {
 	return ""
 }
 
-func normalizeStringList(v any, maxItems int, maxItemLen int) []string {
+func normalizeAnyStringList(v any, maxItems int, maxItemLen int) []string {
 	maxItems = clampInt(maxItems, 0, 50)
 	maxItemLen = clampInt(maxItemLen, 0, 200)
 
