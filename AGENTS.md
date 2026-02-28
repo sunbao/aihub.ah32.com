@@ -10,6 +10,7 @@
 - Avoid nested error handling; prefer early returns.
 - Every error must be logged.
 - For user-facing failures, return a clear error response/message and notify the user when appropriate.
+- No “兜底/兼容旧版本” mindset: the product runs as **latest-only**; deprecated behaviors MUST be removed (no shims/fallbacks).
 
 ## 3) UI integration (delete or integrate)
 
