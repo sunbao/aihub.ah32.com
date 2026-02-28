@@ -23,7 +23,7 @@ import { apiFetchJson } from "@/lib/api";
 import { fmtAgentStatus, fmtRunStatus, fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { getAgentCardCatalogs, renderCatalogTemplate, type AgentCardCatalogs, type CatalogLabeledItem, type CatalogTextTemplate } from "@/app/lib/agentCardCatalogs";
-import { MultiSelect } from "@/app/components/AgentCardWizardMultiSelect";
+import { MultiSelect, toneClasses, type AgentCardWizardTone } from "@/app/components/AgentCardWizardMultiSelect";
 
 type Personality = {
   extrovert: number;
@@ -830,7 +830,7 @@ export function AgentCardWizardDialog({
     }
   }
 
-  const stepTone = useMemo(() => {
+  const stepTone = useMemo<AgentCardWizardTone>(() => {
     switch (step) {
       case 0:
         return "cyan";
@@ -849,20 +849,7 @@ export function AgentCardWizardDialog({
     }
   }, [step]);
 
-  const toneCard =
-    stepTone === "cyan"
-      ? "border-l-4 border-cyan-500/50"
-      : stepTone === "violet"
-        ? "border-l-4 border-violet-500/50"
-        : stepTone === "indigo"
-          ? "border-l-4 border-indigo-500/50"
-          : stepTone === "green"
-            ? "border-l-4 border-green-500/50"
-            : stepTone === "sky"
-              ? "border-l-4 border-sky-500/50"
-              : stepTone === "amber"
-                ? "border-l-4 border-amber-500/50"
-                : "border-l-4 border-slate-500/50";
+  const toneCard = useMemo(() => toneClasses(stepTone).card || "border-l-4 border-slate-500/40", [stepTone]);
 
   const basicsValid = useMemo(() => {
     return String(name ?? "").trim().length > 0 && String(description ?? "").trim().length > 0;
@@ -1106,11 +1093,7 @@ export function AgentCardWizardDialog({
                     <Button
                       key={tpl.template_id}
                       variant={personaTemplateId === tpl.template_id ? "secondary" : "outline"}
-                      className={
-                        personaTemplateId === tpl.template_id
-                          ? "bg-violet-600 text-white hover:bg-violet-600/90"
-                          : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
-                      }
+                      className={personaTemplateId === tpl.template_id ? toneClasses("violet").active : toneClasses("violet").inactive}
                       size="sm"
                       onClick={() => {
                         setPersonaTemplateId((cur) => (cur === tpl.template_id ? "" : tpl.template_id));
@@ -1165,11 +1148,7 @@ export function AgentCardWizardDialog({
                       <Button
                         key={pp.id}
                         variant={personalityPresetId === pp.id ? "secondary" : "outline"}
-                        className={
-                          personalityPresetId === pp.id
-                            ? "justify-start bg-indigo-600 text-white hover:bg-indigo-600/90"
-                            : "justify-start border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                        }
+                        className={`justify-start ${personalityPresetId === pp.id ? toneClasses("indigo").active : toneClasses("indigo").inactive}`}
                         onClick={() => {
                           setPersonalityPresetId(pp.id);
                           setPExtrovert(Number(pp.values.extrovert));
@@ -1235,11 +1214,7 @@ export function AgentCardWizardDialog({
                           key={tpl.id}
                           size="sm"
                           variant={!bioCustom && bioTemplateId === tpl.id ? "secondary" : "outline"}
-                          className={
-                            !bioCustom && bioTemplateId === tpl.id
-                              ? "bg-amber-600 text-white hover:bg-amber-600/90"
-                              : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                          }
+                          className={!bioCustom && bioTemplateId === tpl.id ? toneClasses("amber").active : toneClasses("amber").inactive}
                           onClick={() => {
                             setBioCustom(false);
                             setBioTemplateId(tpl.id);
@@ -1253,11 +1228,7 @@ export function AgentCardWizardDialog({
                     <Button
                       size="sm"
                       variant={bioCustom ? "secondary" : "outline"}
-                      className={
-                        bioCustom
-                          ? "bg-amber-600 text-white hover:bg-amber-600/90"
-                          : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                      }
+                      className={bioCustom ? toneClasses("amber").active : toneClasses("amber").inactive}
                       onClick={() => setBioCustom((v) => !v)}
                     >
                       {t({ zh: "自定义", en: "Custom" })}
@@ -1288,11 +1259,7 @@ export function AgentCardWizardDialog({
                           key={tpl.id}
                           size="sm"
                           variant={!greetingCustom && greetingTemplateId === tpl.id ? "secondary" : "outline"}
-                          className={
-                            !greetingCustom && greetingTemplateId === tpl.id
-                              ? "bg-amber-600 text-white hover:bg-amber-600/90"
-                              : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                          }
+                          className={!greetingCustom && greetingTemplateId === tpl.id ? toneClasses("amber").active : toneClasses("amber").inactive}
                           onClick={() => {
                             setGreetingCustom(false);
                             setGreetingTemplateId(tpl.id);
@@ -1306,11 +1273,7 @@ export function AgentCardWizardDialog({
                     <Button
                       size="sm"
                       variant={greetingCustom ? "secondary" : "outline"}
-                      className={
-                        greetingCustom
-                          ? "bg-amber-600 text-white hover:bg-amber-600/90"
-                          : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                      }
+                      className={greetingCustom ? toneClasses("amber").active : toneClasses("amber").inactive}
                       onClick={() => setGreetingCustom((v) => !v)}
                     >
                       {t({ zh: "自定义", en: "Custom" })}
@@ -1387,11 +1350,7 @@ export function AgentCardWizardDialog({
                       <Button
                         size="sm"
                         variant={evalSourceKind === "topic" ? "secondary" : "outline"}
-                        className={
-                          evalSourceKind === "topic"
-                            ? "bg-slate-700 text-white hover:bg-slate-700/90"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }
+                        className={evalSourceKind === "topic" ? toneClasses("slate").active : toneClasses("slate").inactive}
                         onClick={() => {
                           clearEvalSourceIds();
                           setEvalSourceKind("topic");
@@ -1402,11 +1361,7 @@ export function AgentCardWizardDialog({
                       <Button
                         size="sm"
                         variant={evalSourceKind === "work_item" ? "secondary" : "outline"}
-                        className={
-                          evalSourceKind === "work_item"
-                            ? "bg-slate-700 text-white hover:bg-slate-700/90"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }
+                        className={evalSourceKind === "work_item" ? toneClasses("slate").active : toneClasses("slate").inactive}
                         onClick={() => {
                           clearEvalSourceIds();
                           setEvalSourceKind("work_item");
@@ -1417,11 +1372,7 @@ export function AgentCardWizardDialog({
                       <Button
                         size="sm"
                         variant={evalSourceKind === "run" ? "secondary" : "outline"}
-                        className={
-                          evalSourceKind === "run"
-                            ? "bg-slate-700 text-white hover:bg-slate-700/90"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }
+                        className={evalSourceKind === "run" ? toneClasses("slate").active : toneClasses("slate").inactive}
                         onClick={() => {
                           clearEvalSourceIds();
                           setEvalSourceKind("run");
