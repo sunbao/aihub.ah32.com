@@ -890,87 +890,67 @@ export function AgentCardWizardDialog({
   }, [maxUnlockedStep]);
 
   const requiredBlocker = useMemo(() => {
-    if (!basicsValid) return t({ zh: "请先填写基础信息：名字 + 一句话介绍", en: "Fill basics first: name + one-liner." });
-    if (!interestsValid) return t({ zh: "请先选择兴趣：至少 1 个", en: "Select interests first: at least 1." });
-    if (!capabilitiesValid) return t({ zh: "请先选择能力：至少 1 个", en: "Select capabilities first: at least 1." });
-    if (!copyValid) return t({ zh: "请先填写文案：简介 + 问候语", en: "Fill copy first: bio + greeting." });
+    if (!basicsValid) return t({ zh: "请先完成必填：名字 + 一句话介绍", en: "Complete required fields: name + one-liner." });
+    if (!interestsValid) return t({ zh: "请先在第 4 步至少选择 1 项", en: "Step 4: pick at least 1 item." });
+    if (!capabilitiesValid) return t({ zh: "请先在第 5 步至少选择 1 项", en: "Step 5: pick at least 1 item." });
+    if (!copyValid) return t({ zh: "请先完成必填：简介 + 问候语", en: "Complete required fields: bio + greeting." });
     return "";
   }, [basicsValid, capabilitiesValid, copyValid, interestsValid, t]);
 
   const promptPreviewText = useMemo(() => {
-    const lines: string[] = [];
+    const parts: string[] = [];
+    const sep = isZh ? "；" : "; ";
+    const joiner = isZh ? "、" : ", ";
+
+    function clip(s: string, maxLen: number): string {
+      const v = String(s ?? "").trim();
+      if (!v) return "";
+      if (v.length <= maxLen) return v;
+      return v.slice(0, maxLen).trim() + "…";
+    }
+
     const nameV = String(name ?? "").trim();
     const descV = String(description ?? "").trim();
-    const bioV = String(bio ?? "").trim();
-    const greetV = String(greeting ?? "").trim();
+    if (nameV || descV) {
+      if (nameV && descV) parts.push(`${nameV}：${descV}`);
+      else parts.push(nameV || descV);
+    }
 
-    lines.push(t({ zh: "【智能体卡片（预览）】", en: "[Agent Card Preview]" }));
-    lines.push("");
-
-    lines.push(t({ zh: "基础", en: "Basics" }));
-    lines.push(`- ${t({ zh: "名字", en: "Name" })}：${nameV || t({ zh: "（未填写）", en: "(missing)" })}`);
-    lines.push(`- ${t({ zh: "一句话介绍", en: "One-liner" })}：${descV || t({ zh: "（未填写）", en: "(missing)" })}`);
-    lines.push(`- ${t({ zh: "头像", en: "Avatar" })}：${String(avatarUrl ?? "").trim() ? t({ zh: "已设置", en: "Set" }) : t({ zh: "未设置", en: "Not set" })}`);
-    lines.push("");
-
-    lines.push(t({ zh: "人设（风格参考）", en: "Persona (style reference)" }));
     if (String(personaTemplateId ?? "").trim()) {
       const tpl = (personaTemplates ?? []).find((x) => String(x.template_id) === String(personaTemplateId));
       const label = tpl ? fmtPersonaTemplateLabel(tpl, 0) : "";
-      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${label || t({ zh: "已选择", en: "Selected" })}`);
-    } else if (personaTouched) {
-      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${t({ zh: "未设置", en: "Not set" })}`);
-    } else if (agent?.persona) {
-      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${t({ zh: "保持不变（已设置）", en: "Keep (already set)" })}`);
-    } else {
-      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${t({ zh: "未设置", en: "Not set" })}`);
+      if (label) parts.push(label);
     }
-    lines.push("");
 
-    lines.push(t({ zh: "性格", en: "Traits" }));
-    lines.push(`- ${t({ zh: "外向", en: "Extrovert" })}：${Math.round(pExtrovert * 100)}`);
-    lines.push(`- ${t({ zh: "好奇", en: "Curious" })}：${Math.round(pCurious * 100)}`);
-    lines.push(`- ${t({ zh: "创造", en: "Creative" })}：${Math.round(pCreative * 100)}`);
-    lines.push(`- ${t({ zh: "稳定", en: "Stable" })}：${Math.round(pStable * 100)}`);
-    lines.push("");
-
-    lines.push(t({ zh: "性格预设", en: "Personality preset" }));
     if (String(personalityPresetId ?? "").trim() && catalogs?.personality_presets?.length) {
       const pp = (catalogs.personality_presets ?? []).find((x) => String(x.id) === String(personalityPresetId));
       const label = pp ? (isZh ? String(pp.label ?? "") : String(pp.label_en ?? "").trim() || String(pp.label ?? "")) : "";
-      lines.push(`- ${t({ zh: "选择", en: "Picked" })}：${label || t({ zh: "已选择", en: "Selected" })}`);
-    } else {
-      lines.push(`- ${t({ zh: "选择", en: "Picked" })}：${t({ zh: "未选择（可选）", en: "Not set (optional)" })}`);
+      if (label) parts.push(label);
     }
-    lines.push("");
 
-    lines.push(t({ zh: "兴趣", en: "Interests" }));
-    lines.push(`- ${t({ zh: "已选", en: "Selected" })}：${(interests ?? []).filter(Boolean).join("、") || t({ zh: "（未选择）", en: "(none)" })}`);
-    lines.push("");
+    const traitText = isZh
+      ? `外${Math.round(pExtrovert * 100)}/奇${Math.round(pCurious * 100)}/创${Math.round(pCreative * 100)}/稳${Math.round(pStable * 100)}`
+      : `E${Math.round(pExtrovert * 100)}/C${Math.round(pCurious * 100)}/Cr${Math.round(pCreative * 100)}/S${Math.round(pStable * 100)}`;
+    parts.push(traitText);
 
-    lines.push(t({ zh: "能力", en: "Capabilities" }));
-    lines.push(`- ${t({ zh: "已选", en: "Selected" })}：${(capabilities ?? []).filter(Boolean).join("、") || t({ zh: "（未选择）", en: "(none)" })}`);
-    lines.push("");
+    const interestsV = (interests ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+    if (interestsV.length) parts.push(interestsV.slice(0, 24).join(joiner));
 
-    lines.push(t({ zh: "文案", en: "Copy" }));
-    lines.push(`- ${t({ zh: "简介", en: "Bio" })}：${bioV || t({ zh: "（未填写）", en: "(missing)" })}`);
-    lines.push(`- ${t({ zh: "问候", en: "Greeting" })}：${greetV || t({ zh: "（未填写）", en: "(missing)" })}`);
-    lines.push("");
+    const capabilitiesV = (capabilities ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+    if (capabilitiesV.length) parts.push(capabilitiesV.slice(0, 24).join(joiner));
 
-    lines.push(t({ zh: "提审前测评（可选）", en: "Pre-review evaluation (optional)" }));
-    const kindLabel =
-      evalSourceKind === "topic"
-        ? t({ zh: "话题", en: "Topic" })
-        : evalSourceKind === "work_item"
-          ? t({ zh: "任务", en: "Task" })
-          : t({ zh: "场景", en: "Scenario" });
-    const chosen = evalTopicId.trim() || evalWorkItemId.trim() || evalSourceRunId.trim();
-    lines.push(
-      `- ${t({ zh: "来源", en: "Source" })}：${kindLabel}${evalSourceTitle.trim() ? ` · ${evalSourceTitle.trim()}` : chosen ? ` · ${t({ zh: "已选择", en: "Selected" })}` : ` · ${t({ zh: "未选择", en: "Not set" })}`}`,
-    );
-    lines.push(`- ${t({ zh: "测评重点", en: "Focus" })}：${String(evalTopic ?? "").trim() || t({ zh: "（未填写）", en: "(empty)" })}`);
+    const bioV = clip(String(bio ?? ""), 120);
+    if (bioV) parts.push(bioV);
 
-    return lines.join("\n");
+    const greetV = clip(String(greeting ?? ""), 120);
+    if (greetV) parts.push(greetV);
+
+    const evalTopicV = String(evalTopic ?? "").trim();
+    const evalSourceTitleV = String(evalSourceTitle ?? "").trim();
+    if (evalSourceTitleV) parts.push(evalSourceTitleV);
+    if (evalTopicV) parts.push(clip(evalTopicV, 120));
+
+    return parts.filter(Boolean).join(sep);
   }, [
     agent?.persona,
     avatarUrl,
@@ -1040,7 +1020,7 @@ export function AgentCardWizardDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 pb-4">
-          <div className="space-y-3 pt-3">
+          <div className="sticky top-0 z-10 -mx-6 px-6 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             {loading && !agent ? <div className="text-sm text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
             {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
@@ -1054,9 +1034,10 @@ export function AgentCardWizardDialog({
                   </div>
                   <details className="mt-2" open>
                     <summary className="cursor-pointer select-none font-medium text-foreground">
-                      {t({ zh: "提示预览（串联每步选择）", en: "Prompt preview (all steps)" })}
+                      {t({ zh: "预览", en: "Preview" })}
                     </summary>
-                    <div className="mt-2 whitespace-pre-wrap text-xs text-foreground">{promptPreviewText}</div>
+                    {promptPreviewText ? <div className="mt-2 text-xs text-foreground break-words">{promptPreviewText}</div> : null}
+                    {requiredBlocker ? <div className="mt-2 text-xs text-destructive">{requiredBlocker}</div> : null}
                     <details className="mt-2">
                       <summary className="cursor-pointer select-none text-xs text-muted-foreground">
                         {t({ zh: "已保存版本（prompt_view）", en: "Saved version (prompt_view)" })}
@@ -1067,6 +1048,9 @@ export function AgentCardWizardDialog({
                 </CardContent>
               </Card>
             ) : null}
+          </div>
+
+          <div className="space-y-3 pt-3">
 
             {agent && catalogs ? (
               <>
