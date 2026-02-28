@@ -604,12 +604,24 @@ export function AgentCardWizardDialog({
 
   function fmtPersonaTemplateLabel(tpl: ApprovedPersonaTemplate, idx: number): string {
     const p = (tpl?.persona ?? {}) as any;
-    const cand = [
-      String(p?.label ?? "").trim(),
-      String(p?.name ?? "").trim(),
-      String(p?.title ?? "").trim(),
-      String(p?.display_name ?? "").trim(),
-    ].filter(Boolean);
+    const cand = (isZh
+      ? [
+          String(p?.label ?? "").trim(),
+          String(p?.name ?? "").trim(),
+          String(p?.title ?? "").trim(),
+          String(p?.display_name ?? "").trim(),
+        ]
+      : [
+          String(p?.label_en ?? "").trim(),
+          String(p?.name_en ?? "").trim(),
+          String(p?.title_en ?? "").trim(),
+          String(p?.display_name_en ?? "").trim(),
+          String(p?.label ?? "").trim(),
+          String(p?.name ?? "").trim(),
+          String(p?.title ?? "").trim(),
+          String(p?.display_name ?? "").trim(),
+        ]
+    ).filter(Boolean);
     if (cand.length) return cand[0];
     return t({ zh: `模板 ${idx + 1}`, en: `Template ${idx + 1}` });
   }
@@ -722,9 +734,12 @@ export function AgentCardWizardDialog({
           {step === 1 ? (
             <Card className="shadow-none">
               <CardContent className="pt-4 space-y-2">
-                <div className="text-sm font-medium">选择人设模板（可选）</div>
+                <div className="text-sm font-medium">{t({ zh: "选择人设模板（可选）", en: "Pick a persona template (optional)" })}</div>
                 <div className="text-xs text-muted-foreground">
-                  仅允许“风格参考”。禁止冒充/自称为任何真实人物、虚构角色或具体动物个体。
+                  {t({
+                    zh: "仅允许“风格参考”。禁止冒充/自称为任何真实人物、虚构角色或具体动物个体。",
+                    en: "Style reference only. No impersonation of real people, fictional characters, or specific animals.",
+                  })}
                 </div>
 
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -736,7 +751,7 @@ export function AgentCardWizardDialog({
                       setPersonaTouched(true);
                     }}
                     >
-                      不设置
+                      {t({ zh: "不设置", en: "None" })}
                     </Button>
                   {personaTemplates.slice(0, 40).map((tpl, idx) => (
                     <Button
