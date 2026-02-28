@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
-import { fmtAgentStatus, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
+import { fmtAgentStatus, fmtRunStatus, fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { getAgentCardCatalogs, renderCatalogTemplate, type AgentCardCatalogs, type CatalogLabeledItem, type CatalogTextTemplate } from "@/app/lib/agentCardCatalogs";
 
@@ -500,6 +500,18 @@ export function AgentCardWizardDialog({
     }
   }
 
+  function fmtPersonaTemplateLabel(tpl: ApprovedPersonaTemplate, idx: number): string {
+    const p = (tpl?.persona ?? {}) as any;
+    const cand = [
+      String(p?.label ?? "").trim(),
+      String(p?.name ?? "").trim(),
+      String(p?.title ?? "").trim(),
+      String(p?.display_name ?? "").trim(),
+    ].filter(Boolean);
+    if (cand.length) return cand[0];
+    return t({ zh: `模板 ${idx + 1}`, en: `Template ${idx + 1}` });
+  }
+
   function stepTitle(): string {
     switch (step) {
       case 0:
@@ -523,34 +535,61 @@ export function AgentCardWizardDialog({
   const canGoNext = step < 6;
 
   return (
-    <DialogContent className="max-h-[80vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>智能体卡片向导：{stepTitle()}</DialogTitle>
-      </DialogHeader>
+    <DialogContent className="max-h-[80vh] p-0">
+      <div className="flex max-h-[80vh] flex-col">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle>{t({ zh: "智能体卡片向导", en: "Agent card wizard" })}</DialogTitle>
+          <div className="mt-1 text-sm text-muted-foreground">{stepTitle()}</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[
+              t({ zh: "基础", en: "Basics" }),
+              t({ zh: "人设", en: "Persona" }),
+              t({ zh: "性格", en: "Traits" }),
+              t({ zh: "兴趣", en: "Interests" }),
+              t({ zh: "能力", en: "Capabilities" }),
+              t({ zh: "文案", en: "Copy" }),
+              t({ zh: "状态", en: "Status" }),
+            ].map((lbl, idx) => (
+              <Button
+                key={idx}
+                size="sm"
+                variant={step === idx ? "default" : "outline"}
+                onClick={() => setStep(idx)}
+                disabled={saving || loading}
+              >
+                {lbl}
+              </Button>
+            ))}
+          </div>
+        </DialogHeader>
 
-      {loading && !agent ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
-      {error ? <div className="text-sm text-destructive">{error}</div> : null}
+        <div className="flex-1 overflow-y-auto px-6 pb-4">
+          <div className="space-y-3 pt-3">
+            {loading && !agent ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
+            {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-      {agent ? (
-        <Card className="mt-2">
-          <CardContent className="pt-4 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
-              {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
-              {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
-            </div>
-            <div className="mt-2">
-              <div className="font-medium text-foreground">{t({ zh: "提示预览", en: "Prompt preview" })}</div>
-              <div className="mt-1 whitespace-pre-wrap">{agent.prompt_view || "（空）"}</div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+            {agent ? (
+              <Card className="shadow-none">
+                <CardContent className="pt-3 pb-3 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
+                    {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
+                    {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
+                  </div>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer select-none font-medium text-foreground">
+                      {t({ zh: "提示预览", en: "Prompt preview" })}
+                    </summary>
+                    <div className="mt-1 whitespace-pre-wrap">{agent.prompt_view || "（空）"}</div>
+                  </details>
+                </CardContent>
+              </Card>
+            ) : null}
 
-      {agent && catalogs ? (
-        <>
+            {agent && catalogs ? (
+              <>
           {step === 0 ? (
-            <Card className="mt-2">
+            <Card className="shadow-none">
               <CardContent className="pt-4 space-y-3">
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground">名字</div>
@@ -579,9 +618,9 @@ export function AgentCardWizardDialog({
           ) : null}
 
           {step === 1 ? (
-            <Card className="mt-2">
+            <Card className="shadow-none">
               <CardContent className="pt-4 space-y-2">
-                <div className="text-sm font-medium">选择 Persona 模板（可选）</div>
+                <div className="text-sm font-medium">选择人设模板（可选）</div>
                 <div className="text-xs text-muted-foreground">
                   仅允许“风格参考”。禁止冒充/自称为任何真实人物、虚构角色或具体动物个体。
                 </div>
@@ -594,21 +633,20 @@ export function AgentCardWizardDialog({
                       setPersonaTemplateId("");
                       setPersonaTouched(true);
                     }}
-                  >
-                    不设置
-                  </Button>
-                  {personaTemplates.slice(0, 40).map((t) => (
+                    >
+                      不设置
+                    </Button>
+                  {personaTemplates.slice(0, 40).map((tpl, idx) => (
                     <Button
-                      key={t.template_id}
-                      variant={personaTemplateId === t.template_id ? "default" : "secondary"}
+                      key={tpl.template_id}
+                      variant={personaTemplateId === tpl.template_id ? "default" : "secondary"}
                       size="sm"
                       onClick={() => {
-                        setPersonaTemplateId(t.template_id);
+                        setPersonaTemplateId(tpl.template_id);
                         setPersonaTouched(true);
                       }}
-                      title={t.template_id}
                     >
-                      {trunc(t.template_id, 20)}
+                      {fmtPersonaTemplateLabel(tpl, idx)}
                     </Button>
                   ))}
                 </div>
@@ -680,10 +718,10 @@ export function AgentCardWizardDialog({
           ) : null}
 
           {step === 5 ? (
-            <Card className="mt-2">
+            <Card className="shadow-none">
               <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">简介（bio）</div>
+                  <div className="text-sm font-medium">简介</div>
                   <div className="flex flex-wrap gap-2">
                     {(catalogs.bio_templates ?? []).slice(0, 40).map((t) => (
                       <Button
@@ -704,7 +742,7 @@ export function AgentCardWizardDialog({
                       variant={bioCustom ? "default" : "secondary"}
                       onClick={() => setBioCustom((v) => !v)}
                     >
-                      高级：自定义
+                      自定义
                     </Button>
                   </div>
                   {bioCustom ? (
@@ -716,7 +754,7 @@ export function AgentCardWizardDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">问候语（greeting）</div>
+                  <div className="text-sm font-medium">问候语</div>
                   <div className="flex flex-wrap gap-2">
                     {(catalogs.greeting_templates ?? []).slice(0, 40).map((t) => (
                       <Button
@@ -737,7 +775,7 @@ export function AgentCardWizardDialog({
                       variant={greetingCustom ? "default" : "secondary"}
                       onClick={() => setGreetingCustom((v) => !v)}
                     >
-                      高级：自定义
+                      自定义
                     </Button>
                   </div>
                   {greetingCustom ? (
@@ -752,7 +790,7 @@ export function AgentCardWizardDialog({
           ) : null}
 
           {step === 6 ? (
-            <Card className="mt-2">
+            <Card className="shadow-none">
               <CardContent className="pt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-muted-foreground">当前审核状态</div>
@@ -853,23 +891,26 @@ export function AgentCardWizardDialog({
               </CardContent>
             </Card>
           ) : null}
-        </>
-      ) : null}
+              </>
+            ) : null}
+          </div>
+        </div>
 
-      <DialogFooter className="gap-2 sm:gap-0">
-        <Button variant="secondary" disabled={!canGoPrev || saving} onClick={() => setStep((s) => Math.max(0, s - 1))}>
-          上一步
-        </Button>
-        {canGoNext ? (
-          <Button disabled={saving} onClick={() => setStep((s) => Math.min(6, s + 1))}>
-            下一步
+        <DialogFooter className="gap-2 border-t bg-background/95 px-6 py-4 sm:gap-0">
+          <Button variant="secondary" disabled={!canGoPrev || saving} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+            上一步
           </Button>
-        ) : (
-          <Button disabled={saving || loading || !agent} onClick={save}>
-            {saving ? "保存中…" : "保存"}
-          </Button>
-        )}
-      </DialogFooter>
+          {canGoNext ? (
+            <Button disabled={saving} onClick={() => setStep((s) => Math.min(6, s + 1))}>
+              下一步
+            </Button>
+          ) : (
+            <Button disabled={saving || loading || !agent} onClick={save}>
+              {saving ? "保存中…" : "保存"}
+            </Button>
+          )}
+        </DialogFooter>
+      </div>
 
       <AlertDialog
         open={Boolean(evalConfirmDelete)}
