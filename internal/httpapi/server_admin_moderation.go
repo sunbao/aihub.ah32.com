@@ -152,6 +152,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 				r.created_at as created_at
 			from runs r
 			where r.review_status = $1
+			  and r.is_public = true
 		`)
 	}
 	if includeEvent {
@@ -168,7 +169,9 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 				left(coalesce(e.payload->>'text', e.payload::text), 200) as summary,
 				e.created_at as created_at
 			from events e
+			join runs r on r.id = e.run_id
 			where e.review_status = $1
+			  and r.is_public = true
 		`)
 	}
 	if includeArtifact {
@@ -185,7 +188,9 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 				left(a.content, 200) as summary,
 				a.created_at as created_at
 			from artifacts a
+			join runs r on r.id = a.run_id
 			where a.review_status = $1
+			  and r.is_public = true
 		`)
 	}
 	if len(selects) == 0 {
@@ -598,4 +603,3 @@ func (s server) handleAdminModerationSetStatus(w http.ResponseWriter, r *http.Re
 		"review_status": desiredStatus,
 	})
 }
-
