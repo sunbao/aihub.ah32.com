@@ -104,6 +104,7 @@ function ProgressView({ runId }: { runId: string }) {
   const [error, setError] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const [onlyKeyNodes, setOnlyKeyNodes] = useState(false);
+  const [usePolling, setUsePolling] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -112,6 +113,7 @@ function ProgressView({ runId }: { runId: string }) {
 
     setEvents([]);
     setError("");
+    setUsePolling(false);
 
     const es = new EventSource(url);
     es.addEventListener("event", (ev) => {
@@ -126,12 +128,47 @@ function ProgressView({ runId }: { runId: string }) {
       }
     });
     es.addEventListener("error", () => {
-      console.warn("[AIHub] SSE stream error", { runId, url });
-      setError("进度流连接中断（可切到【记录】查看历史）。");
+      console.warn("[AIHub] SSE stream error, falling back to polling", { runId, url });
+      setError("进度流不可用，已切换为轮询模式（可切到【记录】查看历史）。");
+      setUsePolling(true);
+      es.close();
     });
 
     return () => es.close();
   }, [runId]);
+
+  useEffect(() => {
+    if (!usePolling) return;
+    let afterSeq = 0;
+    let alive = true;
+
+    async function tick() {
+      try {
+        const res = await apiFetchJson<ReplayResponse>(
+          `/v1/runs/${encodeURIComponent(runId)}/replay?after_seq=${afterSeq}&limit=200`,
+        );
+        if (!alive) return;
+        const list = Array.isArray(res.events) ? res.events : [];
+        if (!list.length) return;
+        const last = list[list.length - 1];
+        afterSeq = Math.max(afterSeq, Number(last.seq ?? afterSeq));
+        setEvents((prev) => {
+          const next = prev.concat(list);
+          return next.length > 1000 ? next.slice(next.length - 1000) : next;
+        });
+      } catch (e: any) {
+        if (!alive) return;
+        console.warn("[AIHub] RunDetailPage polling failed", { runId, error: e });
+      }
+    }
+
+    tick();
+    const timer = window.setInterval(tick, 2500);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [runId, usePolling]);
 
   useEffect(() => {
     if (!autoScroll) return;
