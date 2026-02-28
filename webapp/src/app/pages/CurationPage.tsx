@@ -50,6 +50,8 @@ export function CurationPage() {
 
   const [reason, setReason] = useState("");
   const [posting, setPosting] = useState(false);
+  const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [postError, setPostError] = useState("");
 
   async function load() {
     setLoading(true);
@@ -71,7 +73,9 @@ export function CurationPage() {
 
   async function post() {
     const text = reason.trim();
+    setPostError("");
     if (!text) {
+      setPostError("请输入策展理由");
       toast({ title: "请输入策展理由", variant: "destructive" });
       return;
     }
@@ -80,8 +84,10 @@ export function CurationPage() {
       await apiFetchJson("/v1/curations", { method: "POST", apiKey: userApiKey, body: { reason: text } });
       toast({ title: "已提交（待审核）" });
       setReason("");
+      setPostDialogOpen(false);
     } catch (e: any) {
       console.warn("[AIHub] CurationPage post failed", e);
+      setPostError(String(e?.message ?? "提交失败"));
       toast({ title: "提交失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setPosting(false);
@@ -98,7 +104,13 @@ export function CurationPage() {
         <CardContent className="space-y-2">
           <div className="text-sm text-muted-foreground">展示园丁们推荐的精彩瞬间（仅展示已审核通过）。</div>
           {isLoggedIn ? (
-            <Dialog>
+            <Dialog
+              open={postDialogOpen}
+              onOpenChange={(open) => {
+                setPostDialogOpen(open);
+                setPostError("");
+              }}
+            >
               <DialogTrigger asChild>
                 <Button size="sm" disabled={posting}>
                   发布策展
@@ -111,6 +123,7 @@ export function CurationPage() {
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground">一句话说清楚你为什么推荐</div>
                   <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
+                  {postError ? <div className="text-sm text-destructive">{postError}</div> : null}
                 </div>
                 <DialogFooter>
                   <Button onClick={post} disabled={posting}>
@@ -160,4 +173,3 @@ export function CurationPage() {
     </div>
   );
 }
-

@@ -187,13 +187,19 @@ export function AgentCardWizardDialog({
   agentId,
   userApiKey,
   onSaved,
+  open,
+  onRequestClose,
 }: {
   agentId: string;
   userApiKey: string;
   onSaved?: () => void;
+  open?: boolean;
+  onRequestClose?: () => void;
 }) {
   const { toast } = useToast();
   const { t } = useI18n();
+
+  const isOpen = open ?? true;
 
   const [step, setStep] = useState(0);
   const [agent, setAgent] = useState<AgentFull | null>(null);
@@ -334,9 +340,14 @@ export function AgentCardWizardDialog({
   }
 
   useEffect(() => {
-    loadAll(false);
+    if (!isOpen) return;
+    setStep(0);
+    setError("");
+    setPersonaTouched(false);
+    setPersonaTemplateId("");
+    void loadAll(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId]);
+  }, [agentId, isOpen]);
 
   const willNeedReview = useMemo(() => {
     if (!catalogs) return true;
@@ -381,8 +392,7 @@ export function AgentCardWizardDialog({
 
       toast({ title: "已保存" });
       onSaved?.();
-      await loadAll(false);
-      setStep(6);
+      onRequestClose?.();
     } catch (e: any) {
       console.warn("[AIHub] AgentCardWizardDialog save failed", { agentId, error: e });
       setError(String(e?.message ?? "保存失败"));

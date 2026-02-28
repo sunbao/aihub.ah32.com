@@ -95,6 +95,8 @@ export function MePage() {
   }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const baseUrl = getApiBaseUrl() || "";
+  const [createAgentDialogOpen, setCreateAgentDialogOpen] = useState(false);
+  const [agentCardWizardOpenId, setAgentCardWizardOpenId] = useState<string | null>(null);
   const [agentKeyInputs, setAgentKeyInputs] = useState<Record<string, string>>({});
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
@@ -341,6 +343,7 @@ export function MePage() {
                       profileName: profileName.trim(),
                     })
                   : "";
+                const agentCardDialogOpen = agentCardWizardOpenId === agentId;
 
                 return (
                 <div key={agentId} className="rounded-md border bg-background px-3 py-2">
@@ -370,7 +373,10 @@ export function MePage() {
                     >
                       查看资料
                     </Button>
-                    <Dialog>
+                    <Dialog
+                      open={agentCardDialogOpen}
+                      onOpenChange={(open) => setAgentCardWizardOpenId(open ? agentId : null)}
+                    >
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm">
                           编辑智能体卡片
@@ -380,6 +386,8 @@ export function MePage() {
                         agentId={agentId}
                         userApiKey={userApiKey}
                         onSaved={() => loadAgents()}
+                        open={agentCardDialogOpen}
+                        onRequestClose={() => setAgentCardWizardOpenId(null)}
                       />
                     </Dialog>
                     <Button
@@ -524,7 +532,7 @@ export function MePage() {
           )}
 
           <div className="flex gap-2 pt-1">
-            <Dialog>
+            <Dialog open={createAgentDialogOpen} onOpenChange={setCreateAgentDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="flex-1">创建智能体</Button>
               </DialogTrigger>
@@ -535,6 +543,7 @@ export function MePage() {
                   toast({ title: "创建成功", description: "已把接入密钥保存在本地存储中。" });
                   loadAgents();
                 }}
+                onClose={() => setCreateAgentDialogOpen(false)}
               />
             </Dialog>
             <Button variant="secondary" className="flex-1" onClick={loadAgents}>
@@ -594,8 +603,10 @@ export function MePage() {
 
 function CreateAgentDialog({
   onCreated,
+  onClose,
 }: {
   onCreated: (agentId: string, apiKey: string, name: string) => void;
+  onClose?: () => void;
 }) {
   const { toast } = useToast();
   const userApiKey = getUserApiKey();
@@ -603,10 +614,17 @@ function CreateAgentDialog({
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [creating, setCreating] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   async function submit(e?: FormEvent) {
     e?.preventDefault();
+    if (!userApiKey) {
+      setSubmitError("未登录，请先登录后再创建智能体。");
+      toast({ title: "未登录", description: "请先登录后再创建智能体。", variant: "destructive" });
+      return;
+    }
     setCreating(true);
+    setSubmitError("");
     try {
       const tagList = tags
         .split(/[\\s,，]+/g)
@@ -622,8 +640,10 @@ function CreateAgentDialog({
       setName("");
       setDescription("");
       setTags("");
+      onClose?.();
     } catch (e: any) {
       console.warn("[AIHub] CreateAgentDialog submit failed", e);
+      setSubmitError(String(e?.message ?? "创建失败"));
       toast({ title: "创建失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setCreating(false);
@@ -648,6 +668,7 @@ function CreateAgentDialog({
           <div className="text-xs text-muted-foreground">标签（可选，逗号分隔）</div>
           <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="例如：诗歌, 相声, 编程" />
         </div>
+        {submitError ? <div className="text-sm text-destructive">{submitError}</div> : null}
         <DialogFooter className="pt-2">
           <Button type="submit" disabled={creating}>
             {creating ? "创建中…" : "创建"}

@@ -255,6 +255,15 @@ export function AdminModerationPage() {
   const [detailError, setDetailError] = useState("");
   const [reason, setReason] = useState("");
   const [acting, setActing] = useState(false);
+  const [actError, setActError] = useState("");
+
+  function closeDialog() {
+    setSelected(null);
+    setDetail(null);
+    setDetailError("");
+    setReason("");
+    setActError("");
+  }
 
   async function loadDetail(targetType: string, id: string) {
     if (!userApiKey) return;
@@ -279,16 +288,21 @@ export function AdminModerationPage() {
     setSelected(it);
     setDetail(null);
     setReason("");
+    setActError("");
     void loadDetail(it.target_type, it.id);
   }
 
   async function act(action: "approve" | "reject" | "unreject") {
     if (!userApiKey || !selected) return;
 
+    const targetType = selected.target_type;
+    const targetId = selected.id;
+
     setActing(true);
+    setActError("");
     try {
       await apiFetchJson(
-        `/v1/admin/moderation/${encodeURIComponent(selected.target_type)}/${encodeURIComponent(selected.id)}/${action}`,
+        `/v1/admin/moderation/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}/${action}`,
         {
           method: "POST",
           apiKey: userApiKey,
@@ -296,11 +310,13 @@ export function AdminModerationPage() {
         },
       );
       toast({ title: "操作成功" });
-      await loadQueue({ reset: true });
-      await loadDetail(selected.target_type, selected.id);
+      closeDialog();
+      void loadQueue({ reset: true });
     } catch (e: any) {
       console.warn("[AIHub] AdminModerationPage act failed", { action, selected, error: e });
-      toast({ title: "操作失败", description: String(e?.message ?? ""), variant: "destructive" });
+      const msg = String(e?.message ?? "操作失败");
+      setActError(msg);
+      toast({ title: "操作失败", description: msg, variant: "destructive" });
     } finally {
       setActing(false);
     }
@@ -400,10 +416,7 @@ export function AdminModerationPage() {
         open={Boolean(selected)}
         onOpenChange={(open) => {
           if (!open) {
-            setSelected(null);
-            setDetail(null);
-            setDetailError("");
-            setReason("");
+            closeDialog();
           }
         }}
       >
@@ -435,6 +448,8 @@ export function AdminModerationPage() {
                 placeholder="例如：包含个人隐私/广告/不实信息"
               />
             </div>
+
+            {actError ? <div className="text-sm text-destructive">{actError}</div> : null}
 
             <div className="flex gap-2 pt-1">
               <Button className="flex-1" disabled={acting} onClick={() => act("approve")}>
