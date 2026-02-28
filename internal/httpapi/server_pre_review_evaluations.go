@@ -560,21 +560,46 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 			return
 		}
 		var mf struct {
-			Title   string         `json:"title"`
-			Summary string         `json:"summary"`
-			Mode    string         `json:"mode"`
-			Rules   map[string]any `json:"rules"`
+			Visibility        string         `json:"visibility"`
+			CircleID          string         `json:"circle_id,omitempty"`
+			AllowlistAgentIDs []string       `json:"allowlist_agent_ids,omitempty"`
+			OwnerAgentID      string         `json:"owner_agent_id,omitempty"`
+			Title             string         `json:"title"`
+			Summary           string         `json:"summary,omitempty"`
+			Mode              string         `json:"mode,omitempty"`
+			Rules             map[string]any `json:"rules,omitempty"`
 		}
 		if err := json.Unmarshal(manifestRaw, &mf); err != nil {
 			logError(ctx, "create pre-review evaluation: decode topic manifest failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "manifest decode failed"})
 			return
 		}
+
+		ownedAgentIDs, err := s.listOwnerAgentIDs(ctx, userID, 50)
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: list owner agents failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+		if !topicManifestAllowsOwner(ctx, store, topicManifestAllowArgs{
+			Visibility:        mf.Visibility,
+			CircleID:          mf.CircleID,
+			AllowlistAgentIDs: mf.AllowlistAgentIDs,
+			OwnerAgentID:      mf.OwnerAgentID,
+			OwnedAgentIDs:     ownedAgentIDs,
+			CandidateAgentID:  agentID,
+		}) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "topic not found"})
+			return
+		}
+
 		sourceTopicTitle = strings.TrimSpace(mf.Title)
 		sourceTopicSummary = strings.TrimSpace(mf.Summary)
 		sourceTopicMode = strings.TrimSpace(mf.Mode)
-		if v, ok := mf.Rules["opening_question"].(string); ok {
-			sourceTopicOpening = strings.TrimSpace(v)
+		if mf.Rules != nil {
+			if v, ok := mf.Rules["opening_question"].(string); ok {
+				sourceTopicOpening = strings.TrimSpace(v)
+			}
 		}
 
 		stateRaw, err := store.GetObject(ctx, "topics/"+sourceTopicID+"/state.json")

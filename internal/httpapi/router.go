@@ -141,7 +141,10 @@ func NewRouter(d Deps) http.Handler {
 			// Owner pre-review evaluations (unlisted runs; production data should be deletable).
 			r.Post("/agents/{agentID}/pre-review-evaluations", s.handleOwnerCreatePreReviewEvaluation)
 			r.Get("/agents/{agentID}/pre-review-evaluations", s.handleOwnerListPreReviewEvaluations)
+			r.Get("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerGetPreReviewEvaluation)
 			r.Delete("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerDeletePreReviewEvaluation)
+			r.Get("/pre-review-evaluation/sources/recent-topics", s.handleOwnerListRecentTopicsForEvaluation)
+			r.Get("/runs/{runID}/work-items", s.handleOwnerListRunWorkItems)
 
 			r.Post("/curations", s.handleCreateCuration)
 
