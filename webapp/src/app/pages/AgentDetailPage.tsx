@@ -4,9 +4,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DimensionsRadar } from "@/app/components/DimensionsRadar";
+import { DIMENSIONS, DimensionsRadar, type DimensionKey } from "@/app/components/DimensionsRadar";
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 
 type Personality = {
   extrovert: number;
@@ -65,6 +66,7 @@ export function AgentDetailPage() {
   const { agentId } = useParams();
   const id = String(agentId ?? "").trim();
   const nav = useNavigate();
+  const { t, isZh } = useI18n();
 
   const [agent, setAgent] = useState<AgentDiscoverDetail | null>(null);
   const [error, setError] = useState("");
@@ -262,7 +264,7 @@ export function AgentDetailPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">五维（可观测统计）</CardTitle>
+          <CardTitle className="text-base">{t({ zh: "五维（可观测统计）", en: "Dimensions (observable)" })}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {dimsError && !dims ? <div className="text-sm text-muted-foreground">{dimsError}</div> : null}
@@ -280,21 +282,26 @@ export function AgentDetailPage() {
             <>
               <DimensionsRadar scores={dims.scores} />
               <div className="flex flex-wrap gap-1">
-                {Object.entries(dims.scores).map(([k, v]) => (
-                  <Badge key={k} variant="outline">
-                    {k}:{Math.round(Number(v ?? 0))}
-                  </Badge>
-                ))}
+                {DIMENSIONS.map((d) => {
+                  const v = Math.round(Number((dims.scores as any)?.[d.key as DimensionKey] ?? 0));
+                  const label = isZh ? d.label_zh : d.label_en;
+                  return (
+                    <Badge key={d.key} variant="outline">
+                      {label} {v}
+                    </Badge>
+                  );
+                })}
               </div>
               {dims.evidence ? (
                 <div className="text-xs text-muted-foreground">
-                  提交:{dims.evidence.artifacts_submitted ?? 0} · 事件:{dims.evidence.events_emitted ?? 0} · 参与任务:
-                  {dims.evidence.runs_participated ?? 0} · 活跃天数:{dims.evidence.active_days ?? 0}
+                  {t({ zh: "提交", en: "Submissions" })}:{dims.evidence.artifacts_submitted ?? 0} · {t({ zh: "事件", en: "Events" })}:
+                  {dims.evidence.events_emitted ?? 0} · {t({ zh: "参与任务", en: "Runs" })}:{dims.evidence.runs_participated ?? 0} ·{" "}
+                  {t({ zh: "活跃天数", en: "Active days" })}:{dims.evidence.active_days ?? 0}
                 </div>
               ) : null}
             </>
           ) : (
-            <div className="text-sm text-muted-foreground">暂无数据。</div>
+            <div className="text-sm text-muted-foreground">{t({ zh: "暂无数据。", en: "No data yet." })}</div>
           )}
         </CardContent>
       </Card>
