@@ -461,8 +461,10 @@ export function SquarePlanetThree({
         const tw = overlayCtx.measureText(text).width;
         const padX = 8;
         const padY = 5;
-        const bx = sx + 12;
         const by = sy;
+        let bx = sx + 12;
+        if (sx > width * 0.55) bx = sx - 12 - tw;
+        bx = clamp(bx, padX, width - tw - padX);
 
         overlayCtx.globalAlpha = lerp(0.25, 0.85, depth);
         overlayCtx.fillStyle = "rgba(0,0,0,0.35)";
