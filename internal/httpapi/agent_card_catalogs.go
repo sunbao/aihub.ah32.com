@@ -1,14 +1,21 @@
 package httpapi
 
 import (
+	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 )
 
 //go:embed data/agent-card-catalogs.v1.json
 var embeddedAgentCardCatalogsV1 []byte
+
+var agentCardCatalogsETag = func() string {
+	sum := sha256.Sum256(embeddedAgentCardCatalogsV1)
+	return fmt.Sprintf("\"agent-card-catalogs-%x\"", sum)
+}()
 
 type agentCardCatalogs struct {
 	CatalogVersion     string                    `json:"catalog_version"`
@@ -23,25 +30,32 @@ type agentCardCatalogs struct {
 }
 
 type catalogLabeledItem struct {
-	ID       string   `json:"id"`
-	Label    string   `json:"label"`
-	Category string   `json:"category,omitempty"`
-	Keywords []string `json:"keywords,omitempty"`
+	ID         string   `json:"id"`
+	Label      string   `json:"label"`
+	LabelEn    string   `json:"label_en,omitempty"`
+	Category   string   `json:"category,omitempty"`
+	CategoryEn string   `json:"category_en,omitempty"`
+	Keywords   []string `json:"keywords,omitempty"`
+	KeywordsEn []string `json:"keywords_en,omitempty"`
 }
 
 type catalogTextTemplate struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Template string `json:"template"`
-	MinChars int    `json:"min_chars,omitempty"`
-	MaxChars int    `json:"max_chars,omitempty"`
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	LabelEn    string `json:"label_en,omitempty"`
+	Template   string `json:"template"`
+	TemplateEn string `json:"template_en,omitempty"`
+	MinChars   int    `json:"min_chars,omitempty"`
+	MaxChars   int    `json:"max_chars,omitempty"`
 }
 
 type catalogPersonalityPreset struct {
-	ID          string         `json:"id"`
-	Label       string         `json:"label"`
-	Description string         `json:"description,omitempty"`
-	Values      personalityDTO `json:"values"`
+	ID            string         `json:"id"`
+	Label         string         `json:"label"`
+	LabelEn       string         `json:"label_en,omitempty"`
+	Description   string         `json:"description,omitempty"`
+	DescriptionEn string         `json:"description_en,omitempty"`
+	Values        personalityDTO `json:"values"`
 }
 
 var (
@@ -64,29 +78,39 @@ func loadAgentCardCatalogs() (*agentCardCatalogs, error) {
 }
 
 type agentCardCatalogSets struct {
-	interestLabels    map[string]struct{}
-	capabilityLabels  map[string]struct{}
-	bioTemplateIDs    map[string]catalogTextTemplate
+	interestLabels     map[string]struct{}
+	capabilityLabels   map[string]struct{}
+	interestLabelToEn  map[string]string
+	capabilityLabelToEn map[string]string
+	bioTemplateIDs     map[string]catalogTextTemplate
 	greetingTemplateIDs map[string]catalogTextTemplate
 }
 
 func (c *agentCardCatalogs) sets() agentCardCatalogSets {
 	s := agentCardCatalogSets{
-		interestLabels:      map[string]struct{}{},
-		capabilityLabels:    map[string]struct{}{},
-		bioTemplateIDs:      map[string]catalogTextTemplate{},
-		greetingTemplateIDs: map[string]catalogTextTemplate{},
+		interestLabels:       map[string]struct{}{},
+		capabilityLabels:     map[string]struct{}{},
+		interestLabelToEn:    map[string]string{},
+		capabilityLabelToEn:  map[string]string{},
+		bioTemplateIDs:       map[string]catalogTextTemplate{},
+		greetingTemplateIDs:  map[string]catalogTextTemplate{},
 	}
 	for _, it := range c.Interests {
 		lbl := strings.TrimSpace(it.Label)
 		if lbl != "" {
 			s.interestLabels[lbl] = struct{}{}
+			if strings.TrimSpace(it.LabelEn) != "" {
+				s.interestLabelToEn[lbl] = strings.TrimSpace(it.LabelEn)
+			}
 		}
 	}
 	for _, it := range c.Capabilities {
 		lbl := strings.TrimSpace(it.Label)
 		if lbl != "" {
 			s.capabilityLabels[lbl] = struct{}{}
+			if strings.TrimSpace(it.LabelEn) != "" {
+				s.capabilityLabelToEn[lbl] = strings.TrimSpace(it.LabelEn)
+			}
 		}
 	}
 	for _, t := range c.BioTemplates {
@@ -104,24 +128,69 @@ func (c *agentCardCatalogs) sets() agentCardCatalogSets {
 	return s
 }
 
-func renderCatalogTemplate(tmpl string, name string, interests []string, capabilities []string) string {
+func cleanCatalogList(list []string) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func mapCatalogList(list []string, m map[string]string) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if mapped := strings.TrimSpace(m[v]); mapped != "" {
+			out = append(out, mapped)
+		} else {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func renderCatalogTemplate(tmpl string, name string, interests []string, capabilities []string, joiner string) string {
 	out := tmpl
 	out = strings.ReplaceAll(out, "{name}", strings.TrimSpace(name))
-	out = strings.ReplaceAll(out, "{interests}", strings.Join(interests, "、"))
-	out = strings.ReplaceAll(out, "{capabilities}", strings.Join(capabilities, "、"))
+	out = strings.ReplaceAll(out, "{interests}", strings.Join(cleanCatalogList(interests), joiner))
+	out = strings.ReplaceAll(out, "{capabilities}", strings.Join(cleanCatalogList(capabilities), joiner))
 	return strings.TrimSpace(out)
 }
 
-func matchesRenderedTemplate(text string, templates []catalogTextTemplate, name string, interests []string, capabilities []string) bool {
+type catalogRenderVars struct {
+	name           string
+	interestsZh    []string
+	capabilitiesZh []string
+	interestsEn    []string
+	capabilitiesEn []string
+}
+
+func matchesRenderedTemplate(text string, templates []catalogTextTemplate, vars catalogRenderVars) bool {
 	want := strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
 	if want == "" {
 		return false
 	}
 	for _, t := range templates {
-		got := renderCatalogTemplate(t.Template, name, interests, capabilities)
-		got = strings.Join(strings.Fields(strings.TrimSpace(got)), " ")
-		if got != "" && got == want {
-			return true
+		if strings.TrimSpace(t.Template) != "" {
+			got := renderCatalogTemplate(t.Template, vars.name, vars.interestsZh, vars.capabilitiesZh, "、")
+			got = strings.Join(strings.Fields(strings.TrimSpace(got)), " ")
+			if got != "" && got == want {
+				return true
+			}
+		}
+		if strings.TrimSpace(t.TemplateEn) != "" {
+			got := renderCatalogTemplate(t.TemplateEn, vars.name, vars.interestsEn, vars.capabilitiesEn, ", ")
+			got = strings.Join(strings.Fields(strings.TrimSpace(got)), " ")
+			if got != "" && got == want {
+				return true
+			}
 		}
 	}
 	return false
@@ -153,12 +222,18 @@ func isPureCatalogCard(c *agentCardCatalogs, personaTemplateID string, interests
 	}
 
 	// To be auto-approved, bio/greeting must be present and match a catalog template rendering.
-	if !matchesRenderedTemplate(bio, c.BioTemplates, name, interests, capabilities) {
+	vars := catalogRenderVars{
+		name:           name,
+		interestsZh:    interests,
+		capabilitiesZh: capabilities,
+		interestsEn:    mapCatalogList(interests, sets.interestLabelToEn),
+		capabilitiesEn: mapCatalogList(capabilities, sets.capabilityLabelToEn),
+	}
+	if !matchesRenderedTemplate(bio, c.BioTemplates, vars) {
 		return false
 	}
-	if !matchesRenderedTemplate(greeting, c.GreetingTemplates, name, interests, capabilities) {
+	if !matchesRenderedTemplate(greeting, c.GreetingTemplates, vars) {
 		return false
 	}
 	return true
 }
-

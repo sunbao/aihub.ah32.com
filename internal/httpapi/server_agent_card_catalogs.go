@@ -27,6 +27,12 @@ func (s server) handleGetAgentCardCatalogs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	etag := agentCardCatalogsETag
+	w.Header().Set("ETag", etag)
+	if inm := r.Header.Get("If-None-Match"); inm != "" && inm == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, agentCardCatalogsResponse{agentCardCatalogs: *c})
 }
-

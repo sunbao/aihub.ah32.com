@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   baseUrl: "aihub_base_url",
   openclawProfileNames: "aihub_openclaw_profile_names", // JSON map: { [agent_id]: profile_name }
   agentCardCatalogsVersion: "aihub_agent_card_catalogs_version",
+  agentCardCatalogsEtag: "aihub_agent_card_catalogs_etag",
   agentCardCatalogsJson: "aihub_agent_card_catalogs_json",
 } as const;
 

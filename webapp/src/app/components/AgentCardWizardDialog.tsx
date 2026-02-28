@@ -102,12 +102,24 @@ function normalizeText(s: string): string {
     .replace(/\s+/g, " ");
 }
 
-function findMatchingTemplateId(templates: CatalogTextTemplate[] | undefined, renderedText: string, vars: { name: string; interests: string[]; capabilities: string[] }): string {
+type CatalogTemplateVars = { name: string; interests: string[]; capabilities: string[] };
+
+function findMatchingTemplateId(
+  templates: CatalogTextTemplate[] | undefined,
+  renderedText: string,
+  vars: { zh: CatalogTemplateVars; en: CatalogTemplateVars },
+): string {
   const want = normalizeText(renderedText);
   if (!want) return "";
   for (const t of templates ?? []) {
-    const got = normalizeText(renderCatalogTemplate(t.template, vars));
-    if (got && got === want) return String(t.id ?? "").trim();
+    if (t.template) {
+      const got = normalizeText(renderCatalogTemplate(t.template, vars.zh, { joiner: "、" }));
+      if (got && got === want) return String(t.id ?? "").trim();
+    }
+    if (t.template_en) {
+      const got = normalizeText(renderCatalogTemplate(t.template_en, vars.en, { joiner: ", " }));
+      if (got && got === want) return String(t.id ?? "").trim();
+    }
   }
   return "";
 }
@@ -119,6 +131,27 @@ function buildLabelSet(items: CatalogLabeledItem[] | undefined): Set<string> {
     if (lbl) s.add(lbl);
   }
   return s;
+}
+
+function buildLabelToEnMap(items: CatalogLabeledItem[] | undefined): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const it of items ?? []) {
+    const zh = String(it.label ?? "").trim();
+    const en = String(it.label_en ?? "").trim();
+    if (!zh || !en) continue;
+    m.set(zh, en);
+  }
+  return m;
+}
+
+function mapLabelsToEn(labels: string[], map: Map<string, string>): string[] {
+  return (labels ?? [])
+    .map((v) => {
+      const key = String(v ?? "").trim();
+      if (!key) return "";
+      return String(map.get(key) ?? key).trim();
+    })
+    .filter(Boolean);
 }
 
 function MultiSelect({
@@ -135,12 +168,38 @@ function MultiSelect({
   maxSelected?: number;
 }) {
   const [q, setQ] = useState("");
+  const { t, isZh } = useI18n();
+
+  const labelMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of options ?? []) {
+      const key = String(o.label ?? "").trim();
+      if (!key) continue;
+      const display = isZh ? key : String(o.label_en ?? "").trim() || key;
+      m.set(key, display);
+    }
+    return m;
+  }, [isZh, options]);
+
+  function displayLabel(key: string): string {
+    const k = String(key ?? "").trim();
+    if (!k) return "";
+    return String(labelMap.get(k) ?? k).trim();
+  }
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     if (!term) return options;
     return options.filter((o) => {
-      const hay = `${o.label ?? ""} ${(o.keywords ?? []).join(" ")}`.toLowerCase();
+      const parts = [
+        o.label ?? "",
+        o.label_en ?? "",
+        o.category ?? "",
+        o.category_en ?? "",
+        ...(o.keywords ?? []),
+        ...(o.keywords_en ?? []),
+      ];
+      const hay = parts.filter(Boolean).join(" ").toLowerCase();
       return hay.includes(term);
     });
   }, [options, q]);
@@ -148,13 +207,13 @@ function MultiSelect({
   const selectedSet = useMemo(() => new Set(selected.map((x) => x.trim()).filter(Boolean)), [selected]);
 
   function toggle(label: string) {
-    const t = label.trim();
-    if (!t) return;
+    const value = label.trim();
+    if (!value) return;
     const next = new Set(selectedSet);
-    if (next.has(t)) next.delete(t);
+    if (next.has(value)) next.delete(value);
     else {
       if (next.size >= maxSelected) return;
-      next.add(t);
+      next.add(value);
     }
     onChange(Array.from(next.values()));
   }
@@ -165,40 +224,40 @@ function MultiSelect({
         <div className="text-sm font-medium">{title}</div>
         {selected.length ? (
           <div className="mt-2 flex flex-wrap gap-1">
-            {selected.map((t) => (
-              <Badge key={t} variant="secondary" className="cursor-pointer" onClick={() => toggle(t)}>
-                {t}
+            {selected.map((v) => (
+              <Badge key={v} variant="secondary" className="cursor-pointer" onClick={() => toggle(v)}>
+                {displayLabel(v)}
               </Badge>
             ))}
           </div>
         ) : (
-          <div className="mt-2 text-xs text-muted-foreground">未选择</div>
+          <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "未选择", en: "None selected" })}</div>
         )}
 
         <div className="mt-3">
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索…" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t({ zh: "搜索…", en: "Search…" })} />
         </div>
 
         <div className="mt-3 max-h-[34vh] overflow-y-auto rounded-md border p-2">
           <div className="flex flex-wrap gap-2">
             {filtered.slice(0, 200).map((o) => {
-              const lbl = String(o.label ?? "").trim();
-              const active = selectedSet.has(lbl);
+              const valueLabel = String(o.label ?? "").trim();
+              const active = selectedSet.has(valueLabel);
               return (
                 <Button
                   key={o.id}
                   size="sm"
                   variant={active ? "default" : "secondary"}
-                  onClick={() => toggle(lbl)}
+                  onClick={() => toggle(valueLabel)}
                 >
-                  {lbl}
+                  {displayLabel(valueLabel)}
                 </Button>
               );
             })}
           </div>
         </div>
         <div className="mt-2 text-xs text-muted-foreground">
-          已选 {selected.length}/{maxSelected}
+          {t({ zh: `已选 ${selected.length}/${maxSelected}`, en: `${selected.length}/${maxSelected} selected` })}
         </div>
       </CardContent>
     </Card>
@@ -219,7 +278,7 @@ export function AgentCardWizardDialog({
   onRequestClose?: () => void;
 }) {
   const { toast } = useToast();
-  const { t } = useI18n();
+  const { t, isZh } = useI18n();
   const nav = useNavigate();
 
   const isOpen = open ?? true;
@@ -297,20 +356,44 @@ export function AgentCardWizardDialog({
   const interestLabelSet = useMemo(() => buildLabelSet(catalogs?.interests), [catalogs]);
   const capabilityLabelSet = useMemo(() => buildLabelSet(catalogs?.capabilities), [catalogs]);
 
-  const templateVars = useMemo(
+  const interestLabelToEn = useMemo(() => buildLabelToEnMap(catalogs?.interests), [catalogs]);
+  const capabilityLabelToEn = useMemo(() => buildLabelToEnMap(catalogs?.capabilities), [catalogs]);
+
+  const templateVarsZh = useMemo(
     () => ({ name: name.trim(), interests: interests ?? [], capabilities: capabilities ?? [] }),
     [capabilities, interests, name],
   );
+  const templateVarsEn = useMemo(
+    () => ({
+      name: name.trim(),
+      interests: mapLabelsToEn(interests ?? [], interestLabelToEn),
+      capabilities: mapLabelsToEn(capabilities ?? [], capabilityLabelToEn),
+    }),
+    [capabilities, capabilityLabelToEn, interestLabelToEn, interests, name],
+  );
 
   function recomputeTemplatesIfNeeded(nextName: string, nextInterests: string[], nextCapabilities: string[]) {
-    const vars = { name: nextName.trim(), interests: nextInterests, capabilities: nextCapabilities };
+    const varsZh = { name: nextName.trim(), interests: nextInterests, capabilities: nextCapabilities };
+    const varsEn = {
+      name: nextName.trim(),
+      interests: mapLabelsToEn(nextInterests, interestLabelToEn),
+      capabilities: mapLabelsToEn(nextCapabilities, capabilityLabelToEn),
+    };
     if (!bioCustom && bioTemplateId) {
       const t = (catalogs?.bio_templates ?? []).find((x) => String(x.id ?? "") === bioTemplateId);
-      if (t?.template) setBio(renderCatalogTemplate(t.template, vars));
+      const useEnTemplate = !isZh && !!t?.template_en;
+      const tmpl = useEnTemplate ? String(t?.template_en ?? "") : String(t?.template ?? "");
+      const joiner = useEnTemplate ? ", " : "、";
+      const vars = useEnTemplate ? varsEn : varsZh;
+      if (tmpl) setBio(renderCatalogTemplate(tmpl, vars, { joiner }));
     }
     if (!greetingCustom && greetingTemplateId) {
       const t = (catalogs?.greeting_templates ?? []).find((x) => String(x.id ?? "") === greetingTemplateId);
-      if (t?.template) setGreeting(renderCatalogTemplate(t.template, vars));
+      const useEnTemplate = !isZh && !!t?.template_en;
+      const tmpl = useEnTemplate ? String(t?.template_en ?? "") : String(t?.template ?? "");
+      const joiner = useEnTemplate ? ", " : "、";
+      const vars = useEnTemplate ? varsEn : varsZh;
+      if (tmpl) setGreeting(renderCatalogTemplate(tmpl, vars, { joiner }));
     }
   }
 
@@ -344,9 +427,16 @@ export function AgentCardWizardDialog({
       setBio(String(a.bio ?? ""));
       setGreeting(String(a.greeting ?? ""));
 
-      const vars = { name: String(a.name ?? "").trim(), interests: a.interests ?? [], capabilities: a.capabilities ?? [] };
-      const bioMatch = findMatchingTemplateId(c.bio_templates, a.bio ?? "", vars);
-      const greetMatch = findMatchingTemplateId(c.greeting_templates, a.greeting ?? "", vars);
+      const interestToEn = buildLabelToEnMap(c.interests);
+      const capabilityToEn = buildLabelToEnMap(c.capabilities);
+      const varsZh = { name: String(a.name ?? "").trim(), interests: a.interests ?? [], capabilities: a.capabilities ?? [] };
+      const varsEn = {
+        name: String(a.name ?? "").trim(),
+        interests: mapLabelsToEn(a.interests ?? [], interestToEn),
+        capabilities: mapLabelsToEn(a.capabilities ?? [], capabilityToEn),
+      };
+      const bioMatch = findMatchingTemplateId(c.bio_templates, a.bio ?? "", { zh: varsZh, en: varsEn });
+      const greetMatch = findMatchingTemplateId(c.greeting_templates, a.greeting ?? "", { zh: varsZh, en: varsEn });
       setBioTemplateId(bioMatch);
       setGreetingTemplateId(greetMatch);
       setBioCustom(!bioMatch);
@@ -456,10 +546,22 @@ export function AgentCardWizardDialog({
     for (const t of capabilities) {
       if (t && !capabilityLabelSet.has(String(t).trim())) return true;
     }
-    const bioOk = !!findMatchingTemplateId(catalogs.bio_templates, bio, templateVars);
-    const greetingOk = !!findMatchingTemplateId(catalogs.greeting_templates, greeting, templateVars);
+    const bioOk = !!findMatchingTemplateId(catalogs.bio_templates, bio, { zh: templateVarsZh, en: templateVarsEn });
+    const greetingOk = !!findMatchingTemplateId(catalogs.greeting_templates, greeting, { zh: templateVarsZh, en: templateVarsEn });
     return bioCustom || greetingCustom || !bioOk || !greetingOk;
-  }, [bio, bioCustom, capabilities, capabilityLabelSet, catalogs, greeting, greetingCustom, interestLabelSet, interests, templateVars]);
+  }, [
+    bio,
+    bioCustom,
+    capabilities,
+    capabilityLabelSet,
+    catalogs,
+    greeting,
+    greetingCustom,
+    interestLabelSet,
+    interests,
+    templateVarsEn,
+    templateVarsZh,
+  ]);
 
   async function save() {
     if (!agentId) return;
@@ -489,7 +591,7 @@ export function AgentCardWizardDialog({
         body: req,
       });
 
-      toast({ title: "已保存" });
+      toast({ title: t({ zh: "已保存", en: "Saved" }) });
       onSaved?.();
       onRequestClose?.();
     } catch (e: any) {
@@ -515,19 +617,19 @@ export function AgentCardWizardDialog({
   function stepTitle(): string {
     switch (step) {
       case 0:
-        return "基础信息";
+        return t({ zh: "基础信息", en: "Basics" });
       case 1:
         return t({ zh: "人设（风格参考）", en: "Persona (style reference)" });
       case 2:
-        return "性格预设";
+        return t({ zh: "性格预设", en: "Personality preset" });
       case 3:
-        return "兴趣";
+        return t({ zh: "兴趣", en: "Interests" });
       case 4:
-        return "能力";
+        return t({ zh: "能力", en: "Capabilities" });
       case 5:
-        return "简介与问候";
+        return t({ zh: "简介与问候", en: "Bio & greeting" });
       default:
-        return "预览与状态";
+        return t({ zh: "预览与状态", en: "Review & status" });
     }
   }
 
@@ -538,7 +640,7 @@ export function AgentCardWizardDialog({
     <DialogContent className="max-h-[80vh] p-0">
       <div className="flex max-h-[80vh] flex-col">
         <DialogHeader className="px-6 pt-6">
-          <DialogTitle>{t({ zh: "智能体卡片向导", en: "Agent card wizard" })}</DialogTitle>
+          <DialogTitle>{t({ zh: "智能体卡片向导", en: "Agent Card Wizard" })}</DialogTitle>
           <div className="mt-1 text-sm text-muted-foreground">{stepTitle()}</div>
           <div className="mt-3 flex flex-wrap gap-2">
             {[
@@ -565,7 +667,7 @@ export function AgentCardWizardDialog({
 
         <div className="flex-1 overflow-y-auto px-6 pb-4">
           <div className="space-y-3 pt-3">
-            {loading && !agent ? <div className="text-sm text-muted-foreground">加载中…</div> : null}
+            {loading && !agent ? <div className="text-sm text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
             {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
             {agent ? (
@@ -663,31 +765,35 @@ export function AgentCardWizardDialog({
           {step === 2 ? (
             <Card className="mt-2">
               <CardContent className="pt-4 space-y-2">
-                <div className="text-sm font-medium">选择性格预设</div>
-                <div className="text-xs text-muted-foreground">选一个就能开始；后续可再微调。</div>
+                <div className="text-sm font-medium">{t({ zh: "选择性格预设", en: "Pick a personality preset" })}</div>
+                <div className="text-xs text-muted-foreground">{t({ zh: "选一个就能开始；后续可再微调。", en: "Pick one to start; you can fine-tune later." })}</div>
 
                 <div className="mt-2 grid grid-cols-1 gap-2">
-                  {(catalogs.personality_presets ?? []).map((pp) => (
-                    <Button
-                      key={pp.id}
-                      variant={personalityPresetId === pp.id ? "default" : "secondary"}
-                      className="justify-start"
-                      onClick={() => {
-                        setPersonalityPresetId(pp.id);
-                        setPExtrovert(Number(pp.values.extrovert));
-                        setPCurious(Number(pp.values.curious));
-                        setPCreative(Number(pp.values.creative));
-                        setPStable(Number(pp.values.stable));
-                      }}
-                    >
-                      <div className="text-left">
-                        <div className="text-sm font-medium">{pp.label}</div>
-                        {pp.description ? (
-                          <div className="text-xs text-muted-foreground">{pp.description}</div>
-                        ) : null}
-                      </div>
-                    </Button>
-                  ))}
+                  {(catalogs.personality_presets ?? []).map((pp) => {
+                    const label = isZh ? String(pp.label ?? "") : String(pp.label_en ?? "").trim() || String(pp.label ?? "");
+                    const desc = isZh
+                      ? String(pp.description ?? "")
+                      : String(pp.description_en ?? "").trim() || String(pp.description ?? "");
+                    return (
+                      <Button
+                        key={pp.id}
+                        variant={personalityPresetId === pp.id ? "default" : "secondary"}
+                        className="justify-start"
+                        onClick={() => {
+                          setPersonalityPresetId(pp.id);
+                          setPExtrovert(Number(pp.values.extrovert));
+                          setPCurious(Number(pp.values.curious));
+                          setPCreative(Number(pp.values.creative));
+                          setPStable(Number(pp.values.stable));
+                        }}
+                      >
+                        <div className="text-left">
+                          <div className="text-sm font-medium">{label}</div>
+                          {desc ? <div className="text-xs text-muted-foreground">{desc}</div> : null}
+                        </div>
+                      </Button>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -695,7 +801,7 @@ export function AgentCardWizardDialog({
 
           {step === 3 ? (
             <MultiSelect
-              title="选择兴趣（多选）"
+              title={t({ zh: "选择兴趣（多选）", en: "Select interests (multi)" })}
               options={catalogs.interests ?? []}
               selected={interests}
               onChange={(next) => {
@@ -707,7 +813,7 @@ export function AgentCardWizardDialog({
 
           {step === 4 ? (
             <MultiSelect
-              title="选择能力（多选）"
+              title={t({ zh: "选择能力（多选）", en: "Select capabilities (multi)" })}
               options={catalogs.capabilities ?? []}
               selected={capabilities}
               onChange={(next) => {
@@ -721,66 +827,86 @@ export function AgentCardWizardDialog({
             <Card className="shadow-none">
               <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">简介</div>
+                  <div className="text-sm font-medium">{t({ zh: "简介", en: "Bio" })}</div>
                   <div className="flex flex-wrap gap-2">
-                    {(catalogs.bio_templates ?? []).slice(0, 40).map((t) => (
-                      <Button
-                        key={t.id}
-                        size="sm"
-                        variant={!bioCustom && bioTemplateId === t.id ? "default" : "secondary"}
-                        onClick={() => {
-                          setBioCustom(false);
-                          setBioTemplateId(t.id);
-                          setBio(renderCatalogTemplate(t.template, templateVars));
-                        }}
-                      >
-                        {t.label}
-                      </Button>
-                    ))}
+                    {(catalogs.bio_templates ?? []).slice(0, 40).map((tpl) => {
+                      const useEnTemplate = !isZh && !!tpl.template_en;
+                      const tmpl = useEnTemplate ? String(tpl.template_en ?? "") : String(tpl.template ?? "");
+                      const joiner = useEnTemplate ? ", " : "、";
+                      const vars = useEnTemplate ? templateVarsEn : templateVarsZh;
+                      const label = isZh ? String(tpl.label ?? "") : String(tpl.label_en ?? "").trim() || String(tpl.label ?? "");
+                      return (
+                        <Button
+                          key={tpl.id}
+                          size="sm"
+                          variant={!bioCustom && bioTemplateId === tpl.id ? "default" : "secondary"}
+                          onClick={() => {
+                            setBioCustom(false);
+                            setBioTemplateId(tpl.id);
+                            setBio(renderCatalogTemplate(tmpl, vars, { joiner }));
+                          }}
+                        >
+                          {label}
+                        </Button>
+                      );
+                    })}
                     <Button
                       size="sm"
                       variant={bioCustom ? "default" : "secondary"}
                       onClick={() => setBioCustom((v) => !v)}
                     >
-                      自定义
+                      {t({ zh: "自定义", en: "Custom" })}
                     </Button>
                   </div>
                   {bioCustom ? (
                     <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                      自定义内容需要审核：未通过前不可公开发现、不可同步到 OSS。
+                      {t({
+                        zh: "自定义内容需要审核：未通过前不可公开发现、不可同步到 OSS。",
+                        en: "Custom content requires review: before approval, it can't be public or synced to OSS.",
+                      })}
                     </div>
                   ) : null}
                   <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">问候语</div>
+                  <div className="text-sm font-medium">{t({ zh: "问候语", en: "Greeting" })}</div>
                   <div className="flex flex-wrap gap-2">
-                    {(catalogs.greeting_templates ?? []).slice(0, 40).map((t) => (
-                      <Button
-                        key={t.id}
-                        size="sm"
-                        variant={!greetingCustom && greetingTemplateId === t.id ? "default" : "secondary"}
-                        onClick={() => {
-                          setGreetingCustom(false);
-                          setGreetingTemplateId(t.id);
-                          setGreeting(renderCatalogTemplate(t.template, templateVars));
-                        }}
-                      >
-                        {t.label}
-                      </Button>
-                    ))}
+                    {(catalogs.greeting_templates ?? []).slice(0, 40).map((tpl) => {
+                      const useEnTemplate = !isZh && !!tpl.template_en;
+                      const tmpl = useEnTemplate ? String(tpl.template_en ?? "") : String(tpl.template ?? "");
+                      const joiner = useEnTemplate ? ", " : "、";
+                      const vars = useEnTemplate ? templateVarsEn : templateVarsZh;
+                      const label = isZh ? String(tpl.label ?? "") : String(tpl.label_en ?? "").trim() || String(tpl.label ?? "");
+                      return (
+                        <Button
+                          key={tpl.id}
+                          size="sm"
+                          variant={!greetingCustom && greetingTemplateId === tpl.id ? "default" : "secondary"}
+                          onClick={() => {
+                            setGreetingCustom(false);
+                            setGreetingTemplateId(tpl.id);
+                            setGreeting(renderCatalogTemplate(tmpl, vars, { joiner }));
+                          }}
+                        >
+                          {label}
+                        </Button>
+                      );
+                    })}
                     <Button
                       size="sm"
                       variant={greetingCustom ? "default" : "secondary"}
                       onClick={() => setGreetingCustom((v) => !v)}
                     >
-                      自定义
+                      {t({ zh: "自定义", en: "Custom" })}
                     </Button>
                   </div>
                   {greetingCustom ? (
                     <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                      自定义内容需要审核：未通过前不可公开发现、不可同步到 OSS。
+                      {t({
+                        zh: "自定义内容需要审核：未通过前不可公开发现、不可同步到 OSS。",
+                        en: "Custom content requires review: before approval, it can't be public or synced to OSS.",
+                      })}
                     </div>
                   ) : null}
                   <Textarea value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={3} />

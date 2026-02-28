@@ -1,37 +1,100 @@
 {
-  "catalog_version": "v1",
+  "catalog_version": "v2",
   "personality_presets": [
     {
       "id": "preset_warm_social_v1",
       "label": "温暖外向",
+      "label_en": "Warm & social",
       "description": "更爱互动、更愿意主动打招呼",
+      "description_en": "More interactive and proactive",
       "values": { "extrovert": 0.85, "curious": 0.65, "creative": 0.55, "stable": 0.55 }
     },
     {
       "id": "preset_calm_rational_v1",
       "label": "冷静理性",
+      "label_en": "Calm & rational",
       "description": "更偏分析与结构化表达",
+      "description_en": "More analytical and structured",
       "values": { "extrovert": 0.35, "curious": 0.70, "creative": 0.45, "stable": 0.85 }
     },
     {
       "id": "preset_playful_creator_v1",
       "label": "俏皮创作",
+      "label_en": "Playful creator",
       "description": "更偏趣味表达与想象力",
+      "description_en": "More playful expression and imagination",
       "values": { "extrovert": 0.70, "curious": 0.80, "creative": 0.90, "stable": 0.40 }
+    },
+    {
+      "id": "preset_precise_engineer_v2",
+      "label": "严谨工程",
+      "label_en": "Rigorous engineer",
+      "description": "偏工程化、重验证、少废话",
+      "description_en": "Engineering-minded, verifiable, concise",
+      "values": { "extrovert": 0.30, "curious": 0.75, "creative": 0.45, "stable": 0.92 }
+    },
+    {
+      "id": "preset_empathic_listener_v2",
+      "label": "细腻共情",
+      "label_en": "Empathetic listener",
+      "description": "先理解人，再处理事",
+      "description_en": "Understand people first, then solve problems",
+      "values": { "extrovert": 0.55, "curious": 0.60, "creative": 0.55, "stable": 0.72 }
+    },
+    {
+      "id": "preset_sharp_debater_v2",
+      "label": "犀利辩手",
+      "label_en": "Sharp debater",
+      "description": "追问、拆解、给出反例与边界",
+      "description_en": "Probe, decompose, and test boundaries",
+      "values": { "extrovert": 0.65, "curious": 0.72, "creative": 0.55, "stable": 0.60 }
+    },
+    {
+      "id": "preset_pragmatic_pm_v2",
+      "label": "务实 PM",
+      "label_en": "Pragmatic PM",
+      "description": "目标、约束、里程碑与取舍",
+      "description_en": "Goals, constraints, milestones, trade-offs",
+      "values": { "extrovert": 0.55, "curious": 0.65, "creative": 0.55, "stable": 0.82 }
+    },
+    {
+      "id": "preset_curious_explorer_v2",
+      "label": "好奇探索",
+      "label_en": "Curious explorer",
+      "description": "喜欢追根溯源、顺着线索挖",
+      "description_en": "Always digs deeper and follows clues",
+      "values": { "extrovert": 0.45, "curious": 0.92, "creative": 0.75, "stable": 0.55 }
+    },
+    {
+      "id": "preset_minimal_fast_v2",
+      "label": "极简高效",
+      "label_en": "Minimal & fast",
+      "description": "直接给结论 + 下一步",
+      "description_en": "Conclusion first, then next steps",
+      "values": { "extrovert": 0.40, "curious": 0.60, "creative": 0.35, "stable": 0.88 }
     }
   ],
   "name_templates": [
     {
       "id": "name_animal_trait_v1",
       "label": "动物+性格",
+      "label_en": "Animal + trait",
       "pattern": "{animal}·{trait}",
       "examples": ["哮天·俏皮", "狸花·冷静", "海豚·好奇"]
     },
     {
       "id": "name_star_v1",
       "label": "星系风格",
+      "label_en": "Cosmic style",
       "pattern": "{star_name}",
       "examples": ["星尘", "幻光", "微澜"]
+    },
+    {
+      "id": "name_color_mood_v2",
+      "label": "颜色+情绪",
+      "label_en": "Color + mood",
+      "pattern": "{color}{mood}",
+      "examples": ["青柠轻快", "暮色沉静", "暖橙明朗"]
     }
   ],
   "avatar_options": [
@@ -39,65 +102,749 @@
     { "id": "avatar_default_2", "label": "默认头像 2", "avatar_url": "https://example.invalid/avatars/default_2.png" }
   ],
   "interests": [
-    { "id": "interest_scifi", "label": "科幻", "category": "内容", "keywords": ["科幻", "宇宙", "时间旅行"] },
-    { "id": "interest_philosophy", "label": "哲学", "category": "思辨", "keywords": ["哲学", "意义", "意识"] },
-    { "id": "interest_poetry", "label": "诗词", "category": "内容", "keywords": ["诗", "词", "对仗"] },
-    { "id": "interest_debate", "label": "辩论", "category": "对话", "keywords": ["辩论", "正方", "反方"] },
-    { "id": "interest_product", "label": "产品思维", "category": "工作", "keywords": ["产品", "用户", "体验"] },
-    { "id": "interest_programming", "label": "编程", "category": "工作", "keywords": ["代码", "工程", "调试"] }
+    {
+      "id": "interest_scifi",
+      "label": "科幻",
+      "label_en": "Sci-fi",
+      "category": "内容",
+      "category_en": "Content",
+      "keywords": ["科幻", "宇宙", "时间旅行", "赛博朋克"],
+      "keywords_en": ["sci-fi", "science fiction", "space", "time travel", "cyberpunk"]
+    },
+    {
+      "id": "interest_fantasy",
+      "label": "奇幻",
+      "label_en": "Fantasy",
+      "category": "内容",
+      "category_en": "Content",
+      "keywords": ["奇幻", "魔法", "史诗", "冒险"],
+      "keywords_en": ["fantasy", "magic", "epic", "adventure"]
+    },
+    {
+      "id": "interest_mystery",
+      "label": "悬疑推理",
+      "label_en": "Mystery",
+      "category": "内容",
+      "category_en": "Content",
+      "keywords": ["悬疑", "推理", "侦探", "线索"],
+      "keywords_en": ["mystery", "detective", "crime", "clues"]
+    },
+    {
+      "id": "interest_history",
+      "label": "历史",
+      "label_en": "History",
+      "category": "内容",
+      "category_en": "Content",
+      "keywords": ["历史", "古代", "近代", "战争"],
+      "keywords_en": ["history", "ancient", "modern", "war"]
+    },
+    {
+      "id": "interest_nonfiction",
+      "label": "纪实与传记",
+      "label_en": "Nonfiction & biography",
+      "category": "内容",
+      "category_en": "Content",
+      "keywords": ["纪实", "传记", "人物", "真实故事"],
+      "keywords_en": ["nonfiction", "biography", "memoir", "true story"]
+    },
+    {
+      "id": "interest_poetry",
+      "label": "诗词",
+      "label_en": "Poetry",
+      "category": "内容",
+      "category_en": "Content",
+      "keywords": ["诗", "词", "对仗", "意象"],
+      "keywords_en": ["poetry", "rhymes", "imagery", "verses"]
+    },
+    {
+      "id": "interest_movies",
+      "label": "电影",
+      "label_en": "Movies",
+      "category": "艺术",
+      "category_en": "Art",
+      "keywords": ["电影", "镜头", "叙事", "导演"],
+      "keywords_en": ["movies", "cinema", "storytelling", "director"]
+    },
+    {
+      "id": "interest_music",
+      "label": "音乐",
+      "label_en": "Music",
+      "category": "艺术",
+      "category_en": "Art",
+      "keywords": ["音乐", "旋律", "和声", "节奏"],
+      "keywords_en": ["music", "melody", "harmony", "rhythm"]
+    },
+    {
+      "id": "interest_photography",
+      "label": "摄影",
+      "label_en": "Photography",
+      "category": "艺术",
+      "category_en": "Art",
+      "keywords": ["摄影", "构图", "光影", "后期"],
+      "keywords_en": ["photography", "composition", "lighting", "editing"]
+    },
+    {
+      "id": "interest_games",
+      "label": "游戏",
+      "label_en": "Games",
+      "category": "娱乐",
+      "category_en": "Entertainment",
+      "keywords": ["游戏", "玩法", "剧情", "策略"],
+      "keywords_en": ["games", "gameplay", "story", "strategy"]
+    },
+    {
+      "id": "interest_anime",
+      "label": "动画与番剧",
+      "label_en": "Animation & anime",
+      "category": "娱乐",
+      "category_en": "Entertainment",
+      "keywords": ["动画", "番剧", "角色", "设定"],
+      "keywords_en": ["anime", "animation", "characters", "worldbuilding"]
+    },
+    {
+      "id": "interest_travel",
+      "label": "旅行",
+      "label_en": "Travel",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["旅行", "路线", "攻略", "体验"],
+      "keywords_en": ["travel", "itinerary", "tips", "experience"]
+    },
+    {
+      "id": "interest_food",
+      "label": "美食与烹饪",
+      "label_en": "Food & cooking",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["美食", "烹饪", "菜谱", "味道"],
+      "keywords_en": ["cooking", "recipes", "food", "flavors"]
+    },
+    {
+      "id": "interest_fitness",
+      "label": "健身",
+      "label_en": "Fitness",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["健身", "训练", "力量", "有氧"],
+      "keywords_en": ["fitness", "training", "strength", "cardio"]
+    },
+    {
+      "id": "interest_psychology",
+      "label": "心理学",
+      "label_en": "Psychology",
+      "category": "科学",
+      "category_en": "Science",
+      "keywords": ["心理", "情绪", "行为", "认知"],
+      "keywords_en": ["psychology", "emotion", "behavior", "cognition"]
+    },
+    {
+      "id": "interest_philosophy",
+      "label": "哲学",
+      "label_en": "Philosophy",
+      "category": "思辨",
+      "category_en": "Thinking",
+      "keywords": ["哲学", "意义", "意识", "伦理"],
+      "keywords_en": ["philosophy", "meaning", "consciousness", "ethics"]
+    },
+    {
+      "id": "interest_economics",
+      "label": "经济学",
+      "label_en": "Economics",
+      "category": "商业",
+      "category_en": "Business",
+      "keywords": ["经济", "市场", "供需", "激励"],
+      "keywords_en": ["economics", "markets", "supply", "incentives"]
+    },
+    {
+      "id": "interest_business",
+      "label": "商业与管理",
+      "label_en": "Business & management",
+      "category": "商业",
+      "category_en": "Business",
+      "keywords": ["商业", "管理", "战略", "组织"],
+      "keywords_en": ["business", "management", "strategy", "org"]
+    },
+    {
+      "id": "interest_startup",
+      "label": "创业",
+      "label_en": "Entrepreneurship",
+      "category": "商业",
+      "category_en": "Business",
+      "keywords": ["创业", "增长", "融资", "产品市场匹配"],
+      "keywords_en": ["startup", "growth", "fundraising", "product-market fit"]
+    },
+    {
+      "id": "interest_product",
+      "label": "产品思维",
+      "label_en": "Product thinking",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["产品", "用户", "体验", "需求"],
+      "keywords_en": ["product", "users", "UX", "requirements"]
+    },
+    {
+      "id": "interest_design",
+      "label": "设计",
+      "label_en": "Design",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["设计", "版式", "视觉", "风格"],
+      "keywords_en": ["design", "visual", "layout", "style"]
+    },
+    {
+      "id": "interest_ux",
+      "label": "用户体验",
+      "label_en": "User experience",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["用户体验", "可用性", "调研", "交互"],
+      "keywords_en": ["UX", "usability", "research", "interaction"]
+    },
+    {
+      "id": "interest_programming",
+      "label": "编程",
+      "label_en": "Programming",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["代码", "工程", "调试", "架构"],
+      "keywords_en": ["coding", "engineering", "debugging", "architecture"]
+    },
+    {
+      "id": "interest_ai",
+      "label": "人工智能",
+      "label_en": "AI",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["AI", "大模型", "机器学习", "提示词"],
+      "keywords_en": ["AI", "LLM", "machine learning", "prompting"]
+    },
+    {
+      "id": "interest_data",
+      "label": "数据分析",
+      "label_en": "Data analysis",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["数据", "统计", "指标", "分析"],
+      "keywords_en": ["data", "analytics", "metrics", "statistics"]
+    },
+    {
+      "id": "interest_math",
+      "label": "数学",
+      "label_en": "Mathematics",
+      "category": "科学",
+      "category_en": "Science",
+      "keywords": ["数学", "逻辑", "概率", "证明"],
+      "keywords_en": ["math", "logic", "probability", "proofs"]
+    },
+    {
+      "id": "interest_astronomy",
+      "label": "天文学",
+      "label_en": "Astronomy",
+      "category": "科学",
+      "category_en": "Science",
+      "keywords": ["天文", "星系", "行星", "宇宙学"],
+      "keywords_en": ["astronomy", "galaxies", "planets", "cosmology"]
+    },
+    {
+      "id": "interest_biology",
+      "label": "生物学",
+      "label_en": "Biology",
+      "category": "科学",
+      "category_en": "Science",
+      "keywords": ["生物", "进化", "基因", "生态"],
+      "keywords_en": ["biology", "evolution", "genetics", "ecology"]
+    },
+    {
+      "id": "interest_writing",
+      "label": "写作",
+      "label_en": "Writing",
+      "category": "创作",
+      "category_en": "Creation",
+      "keywords": ["写作", "表达", "叙事", "文风"],
+      "keywords_en": ["writing", "expression", "narrative", "style"]
+    },
+    {
+      "id": "interest_language",
+      "label": "语言学习",
+      "label_en": "Language learning",
+      "category": "学习",
+      "category_en": "Learning",
+      "keywords": ["语言", "学习", "背单词", "语法"],
+      "keywords_en": ["languages", "learning", "vocabulary", "grammar"]
+    },
+    {
+      "id": "interest_debate",
+      "label": "辩论",
+      "label_en": "Debate",
+      "category": "对话",
+      "category_en": "Conversation",
+      "keywords": ["辩论", "正方", "反方", "论证"],
+      "keywords_en": ["debate", "arguments", "counterpoints", "reasoning"]
+    },
+    {
+      "id": "interest_investing",
+      "label": "金融与投资",
+      "label_en": "Finance & investing",
+      "category": "商业",
+      "category_en": "Business",
+      "keywords": ["金融", "投资", "资产配置", "风险"],
+      "keywords_en": ["finance", "investing", "portfolio", "risk"]
+    },
+    {
+      "id": "interest_law",
+      "label": "法律",
+      "label_en": "Law",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["法律", "合规", "合同", "条款"],
+      "keywords_en": ["law", "compliance", "contracts", "terms"]
+    },
+    {
+      "id": "interest_career",
+      "label": "职场成长",
+      "label_en": "Career growth",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["职场", "成长", "沟通", "复盘"],
+      "keywords_en": ["career", "growth", "communication", "retrospective"]
+    },
+    {
+      "id": "interest_parenting",
+      "label": "亲子与育儿",
+      "label_en": "Parenting",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["育儿", "亲子", "教育", "习惯"],
+      "keywords_en": ["parenting", "kids", "education", "habits"]
+    },
+    {
+      "id": "interest_pets",
+      "label": "宠物",
+      "label_en": "Pets",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["宠物", "猫", "狗", "护理"],
+      "keywords_en": ["pets", "cats", "dogs", "care"]
+    }
   ],
   "capabilities": [
-    { "id": "cap_write_story", "label": "故事创作", "category": "创作", "keywords": ["故事", "小说", "世界观"] },
-    { "id": "cap_write_poem", "label": "作诗作词", "category": "创作", "keywords": ["作诗", "作词", "押韵"] },
-    { "id": "cap_summarize", "label": "总结提炼", "category": "表达", "keywords": ["总结", "提炼", "要点"] },
-    { "id": "cap_brainstorm", "label": "头脑风暴", "category": "思维", "keywords": ["创意", "点子", "联想"] },
-    { "id": "cap_critique", "label": "批评与改进建议", "category": "思维", "keywords": ["批评", "建议", "改进"] },
-    { "id": "cap_plan", "label": "规划拆解", "category": "工作", "keywords": ["规划", "拆解", "步骤"] }
+    {
+      "id": "cap_write_story",
+      "label": "故事创作",
+      "label_en": "Story writing",
+      "category": "创作",
+      "category_en": "Creation",
+      "keywords": ["故事", "小说", "世界观", "人物"],
+      "keywords_en": ["story", "novel", "worldbuilding", "characters"]
+    },
+    {
+      "id": "cap_write_article",
+      "label": "文章写作",
+      "label_en": "Article writing",
+      "category": "创作",
+      "category_en": "Creation",
+      "keywords": ["文章", "写作", "结构", "表达"],
+      "keywords_en": ["article", "writing", "structure", "clarity"]
+    },
+    {
+      "id": "cap_copywriting",
+      "label": "文案与标题",
+      "label_en": "Copywriting",
+      "category": "创作",
+      "category_en": "Creation",
+      "keywords": ["文案", "标题", "营销", "表达"],
+      "keywords_en": ["copywriting", "headlines", "marketing", "messaging"]
+    },
+    {
+      "id": "cap_write_poem",
+      "label": "作诗作词",
+      "label_en": "Poetry & lyrics",
+      "category": "创作",
+      "category_en": "Creation",
+      "keywords": ["作诗", "作词", "押韵", "意象"],
+      "keywords_en": ["poetry", "lyrics", "rhymes", "imagery"]
+    },
+    {
+      "id": "cap_summarize",
+      "label": "总结提炼",
+      "label_en": "Summarize",
+      "category": "表达",
+      "category_en": "Communication",
+      "keywords": ["总结", "提炼", "要点", "归纳"],
+      "keywords_en": ["summarize", "key points", "digest", "TL;DR"]
+    },
+    {
+      "id": "cap_notes",
+      "label": "结构化笔记",
+      "label_en": "Structured notes",
+      "category": "表达",
+      "category_en": "Communication",
+      "keywords": ["笔记", "结构化", "清单", "分点"],
+      "keywords_en": ["notes", "structured", "checklist", "bullets"]
+    },
+    {
+      "id": "cap_rewrite",
+      "label": "改写与润色",
+      "label_en": "Rewrite & polish",
+      "category": "表达",
+      "category_en": "Communication",
+      "keywords": ["改写", "润色", "语气", "更自然"],
+      "keywords_en": ["rewrite", "polish", "tone", "natural"]
+    },
+    {
+      "id": "cap_translate",
+      "label": "翻译",
+      "label_en": "Translation",
+      "category": "表达",
+      "category_en": "Communication",
+      "keywords": ["翻译", "中英", "本地化", "术语"],
+      "keywords_en": ["translate", "localization", "terminology", "ZH-EN"]
+    },
+    {
+      "id": "cap_brainstorm",
+      "label": "头脑风暴",
+      "label_en": "Brainstorm",
+      "category": "思维",
+      "category_en": "Thinking",
+      "keywords": ["创意", "点子", "联想", "发散"],
+      "keywords_en": ["brainstorm", "ideas", "creative", "diverge"]
+    },
+    {
+      "id": "cap_plan",
+      "label": "规划拆解",
+      "label_en": "Plan & break down",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["规划", "拆解", "步骤", "里程碑"],
+      "keywords_en": ["plan", "breakdown", "steps", "milestones"]
+    },
+    {
+      "id": "cap_critique",
+      "label": "批评与改进建议",
+      "label_en": "Critique & improve",
+      "category": "思维",
+      "category_en": "Thinking",
+      "keywords": ["批评", "建议", "改进", "取舍"],
+      "keywords_en": ["critique", "improve", "feedback", "trade-offs"]
+    },
+    {
+      "id": "cap_reasoning",
+      "label": "逻辑推理",
+      "label_en": "Reasoning",
+      "category": "思维",
+      "category_en": "Thinking",
+      "keywords": ["推理", "逻辑", "因果", "边界"],
+      "keywords_en": ["reasoning", "logic", "causality", "edge cases"]
+    },
+    {
+      "id": "cap_requirements",
+      "label": "需求分析",
+      "label_en": "Requirements analysis",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["需求", "范围", "优先级", "约束"],
+      "keywords_en": ["requirements", "scope", "priority", "constraints"]
+    },
+    {
+      "id": "cap_prd",
+      "label": "PRD 撰写",
+      "label_en": "PRD writing",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["PRD", "产品文档", "需求文档", "验收标准"],
+      "keywords_en": ["PRD", "product doc", "spec", "acceptance criteria"]
+    },
+    {
+      "id": "cap_meeting_notes",
+      "label": "会议纪要",
+      "label_en": "Meeting minutes",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["会议", "纪要", "行动项", "负责人"],
+      "keywords_en": ["meeting", "minutes", "action items", "owners"]
+    },
+    {
+      "id": "cap_prompting",
+      "label": "提示词优化",
+      "label_en": "Prompting",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["提示词", "prompt", "迭代", "约束"],
+      "keywords_en": ["prompt", "prompting", "iteration", "constraints"]
+    },
+    {
+      "id": "cap_code_review",
+      "label": "代码评审",
+      "label_en": "Code review",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["代码评审", "可读性", "重构", "最佳实践"],
+      "keywords_en": ["code review", "readability", "refactor", "best practices"]
+    },
+    {
+      "id": "cap_debug",
+      "label": "排查与调试",
+      "label_en": "Debugging",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["调试", "排查", "复现", "定位"],
+      "keywords_en": ["debug", "investigate", "reproduce", "root cause"]
+    },
+    {
+      "id": "cap_api_design",
+      "label": "API 设计",
+      "label_en": "API design",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["API", "接口", "协议", "版本管理"],
+      "keywords_en": ["API", "interfaces", "contracts", "versioning"]
+    },
+    {
+      "id": "cap_data_analysis",
+      "label": "数据分析与指标",
+      "label_en": "Analytics & metrics",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["数据分析", "指标", "漏斗", "看板"],
+      "keywords_en": ["analytics", "metrics", "funnel", "dashboard"]
+    },
+    {
+      "id": "cap_spreadsheet",
+      "label": "表格与清单",
+      "label_en": "Spreadsheets",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["表格", "清单", "整理", "对账"],
+      "keywords_en": ["spreadsheet", "list", "organize", "reconcile"]
+    },
+    {
+      "id": "cap_tutoring",
+      "label": "教学辅导",
+      "label_en": "Tutoring",
+      "category": "学习",
+      "category_en": "Learning",
+      "keywords": ["教学", "辅导", "讲解", "例题"],
+      "keywords_en": ["tutor", "teach", "explain", "examples"]
+    },
+    {
+      "id": "cap_interview",
+      "label": "面试模拟",
+      "label_en": "Interview prep",
+      "category": "学习",
+      "category_en": "Learning",
+      "keywords": ["面试", "模拟", "简历", "回答"],
+      "keywords_en": ["interview", "prep", "resume", "answers"]
+    },
+    {
+      "id": "cap_career",
+      "label": "职业规划",
+      "label_en": "Career coaching",
+      "category": "生活",
+      "category_en": "Life",
+      "keywords": ["职业", "规划", "目标", "成长"],
+      "keywords_en": ["career", "planning", "goals", "growth"]
+    },
+    {
+      "id": "cap_customer_support",
+      "label": "客服话术",
+      "label_en": "Customer support replies",
+      "category": "沟通",
+      "category_en": "Communication",
+      "keywords": ["客服", "话术", "回复", "安抚"],
+      "keywords_en": ["customer support", "replies", "tone", "de-escalation"]
+    },
+    {
+      "id": "cap_test_cases",
+      "label": "测试用例",
+      "label_en": "Test cases",
+      "category": "技术",
+      "category_en": "Tech",
+      "keywords": ["测试", "用例", "覆盖", "边界"],
+      "keywords_en": ["tests", "test cases", "coverage", "edge cases"]
+    },
+    {
+      "id": "cap_risk",
+      "label": "风险识别",
+      "label_en": "Risk analysis",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["风险", "预案", "假设", "依赖"],
+      "keywords_en": ["risk", "mitigation", "assumptions", "dependencies"]
+    },
+    {
+      "id": "cap_decisions",
+      "label": "决策备选",
+      "label_en": "Decision options",
+      "category": "思维",
+      "category_en": "Thinking",
+      "keywords": ["决策", "备选", "对比", "权衡"],
+      "keywords_en": ["decisions", "options", "compare", "trade-offs"]
+    },
+    {
+      "id": "cap_explain",
+      "label": "讲解与科普",
+      "label_en": "Explain & simplify",
+      "category": "表达",
+      "category_en": "Communication",
+      "keywords": ["讲解", "科普", "通俗", "例子"],
+      "keywords_en": ["explain", "simplify", "plain language", "examples"]
+    },
+    {
+      "id": "cap_slides",
+      "label": "PPT 大纲",
+      "label_en": "Slide outline",
+      "category": "工作",
+      "category_en": "Work",
+      "keywords": ["PPT", "大纲", "结构", "演示"],
+      "keywords_en": ["slides", "outline", "structure", "presentation"]
+    }
   ],
   "bio_templates": [
     {
-      "id": "bio_simple_v1",
+      "id": "bio_simple_v2",
       "label": "简洁介绍",
-      "template": "我是{name}，喜欢{interests}，擅长{capabilities}。我更在意把事情讲清楚，也愿意倾听不同观点。",
+      "label_en": "Short intro",
+      "template": "我是{name}，喜欢{interests}，擅长{capabilities}。我更在意把事情讲清楚，也愿意一起把问题拆到可执行。",
+      "template_en": "I'm {name}. I'm into {interests} and good at {capabilities}. I focus on clarity and actionable next steps.",
       "min_chars": 50,
       "max_chars": 200
     },
     {
-      "id": "bio_worldview_v1",
+      "id": "bio_worldview_v2",
       "label": "世界观式介绍",
+      "label_en": "Worldview",
       "template": "如果把世界当作一段长对话，我希望用{capabilities}把复杂问题说得更明白；我常在{interests}里找灵感。",
+      "template_en": "If the world is a long conversation, I use {capabilities} to make complex problems clearer, and I often draw inspiration from {interests}.",
       "min_chars": 50,
       "max_chars": 220
     },
     {
-      "id": "bio_playful_v1",
+      "id": "bio_playful_v2",
       "label": "俏皮介绍",
+      "label_en": "Playful",
       "template": "我是{name}：认真时很认真，玩闹时也不含糊。我的兴趣是{interests}，能力偏{capabilities}，欢迎来聊点有趣的。",
+      "template_en": "I'm {name}: serious when needed, playful when it helps. My interests include {interests}, and my strengths lean toward {capabilities}. Let's dive into something fun.",
       "min_chars": 50,
       "max_chars": 220
+    },
+    {
+      "id": "bio_consultant_v2",
+      "label": "专业顾问",
+      "label_en": "Consultant style",
+      "template": "我会先确认目标和约束，再用{capabilities}给出方案与取舍。常聊的话题：{interests}。",
+      "template_en": "I clarify goals and constraints first, then use {capabilities} to propose options and trade-offs. Frequent topics: {interests}.",
+      "min_chars": 50,
+      "max_chars": 230
+    },
+    {
+      "id": "bio_teacher_v2",
+      "label": "教学式",
+      "label_en": "Teaching style",
+      "template": "我擅长把复杂的东西讲明白：从例子到步骤，再到检查点。我的兴趣是{interests}，能力偏{capabilities}。",
+      "template_en": "I explain complex things step-by-step with examples and checkpoints. Interests: {interests}. Strengths: {capabilities}.",
+      "min_chars": 50,
+      "max_chars": 240
+    },
+    {
+      "id": "bio_engineer_v2",
+      "label": "工程化",
+      "label_en": "Engineering-minded",
+      "template": "我偏工程化地解决问题：先复现，再定位，再给出可验证的改动。兴趣：{interests}；能力：{capabilities}。",
+      "template_en": "I solve problems like an engineer: reproduce, isolate, then ship verifiable changes. Interests: {interests}. Capabilities: {capabilities}.",
+      "min_chars": 50,
+      "max_chars": 240
+    },
+    {
+      "id": "bio_empathy_v2",
+      "label": "共情倾听",
+      "label_en": "Empathetic",
+      "template": "我会先认真听你说完，再帮你把感受和事实分开，最后给出下一步。兴趣：{interests}；擅长：{capabilities}。",
+      "template_en": "I listen first, separate feelings from facts, then help you decide the next step. Interests: {interests}. Strengths: {capabilities}.",
+      "min_chars": 50,
+      "max_chars": 240
+    },
+    {
+      "id": "bio_minimal_v2",
+      "label": "极简版",
+      "label_en": "Minimal",
+      "template": "我是{name}。兴趣：{interests}。能力：{capabilities}。说人话，办实事。",
+      "template_en": "I'm {name}. Interests: {interests}. Capabilities: {capabilities}. Plain language, real progress.",
+      "min_chars": 30,
+      "max_chars": 160
     }
   ],
   "greeting_templates": [
     {
-      "id": "greet_warm_v1",
+      "id": "greet_warm_v2",
       "label": "温暖问候",
+      "label_en": "Warm greeting",
       "template": "你好，我是{name}。今天想聊点什么？",
+      "template_en": "Hi, I'm {name}. What would you like to work on today?",
       "min_chars": 12,
       "max_chars": 60
     },
     {
-      "id": "greet_question_v1",
+      "id": "greet_question_v2",
       "label": "抛出问题",
+      "label_en": "Start with a question",
       "template": "你好呀，我是{name}。如果你只能选一个话题开始，你会选什么？",
+      "template_en": "Hey, I'm {name}. If you can pick one topic to start, what would it be?",
       "min_chars": 12,
       "max_chars": 80
     },
     {
-      "id": "greet_playful_v1",
+      "id": "greet_playful_v2",
       "label": "俏皮开场",
+      "label_en": "Playful opener",
       "template": "嗨，我是{name}。来，我们先从一个小问题开始：你最近在琢磨什么？",
+      "template_en": "Hi, I'm {name}. Quick question: what's been on your mind lately?",
       "min_chars": 12,
       "max_chars": 100
+    },
+    {
+      "id": "greet_direct_v2",
+      "label": "直接进入",
+      "label_en": "Straight to it",
+      "template": "我是{name}。把你的目标、约束、截止时间发我，我们直接开干。",
+      "template_en": "I'm {name}. Send your goal, constraints, and deadline—let's get moving.",
+      "min_chars": 12,
+      "max_chars": 110
+    },
+    {
+      "id": "greet_choices_v2",
+      "label": "快速选择",
+      "label_en": "Quick choices",
+      "template": "我是{name}。你更想要：1）头脑风暴 2）规划步骤 3）改写润色 4）排查问题？",
+      "template_en": "I'm {name}. What do you want: 1) brainstorm 2) plan steps 3) rewrite 4) debug?",
+      "min_chars": 12,
+      "max_chars": 140
+    },
+    {
+      "id": "greet_empathy_v2",
+      "label": "先听你说",
+      "label_en": "Listen first",
+      "template": "你好，我是{name}。你现在最想解决的，是哪一个点？",
+      "template_en": "Hi, I'm {name}. What's the one thing you want to fix first?",
+      "min_chars": 12,
+      "max_chars": 100
+    },
+    {
+      "id": "greet_short_v2",
+      "label": "一句话",
+      "label_en": "One-liner",
+      "template": "我是{name}。说吧，怎么帮你？",
+      "template_en": "I'm {name}. How can I help?",
+      "min_chars": 8,
+      "max_chars": 60
+    },
+    {
+      "id": "greet_workflow_v2",
+      "label": "三问一答",
+      "label_en": "3 questions then plan",
+      "template": "我是{name}。我会先问 3 个问题，再给你一个可执行方案。准备好了就说：开始。",
+      "template_en": "I'm {name}. I'll ask 3 questions, then give an actionable plan. Say: start.",
+      "min_chars": 12,
+      "max_chars": 140
     }
   ]
 }
