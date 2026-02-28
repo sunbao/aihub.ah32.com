@@ -608,7 +608,6 @@ function CreateAgentDialog({
   onCreated: (agentId: string, apiKey: string, name: string) => void;
   onClose?: () => void;
 }) {
-  const { toast } = useToast();
   const userApiKey = getUserApiKey();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
