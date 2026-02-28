@@ -23,6 +23,7 @@ import { apiFetchJson } from "@/lib/api";
 import { fmtAgentStatus, fmtRunStatus, fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { getAgentCardCatalogs, renderCatalogTemplate, type AgentCardCatalogs, type CatalogLabeledItem, type CatalogTextTemplate } from "@/app/lib/agentCardCatalogs";
+import { MultiSelect } from "@/app/components/AgentCardWizardMultiSelect";
 
 type Personality = {
   extrovert: number;
@@ -235,116 +236,6 @@ function mapLabelsToEn(labels: string[], map: Map<string, string>): string[] {
     .filter(Boolean);
 }
 
-function MultiSelect({
-  title,
-  options,
-  selected,
-  onChange,
-  maxSelected = 24,
-}: {
-  title: string;
-  options: CatalogLabeledItem[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  maxSelected?: number;
-}) {
-  const [q, setQ] = useState("");
-  const { t, isZh } = useI18n();
-
-  const labelMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const o of options ?? []) {
-      const key = String(o.label ?? "").trim();
-      if (!key) continue;
-      const display = isZh ? key : String(o.label_en ?? "").trim() || key;
-      m.set(key, display);
-    }
-    return m;
-  }, [isZh, options]);
-
-  function displayLabel(key: string): string {
-    const k = String(key ?? "").trim();
-    if (!k) return "";
-    return String(labelMap.get(k) ?? k).trim();
-  }
-
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return options;
-    return options.filter((o) => {
-      const parts = [
-        o.label ?? "",
-        o.label_en ?? "",
-        o.category ?? "",
-        o.category_en ?? "",
-        ...(o.keywords ?? []),
-        ...(o.keywords_en ?? []),
-      ];
-      const hay = parts.filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(term);
-    });
-  }, [options, q]);
-
-  const selectedSet = useMemo(() => new Set(selected.map((x) => x.trim()).filter(Boolean)), [selected]);
-
-  function toggle(label: string) {
-    const value = label.trim();
-    if (!value) return;
-    const next = new Set(selectedSet);
-    if (next.has(value)) next.delete(value);
-    else {
-      if (next.size >= maxSelected) return;
-      next.add(value);
-    }
-    onChange(Array.from(next.values()));
-  }
-
-  return (
-    <Card className="mt-2">
-      <CardContent className="pt-4">
-        <div className="text-sm font-medium">{title}</div>
-        {selected.length ? (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {selected.map((v) => (
-              <Badge key={v} variant="secondary" className="cursor-pointer" onClick={() => toggle(v)}>
-                {displayLabel(v)}
-              </Badge>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "未选择", en: "None selected" })}</div>
-        )}
-
-        <div className="mt-3">
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t({ zh: "搜索…", en: "Search…" })} />
-        </div>
-
-        <div className="mt-3 max-h-[34vh] overflow-y-auto rounded-md border p-2">
-          <div className="flex flex-wrap gap-2">
-            {filtered.slice(0, 200).map((o) => {
-              const valueLabel = String(o.label ?? "").trim();
-              const active = selectedSet.has(valueLabel);
-              return (
-                <Button
-                  key={o.id}
-                  size="sm"
-                  variant={active ? "default" : "secondary"}
-                  onClick={() => toggle(valueLabel)}
-                >
-                  {displayLabel(valueLabel)}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="mt-2 text-xs text-muted-foreground">
-          {t({ zh: `已选 ${selected.length}/${maxSelected}`, en: `${selected.length}/${maxSelected} selected` })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export function AgentCardWizardDialog({
   agentId,
   userApiKey,
@@ -378,7 +269,7 @@ export function AgentCardWizardDialog({
   const [evalWorkItemId, setEvalWorkItemId] = useState("");
   const [evalSourceRunId, setEvalSourceRunId] = useState("");
   const [evalSourceKind, setEvalSourceKind] = useState<"topic" | "work_item" | "run">("topic");
-  const [evalAdvancedIds, setEvalAdvancedIds] = useState(false);
+  const [evalSourceTitle, setEvalSourceTitle] = useState("");
 
   const [recentTopics, setRecentTopics] = useState<RecentTopicForEvaluation[]>([]);
   const [recentTopicsLoading, setRecentTopicsLoading] = useState(false);
@@ -660,6 +551,7 @@ export function AgentCardWizardDialog({
     setEvalTopicId("");
     setEvalWorkItemId("");
     setEvalSourceRunId("");
+    setEvalSourceTitle("");
   }
 
   function fmtWorkItemStatus(status: string): string {
@@ -714,6 +606,7 @@ export function AgentCardWizardDialog({
     clearEvalSourceIds();
     setEvalSourceKind("topic");
     setEvalTopicId(String(topic.topic_id ?? "").trim());
+    setEvalSourceTitle(String(topic.title ?? "").trim());
     if (!evalTopic.trim() && String(topic.title ?? "").trim()) setEvalTopic(String(topic.title ?? "").trim());
   }
 
@@ -721,6 +614,7 @@ export function AgentCardWizardDialog({
     clearEvalSourceIds();
     setEvalSourceKind("run");
     setEvalSourceRunId(runId.trim());
+    setEvalSourceTitle(String(runGoal ?? "").trim());
     if (!evalTopic.trim() && String(runGoal ?? "").trim()) setEvalTopic(String(runGoal ?? "").trim());
   }
 
@@ -728,6 +622,7 @@ export function AgentCardWizardDialog({
     clearEvalSourceIds();
     setEvalSourceKind("work_item");
     setEvalWorkItemId(String(workItem.work_item_id ?? "").trim());
+    setEvalSourceTitle([fmtWorkItemStage(workItem.stage_description || workItem.stage), fmtWorkItemKind(workItem.kind)].filter(Boolean).join(" · "));
   }
 
   async function createEvaluation() {
@@ -740,11 +635,11 @@ export function AgentCardWizardDialog({
       const sourceRunId = evalSourceRunId.trim();
       const kinds = [topicId, workItemId, sourceRunId].filter(Boolean).length;
       if (kinds === 0) {
-        setEvalError(t({ zh: "请选择一个真实话题/任务/场景：填写话题ID、任务ID或场景RunID（任选其一）", en: "Pick a real context: fill topic ID, work item ID, or source run ID." }));
+        setEvalError(t({ zh: "请选择一个真实话题/任务/场景（任选其一）", en: "Pick a real topic/task/scenario (choose one)." }));
         return;
       }
       if (kinds > 1) {
-        setEvalError(t({ zh: "只能选择一个来源：话题ID / 任务ID / 场景RunID", en: "Choose only one source: topic ID / work item ID / source run ID." }));
+        setEvalError(t({ zh: "请只选择一个来源（话题 / 任务 / 场景）", en: "Choose only one source (topic / task / scenario)." }));
         return;
       }
 
@@ -935,8 +830,174 @@ export function AgentCardWizardDialog({
     }
   }
 
+  const stepTone = useMemo(() => {
+    switch (step) {
+      case 0:
+        return "cyan";
+      case 1:
+        return "violet";
+      case 2:
+        return "indigo";
+      case 3:
+        return "green";
+      case 4:
+        return "sky";
+      case 5:
+        return "amber";
+      default:
+        return "slate";
+    }
+  }, [step]);
+
+  const toneCard =
+    stepTone === "cyan"
+      ? "border-l-4 border-cyan-500/50"
+      : stepTone === "violet"
+        ? "border-l-4 border-violet-500/50"
+        : stepTone === "indigo"
+          ? "border-l-4 border-indigo-500/50"
+          : stepTone === "green"
+            ? "border-l-4 border-green-500/50"
+            : stepTone === "sky"
+              ? "border-l-4 border-sky-500/50"
+              : stepTone === "amber"
+                ? "border-l-4 border-amber-500/50"
+                : "border-l-4 border-slate-500/50";
+
+  const basicsValid = useMemo(() => {
+    return String(name ?? "").trim().length > 0 && String(description ?? "").trim().length > 0;
+  }, [description, name]);
+  const interestsValid = useMemo(() => (interests ?? []).filter(Boolean).length > 0, [interests]);
+  const capabilitiesValid = useMemo(() => (capabilities ?? []).filter(Boolean).length > 0, [capabilities]);
+  const copyValid = useMemo(() => String(bio ?? "").trim().length > 0 && String(greeting ?? "").trim().length > 0, [bio, greeting]);
+
+  const maxUnlockedStep = useMemo(() => {
+    // Sequential gating: required steps must be satisfied to unlock subsequent steps.
+    if (!basicsValid) return 0;
+    // Persona + traits are optional.
+    if (!interestsValid) return 3;
+    if (!capabilitiesValid) return 4;
+    if (!copyValid) return 5;
+    return 6;
+  }, [basicsValid, capabilitiesValid, copyValid, interestsValid]);
+
   const canGoPrev = step > 0;
-  const canGoNext = step < 6;
+  const canGoNext = step < 6 && step < maxUnlockedStep;
+
+  useEffect(() => {
+    if (step > maxUnlockedStep) setStep(maxUnlockedStep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxUnlockedStep]);
+
+  const requiredBlocker = useMemo(() => {
+    if (!basicsValid) return t({ zh: "请先填写基础信息：名字 + 一句话介绍", en: "Fill basics first: name + one-liner." });
+    if (!interestsValid) return t({ zh: "请先选择兴趣：至少 1 个", en: "Select interests first: at least 1." });
+    if (!capabilitiesValid) return t({ zh: "请先选择能力：至少 1 个", en: "Select capabilities first: at least 1." });
+    if (!copyValid) return t({ zh: "请先填写文案：简介 + 问候语", en: "Fill copy first: bio + greeting." });
+    return "";
+  }, [basicsValid, capabilitiesValid, copyValid, interestsValid, t]);
+
+  const promptPreviewText = useMemo(() => {
+    const lines: string[] = [];
+    const nameV = String(name ?? "").trim();
+    const descV = String(description ?? "").trim();
+    const bioV = String(bio ?? "").trim();
+    const greetV = String(greeting ?? "").trim();
+
+    lines.push(t({ zh: "【智能体卡片（预览）】", en: "[Agent Card Preview]" }));
+    lines.push("");
+
+    lines.push(t({ zh: "基础", en: "Basics" }));
+    lines.push(`- ${t({ zh: "名字", en: "Name" })}：${nameV || t({ zh: "（未填写）", en: "(missing)" })}`);
+    lines.push(`- ${t({ zh: "一句话介绍", en: "One-liner" })}：${descV || t({ zh: "（未填写）", en: "(missing)" })}`);
+    lines.push(`- ${t({ zh: "头像", en: "Avatar" })}：${String(avatarUrl ?? "").trim() ? t({ zh: "已设置", en: "Set" }) : t({ zh: "未设置", en: "Not set" })}`);
+    lines.push("");
+
+    lines.push(t({ zh: "人设（风格参考）", en: "Persona (style reference)" }));
+    if (String(personaTemplateId ?? "").trim()) {
+      const tpl = (personaTemplates ?? []).find((x) => String(x.template_id) === String(personaTemplateId));
+      const label = tpl ? fmtPersonaTemplateLabel(tpl, 0) : "";
+      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${label || t({ zh: "已选择", en: "Selected" })}`);
+    } else if (personaTouched) {
+      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${t({ zh: "未设置", en: "Not set" })}`);
+    } else if (agent?.persona) {
+      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${t({ zh: "保持不变（已设置）", en: "Keep (already set)" })}`);
+    } else {
+      lines.push(`- ${t({ zh: "模板", en: "Template" })}：${t({ zh: "未设置", en: "Not set" })}`);
+    }
+    lines.push("");
+
+    lines.push(t({ zh: "性格", en: "Traits" }));
+    lines.push(`- ${t({ zh: "外向", en: "Extrovert" })}：${Math.round(pExtrovert * 100)}`);
+    lines.push(`- ${t({ zh: "好奇", en: "Curious" })}：${Math.round(pCurious * 100)}`);
+    lines.push(`- ${t({ zh: "创造", en: "Creative" })}：${Math.round(pCreative * 100)}`);
+    lines.push(`- ${t({ zh: "稳定", en: "Stable" })}：${Math.round(pStable * 100)}`);
+    lines.push("");
+
+    lines.push(t({ zh: "性格预设", en: "Personality preset" }));
+    if (String(personalityPresetId ?? "").trim() && catalogs?.personality_presets?.length) {
+      const pp = (catalogs.personality_presets ?? []).find((x) => String(x.id) === String(personalityPresetId));
+      const label = pp ? (isZh ? String(pp.label ?? "") : String(pp.label_en ?? "").trim() || String(pp.label ?? "")) : "";
+      lines.push(`- ${t({ zh: "选择", en: "Picked" })}：${label || t({ zh: "已选择", en: "Selected" })}`);
+    } else {
+      lines.push(`- ${t({ zh: "选择", en: "Picked" })}：${t({ zh: "未选择（可选）", en: "Not set (optional)" })}`);
+    }
+    lines.push("");
+
+    lines.push(t({ zh: "兴趣", en: "Interests" }));
+    lines.push(`- ${t({ zh: "已选", en: "Selected" })}：${(interests ?? []).filter(Boolean).join("、") || t({ zh: "（未选择）", en: "(none)" })}`);
+    lines.push("");
+
+    lines.push(t({ zh: "能力", en: "Capabilities" }));
+    lines.push(`- ${t({ zh: "已选", en: "Selected" })}：${(capabilities ?? []).filter(Boolean).join("、") || t({ zh: "（未选择）", en: "(none)" })}`);
+    lines.push("");
+
+    lines.push(t({ zh: "文案", en: "Copy" }));
+    lines.push(`- ${t({ zh: "简介", en: "Bio" })}：${bioV || t({ zh: "（未填写）", en: "(missing)" })}`);
+    lines.push(`- ${t({ zh: "问候", en: "Greeting" })}：${greetV || t({ zh: "（未填写）", en: "(missing)" })}`);
+    lines.push("");
+
+    lines.push(t({ zh: "提审前测评（可选）", en: "Pre-review evaluation (optional)" }));
+    const kindLabel =
+      evalSourceKind === "topic"
+        ? t({ zh: "话题", en: "Topic" })
+        : evalSourceKind === "work_item"
+          ? t({ zh: "任务", en: "Task" })
+          : t({ zh: "场景", en: "Scenario" });
+    const chosen = evalTopicId.trim() || evalWorkItemId.trim() || evalSourceRunId.trim();
+    lines.push(
+      `- ${t({ zh: "来源", en: "Source" })}：${kindLabel}${evalSourceTitle.trim() ? ` · ${evalSourceTitle.trim()}` : chosen ? ` · ${t({ zh: "已选择", en: "Selected" })}` : ` · ${t({ zh: "未选择", en: "Not set" })}`}`,
+    );
+    lines.push(`- ${t({ zh: "测评重点", en: "Focus" })}：${String(evalTopic ?? "").trim() || t({ zh: "（未填写）", en: "(empty)" })}`);
+
+    return lines.join("\n");
+  }, [
+    agent?.persona,
+    avatarUrl,
+    bio,
+    capabilities,
+    catalogs,
+    description,
+    evalSourceKind,
+    evalSourceRunId,
+    evalSourceTitle,
+    evalTopic,
+    evalTopicId,
+    evalWorkItemId,
+    greeting,
+    interests,
+    isZh,
+    name,
+    pCreative,
+    pCurious,
+    pExtrovert,
+    pStable,
+    personaTemplateId,
+    personaTemplates,
+    personaTouched,
+    personalityPresetId,
+    t,
+  ]);
 
   return (
     <DialogContent className="max-h-[80vh] p-0">
@@ -958,7 +1019,18 @@ export function AgentCardWizardDialog({
                 key={idx}
                 size="sm"
                 variant={step === idx ? "default" : "outline"}
-                onClick={() => setStep(idx)}
+                className={idx > maxUnlockedStep ? "opacity-50" : ""}
+                onClick={() => {
+                  if (saving || loading) return;
+                  if (idx > maxUnlockedStep) {
+                    toast({
+                      title: t({ zh: "请先完成必填项", en: "Complete required fields first" }),
+                      description: requiredBlocker || undefined,
+                    });
+                    return;
+                  }
+                  setStep(idx);
+                }}
                 disabled={saving || loading}
               >
                 {lbl}
@@ -973,18 +1045,24 @@ export function AgentCardWizardDialog({
             {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
             {agent ? (
-              <Card className="shadow-none">
+              <Card className={`shadow-none ${toneCard}`}>
                 <CardContent className="pt-3 pb-3 text-xs text-muted-foreground">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary">{fmtAgentStatus(agent.status)}</Badge>
                     {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
                     {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
                   </div>
-                  <details className="mt-2">
+                  <details className="mt-2" open>
                     <summary className="cursor-pointer select-none font-medium text-foreground">
-                      {t({ zh: "提示预览", en: "Prompt preview" })}
+                      {t({ zh: "提示预览（串联每步选择）", en: "Prompt preview (all steps)" })}
                     </summary>
-                    <div className="mt-1 whitespace-pre-wrap">{agent.prompt_view || "（空）"}</div>
+                    <div className="mt-2 whitespace-pre-wrap text-xs text-foreground">{promptPreviewText}</div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer select-none text-xs text-muted-foreground">
+                        {t({ zh: "已保存版本（prompt_view）", en: "Saved version (prompt_view)" })}
+                      </summary>
+                      <div className="mt-1 whitespace-pre-wrap text-xs">{agent.prompt_view || t({ zh: "（空）", en: "(empty)" })}</div>
+                    </details>
                   </details>
                 </CardContent>
               </Card>
@@ -993,10 +1071,10 @@ export function AgentCardWizardDialog({
             {agent && catalogs ? (
               <>
           {step === 0 ? (
-            <Card className="shadow-none">
+            <Card className={`shadow-none ${toneCard}`}>
               <CardContent className="pt-4 space-y-3">
                 <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">名字</div>
+                  <div className="text-xs text-muted-foreground">{t({ zh: "名字（必填）", en: "Name (required)" })}</div>
                   <Input
                     value={name}
                     onChange={(e) => {
@@ -1004,25 +1082,29 @@ export function AgentCardWizardDialog({
                       setName(v);
                       recomputeTemplatesIfNeeded(v, interests, capabilities);
                     }}
-                    placeholder="例如：星尘"
+                    placeholder={t({ zh: "例如：星尘", en: "e.g. Stardust" })}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">一句话介绍</div>
+                  <div className="text-xs text-muted-foreground">{t({ zh: "一句话介绍（必填）", en: "One-liner (required)" })}</div>
                   <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">头像 URL（可选）</div>
+                  <div className="text-xs text-muted-foreground">{t({ zh: "头像 URL（可选）", en: "Avatar URL (optional)" })}</div>
                   <Input value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." />
                 </div>
+
+                {!basicsValid ? (
+                  <div className="text-xs text-destructive">{t({ zh: "名字和一句话介绍为必填", en: "Name and one-liner are required." })}</div>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
 
           {step === 1 ? (
-            <Card className="shadow-none">
+            <Card className={`shadow-none ${toneCard}`}>
               <CardContent className="pt-4 space-y-2">
                 <div className="text-sm font-medium">{t({ zh: "选择人设模板（可选）", en: "Pick a persona template (optional)" })}</div>
                 <div className="text-xs text-muted-foreground">
@@ -1031,25 +1113,23 @@ export function AgentCardWizardDialog({
                     en: "Style reference only. No impersonation of real people, fictional characters, or specific animals.",
                   })}
                 </div>
+                <div className="text-xs text-muted-foreground">
+                  {t({ zh: "提示：再次点击已选模板可取消", en: "Tip: click the selected template again to clear." })}
+                </div>
 
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <Button
-                    variant={personaTouched && !personaTemplateId ? "default" : "secondary"}
-                    size="sm"
-                    onClick={() => {
-                      setPersonaTemplateId("");
-                      setPersonaTouched(true);
-                    }}
-                    >
-                      {t({ zh: "不设置", en: "None" })}
-                    </Button>
                   {(showAllPersonaTemplates ? personaTemplates : personaTemplates.slice(0, 40)).map((tpl, idx) => (
                     <Button
                       key={tpl.template_id}
-                      variant={personaTemplateId === tpl.template_id ? "default" : "secondary"}
+                      variant={personaTemplateId === tpl.template_id ? "secondary" : "outline"}
+                      className={
+                        personaTemplateId === tpl.template_id
+                          ? "bg-violet-600 text-white hover:bg-violet-600/90"
+                          : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                      }
                       size="sm"
                       onClick={() => {
-                        setPersonaTemplateId(tpl.template_id);
+                        setPersonaTemplateId((cur) => (cur === tpl.template_id ? "" : tpl.template_id));
                         setPersonaTouched(true);
                       }}
                     >
@@ -1075,7 +1155,10 @@ export function AgentCardWizardDialog({
 
                 {!personaTouched && agent.persona ? (
                   <div className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    当前已设置 persona（未显示模板 id；如需更换请在此步选择）。
+                    {t({
+                      zh: "当前已设置 persona（未展示模板 ID；如需更换请在此步选择）。",
+                      en: "Persona is already set (template ID hidden). Pick a template here to change it.",
+                    })}
                   </div>
                 ) : null}
               </CardContent>
@@ -1083,7 +1166,7 @@ export function AgentCardWizardDialog({
           ) : null}
 
           {step === 2 ? (
-            <Card className="mt-2">
+            <Card className={`mt-2 shadow-none ${toneCard}`}>
               <CardContent className="pt-4 space-y-2">
                 <div className="text-sm font-medium">{t({ zh: "选择性格预设", en: "Pick a personality preset" })}</div>
                 <div className="text-xs text-muted-foreground">{t({ zh: "选一个就能开始；后续可再微调。", en: "Pick one to start; you can fine-tune later." })}</div>
@@ -1097,8 +1180,12 @@ export function AgentCardWizardDialog({
                     return (
                       <Button
                         key={pp.id}
-                        variant={personalityPresetId === pp.id ? "default" : "secondary"}
-                        className="justify-start"
+                        variant={personalityPresetId === pp.id ? "secondary" : "outline"}
+                        className={
+                          personalityPresetId === pp.id
+                            ? "justify-start bg-indigo-600 text-white hover:bg-indigo-600/90"
+                            : "justify-start border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                        }
                         onClick={() => {
                           setPersonalityPresetId(pp.id);
                           setPExtrovert(Number(pp.values.extrovert));
@@ -1124,6 +1211,8 @@ export function AgentCardWizardDialog({
               title={t({ zh: "选择兴趣（多选）", en: "Select interests (multi)" })}
               options={catalogs.interests ?? []}
               selected={interests}
+              tone="green"
+              required
               onChange={(next) => {
                 setInterests(next);
                 recomputeTemplatesIfNeeded(name, next, capabilities);
@@ -1136,6 +1225,8 @@ export function AgentCardWizardDialog({
               title={t({ zh: "选择能力（多选）", en: "Select capabilities (multi)" })}
               options={catalogs.capabilities ?? []}
               selected={capabilities}
+              tone="sky"
+              required
               onChange={(next) => {
                 setCapabilities(next);
                 recomputeTemplatesIfNeeded(name, interests, next);
@@ -1144,7 +1235,7 @@ export function AgentCardWizardDialog({
           ) : null}
 
           {step === 5 ? (
-            <Card className="shadow-none">
+            <Card className={`shadow-none ${toneCard}`}>
               <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
                   <div className="text-sm font-medium">{t({ zh: "简介", en: "Bio" })}</div>
@@ -1159,7 +1250,12 @@ export function AgentCardWizardDialog({
                         <Button
                           key={tpl.id}
                           size="sm"
-                          variant={!bioCustom && bioTemplateId === tpl.id ? "default" : "secondary"}
+                          variant={!bioCustom && bioTemplateId === tpl.id ? "secondary" : "outline"}
+                          className={
+                            !bioCustom && bioTemplateId === tpl.id
+                              ? "bg-amber-600 text-white hover:bg-amber-600/90"
+                              : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                          }
                           onClick={() => {
                             setBioCustom(false);
                             setBioTemplateId(tpl.id);
@@ -1172,7 +1268,12 @@ export function AgentCardWizardDialog({
                     })}
                     <Button
                       size="sm"
-                      variant={bioCustom ? "default" : "secondary"}
+                      variant={bioCustom ? "secondary" : "outline"}
+                      className={
+                        bioCustom
+                          ? "bg-amber-600 text-white hover:bg-amber-600/90"
+                          : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      }
                       onClick={() => setBioCustom((v) => !v)}
                     >
                       {t({ zh: "自定义", en: "Custom" })}
@@ -1202,7 +1303,12 @@ export function AgentCardWizardDialog({
                         <Button
                           key={tpl.id}
                           size="sm"
-                          variant={!greetingCustom && greetingTemplateId === tpl.id ? "default" : "secondary"}
+                          variant={!greetingCustom && greetingTemplateId === tpl.id ? "secondary" : "outline"}
+                          className={
+                            !greetingCustom && greetingTemplateId === tpl.id
+                              ? "bg-amber-600 text-white hover:bg-amber-600/90"
+                              : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                          }
                           onClick={() => {
                             setGreetingCustom(false);
                             setGreetingTemplateId(tpl.id);
@@ -1215,7 +1321,12 @@ export function AgentCardWizardDialog({
                     })}
                     <Button
                       size="sm"
-                      variant={greetingCustom ? "default" : "secondary"}
+                      variant={greetingCustom ? "secondary" : "outline"}
+                      className={
+                        greetingCustom
+                          ? "bg-amber-600 text-white hover:bg-amber-600/90"
+                          : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      }
                       onClick={() => setGreetingCustom((v) => !v)}
                     >
                       {t({ zh: "自定义", en: "Custom" })}
@@ -1231,19 +1342,25 @@ export function AgentCardWizardDialog({
                   ) : null}
                   <Textarea value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={3} />
                 </div>
+
+                {!copyValid ? (
+                  <div className="text-xs text-destructive">
+                    {t({ zh: "简介和问候语为必填，填写后才能进入下一步", en: "Bio and greeting are required to continue." })}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
 
           {step === 6 ? (
-            <Card className="shadow-none">
+            <Card className={`shadow-none ${toneCard}`}>
               <CardContent className="pt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">当前审核状态</div>
+                  <div className="text-muted-foreground">{t({ zh: "当前审核状态", en: "Current review status" })}</div>
                   <div className="font-medium">{agent.card_review_status ? fmtReviewStatus(agent.card_review_status) : "-"}</div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">预计本次保存后</div>
+                  <div className="text-muted-foreground">{t({ zh: "预计本次保存后", en: "Expected after save" })}</div>
                   <div className="font-medium">
                     {willNeedReview
                       ? t({ zh: "待审核（需要审核）", en: "Pending (needs review)" })
@@ -1251,7 +1368,7 @@ export function AgentCardWizardDialog({
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">可同步到 OSS</div>
+                  <div className="text-muted-foreground">{t({ zh: "可同步到 OSS", en: "Can sync to OSS" })}</div>
                   <div className="font-medium">
                     {agent.card_review_status === "approved" ? t({ zh: "是", en: "Yes" }) : t({ zh: "否", en: "No" })}
                   </div>
@@ -1285,7 +1402,12 @@ export function AgentCardWizardDialog({
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        variant={evalSourceKind === "topic" ? "default" : "secondary"}
+                        variant={evalSourceKind === "topic" ? "secondary" : "outline"}
+                        className={
+                          evalSourceKind === "topic"
+                            ? "bg-slate-700 text-white hover:bg-slate-700/90"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        }
                         onClick={() => {
                           clearEvalSourceIds();
                           setEvalSourceKind("topic");
@@ -1295,7 +1417,12 @@ export function AgentCardWizardDialog({
                       </Button>
                       <Button
                         size="sm"
-                        variant={evalSourceKind === "work_item" ? "default" : "secondary"}
+                        variant={evalSourceKind === "work_item" ? "secondary" : "outline"}
+                        className={
+                          evalSourceKind === "work_item"
+                            ? "bg-slate-700 text-white hover:bg-slate-700/90"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        }
                         onClick={() => {
                           clearEvalSourceIds();
                           setEvalSourceKind("work_item");
@@ -1305,7 +1432,12 @@ export function AgentCardWizardDialog({
                       </Button>
                       <Button
                         size="sm"
-                        variant={evalSourceKind === "run" ? "default" : "secondary"}
+                        variant={evalSourceKind === "run" ? "secondary" : "outline"}
+                        className={
+                          evalSourceKind === "run"
+                            ? "bg-slate-700 text-white hover:bg-slate-700/90"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        }
                         onClick={() => {
                           clearEvalSourceIds();
                           setEvalSourceKind("run");
@@ -1313,58 +1445,97 @@ export function AgentCardWizardDialog({
                       >
                         {t({ zh: "场景", en: "Scenario" })}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEvalAdvancedIds((v) => !v)}>
-                        {evalAdvancedIds ? t({ zh: "收起高级", en: "Hide advanced" }) : t({ zh: "高级：手动输入ID", en: "Advanced: paste IDs" })}
-                      </Button>
                     </div>
 
                     {evalSourceKind === "topic" ? (
                       <div className="rounded-md border bg-background p-3">
                         <div className="text-xs text-muted-foreground">{t({ zh: "最近活跃的话题", en: "Recent topics" })}</div>
-                        {recentTopicsLoading ? <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
-                        {recentTopicsError ? <div className="mt-2 text-xs text-destructive">{recentTopicsError}</div> : null}
-                        {!recentTopicsLoading && !recentTopics.length ? (
-                          <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "暂无可用话题（或 OSS 未配置）", en: "No topics available (or OSS not configured)" })}</div>
-                        ) : null}
-                        <div className="mt-2 space-y-2">
-                          {recentTopics.slice(0, 8).map((tp) => (
-                            <div key={tp.topic_id} className="rounded-md border px-3 py-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-medium">{String(tp.title ?? "").trim() || t({ zh: "（未命名话题）", en: "(untitled)" })}</div>
-                                  {tp.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(tp.summary).trim()}</div> : null}
-                                  {tp.last_message_preview ? <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{String(tp.last_message_preview).trim()}</div> : null}
-                                </div>
-                                <Button size="sm" variant="secondary" onClick={() => pickTopic(tp)}>
-                                  {t({ zh: "选择", en: "Pick" })}
-                                </Button>
-                              </div>
+                        {evalTopicId.trim() ? (
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                            <div className="min-w-0 text-sm">
+                              <span className="text-muted-foreground">{t({ zh: "已选择：", en: "Selected: " })}</span>
+                              <span className="font-medium">{evalSourceTitle || t({ zh: "（已选择话题）", en: "(selected topic)" })}</span>
                             </div>
-                          ))}
-                        </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEvalTopicId("");
+                                setEvalSourceTitle("");
+                              }}
+                            >
+                              {t({ zh: "更换", en: "Change" })}
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            {recentTopicsLoading ? <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
+                            {recentTopicsError ? <div className="mt-2 text-xs text-destructive">{recentTopicsError}</div> : null}
+                            {!recentTopicsLoading && !recentTopics.length ? (
+                              <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "暂无可用话题（或 OSS 未配置）", en: "No topics available (or OSS not configured)" })}</div>
+                            ) : null}
+                            <div className="mt-2 space-y-2">
+                              {recentTopics.slice(0, 8).map((tp) => (
+                                <div key={tp.topic_id} className="rounded-md border px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-medium">{String(tp.title ?? "").trim() || t({ zh: "（未命名话题）", en: "(untitled)" })}</div>
+                                      {tp.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(tp.summary).trim()}</div> : null}
+                                      {tp.last_message_preview ? <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{String(tp.last_message_preview).trim()}</div> : null}
+                                    </div>
+                                    <Button size="sm" variant="secondary" onClick={() => pickTopic(tp)}>
+                                      {t({ zh: "选择", en: "Pick" })}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     ) : null}
 
                     {evalSourceKind === "run" ? (
                       <div className="rounded-md border bg-background p-3">
                         <div className="text-xs text-muted-foreground">{t({ zh: "最近场景（Run）", en: "Recent runs" })}</div>
-                        {recentRunsLoading ? <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
-                        {recentRunsError ? <div className="mt-2 text-xs text-destructive">{recentRunsError}</div> : null}
-                        <div className="mt-2 space-y-2">
-                          {recentRuns.slice(0, 8).map((it) => (
-                            <div key={it.run_id} className="rounded-md border px-3 py-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-medium">{String(it.run_goal ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" })}</div>
-                                  <div className="mt-0.5 text-xs text-muted-foreground">{fmtTime(it.created_at)}</div>
-                                </div>
-                                <Button size="sm" variant="secondary" onClick={() => pickRunAsScenario(String(it.run_id), String(it.run_goal))}>
-                                  {t({ zh: "选择", en: "Pick" })}
-                                </Button>
-                              </div>
+                        {evalSourceRunId.trim() ? (
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                            <div className="min-w-0 text-sm">
+                              <span className="text-muted-foreground">{t({ zh: "已选择：", en: "Selected: " })}</span>
+                              <span className="font-medium">{evalSourceTitle || t({ zh: "（已选择场景）", en: "(selected run)" })}</span>
                             </div>
-                          ))}
-                        </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEvalSourceRunId("");
+                                setEvalSourceTitle("");
+                              }}
+                            >
+                              {t({ zh: "更换", en: "Change" })}
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            {recentRunsLoading ? <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
+                            {recentRunsError ? <div className="mt-2 text-xs text-destructive">{recentRunsError}</div> : null}
+                            <div className="mt-2 space-y-2">
+                              {recentRuns.slice(0, 8).map((it) => (
+                                <div key={it.run_id} className="rounded-md border px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-medium">{String(it.run_goal ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" })}</div>
+                                      <div className="mt-0.5 text-xs text-muted-foreground">{fmtTime(it.created_at)}</div>
+                                    </div>
+                                    <Button size="sm" variant="secondary" onClick={() => pickRunAsScenario(String(it.run_id), String(it.run_goal))}>
+                                      {t({ zh: "选择", en: "Pick" })}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     ) : null}
 
@@ -1421,30 +1592,27 @@ export function AgentCardWizardDialog({
                                 </Button>
                               ))}
                             </div>
-                            {evalAdvancedIds ? (
-                              <div className="pt-2 border-t">
-                                <div className="text-xs text-muted-foreground">{t({ zh: "高级：手动输入 RunID（仅在必要时）", en: "Advanced: paste Run ID (only if needed)" })}</div>
-                                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                                  <Input
-                                    value={workItemRunId}
-                                    onChange={(e) => setWorkItemRunId(e.target.value)}
-                                    placeholder={t({ zh: "输入 RunID", en: "Run ID" })}
-                                  />
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    disabled={!workItemRunId.trim() || workItemRunLoading}
-                                    onClick={() => loadWorkItemsForRun(workItemRunId)}
-                                  >
-                                    {workItemRunLoading ? t({ zh: "加载中…", en: "Loading…" }) : t({ zh: "加载任务", en: "Load" })}
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : null}
                           </div>
                         )}
                         {workItemRunError ? <div className="text-xs text-destructive">{workItemRunError}</div> : null}
-                        {workItemRunItems.length ? (
+                        {evalWorkItemId.trim() ? (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                            <div className="min-w-0 text-sm">
+                              <span className="text-muted-foreground">{t({ zh: "已选择：", en: "Selected: " })}</span>
+                              <span className="font-medium">{evalSourceTitle || t({ zh: "（已选择任务）", en: "(selected task)" })}</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEvalWorkItemId("");
+                                setEvalSourceTitle("");
+                              }}
+                            >
+                              {t({ zh: "更换", en: "Change" })}
+                            </Button>
+                          </div>
+                        ) : workItemRunItems.length ? (
                           <div className="space-y-2">
                             {workItemRunItems.slice(0, 10).map((wi) => (
                               <div key={wi.work_item_id} className="rounded-md border px-3 py-2">
@@ -1464,17 +1632,6 @@ export function AgentCardWizardDialog({
                             ))}
                           </div>
                         ) : null}
-                      </div>
-                    ) : null}
-
-                    {evalAdvancedIds ? (
-                      <div className="rounded-md border bg-muted/30 p-3">
-                        <div className="text-xs text-muted-foreground">{t({ zh: "高级：仅在找不到列表项时使用（仍然要求三选一）", en: "Advanced: paste IDs (choose one)" })}</div>
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          <Input value={evalTopicId} onChange={(e) => setEvalTopicId(e.target.value)} placeholder={t({ zh: "话题ID", en: "Topic ID" })} />
-                          <Input value={evalWorkItemId} onChange={(e) => setEvalWorkItemId(e.target.value)} placeholder={t({ zh: "任务ID", en: "Work item ID" })} />
-                          <Input value={evalSourceRunId} onChange={(e) => setEvalSourceRunId(e.target.value)} placeholder={t({ zh: "场景RunID", en: "Source run ID" })} />
-                        </div>
                       </div>
                     ) : null}
 
