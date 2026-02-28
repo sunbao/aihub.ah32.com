@@ -93,6 +93,10 @@ type PreReviewEvaluation = {
   agent_id: string;
   run_id: string;
   topic: string;
+  source_run_id?: string;
+  topic_id?: string;
+  work_item_id?: string;
+  source?: { kind: string; title?: string; summary?: string };
   status: string;
   created_at: string;
   expires_at: string;
@@ -295,6 +299,9 @@ export function AgentCardWizardDialog({
   const [error, setError] = useState("");
 
   const [evalTopic, setEvalTopic] = useState("");
+  const [evalTopicId, setEvalTopicId] = useState("");
+  const [evalWorkItemId, setEvalWorkItemId] = useState("");
+  const [evalSourceRunId, setEvalSourceRunId] = useState("");
   const [evals, setEvals] = useState<PreReviewEvaluation[]>([]);
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalCreating, setEvalCreating] = useState(false);
@@ -502,12 +509,30 @@ export function AgentCardWizardDialog({
     setEvalCreating(true);
     setEvalError("");
     try {
+      const topicId = evalTopicId.trim();
+      const workItemId = evalWorkItemId.trim();
+      const sourceRunId = evalSourceRunId.trim();
+      const kinds = [topicId, workItemId, sourceRunId].filter(Boolean).length;
+      if (kinds === 0) {
+        setEvalError(t({ zh: "请选择一个真实话题/任务/场景：填写话题ID、任务ID或场景RunID（任选其一）", en: "Pick a real context: fill topic ID, work item ID, or source run ID." }));
+        return;
+      }
+      if (kinds > 1) {
+        setEvalError(t({ zh: "只能选择一个来源：话题ID / 任务ID / 场景RunID", en: "Choose only one source: topic ID / work item ID / source run ID." }));
+        return;
+      }
+
+      const body: any = { topic: evalTopic.trim() };
+      if (topicId) body.topic_id = topicId;
+      if (workItemId) body.work_item_id = workItemId;
+      if (sourceRunId) body.source_run_id = sourceRunId;
+
       await apiFetchJson<{ evaluation_id: string; run_id: string; expires_at: string }>(
         `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations`,
         {
           method: "POST",
           apiKey: userApiKey,
-          body: { topic: evalTopic.trim() },
+          body,
         },
       );
       toast({ title: t({ zh: "已发起测评", en: "Evaluation started" }) });
@@ -1007,11 +1032,29 @@ export function AgentCardWizardDialog({
                     <Input
                       value={evalTopic}
                       onChange={(e) => setEvalTopic(e.target.value)}
-                      placeholder={t({ zh: "输入要测的话题（可空）", en: "Topic to test (optional)" })}
+                      placeholder={t({ zh: "话题显示名（可空，会自动用真实标题）", en: "Display topic (optional)" })}
                     />
                     <Button size="sm" onClick={createEvaluation} disabled={evalCreating || saving || loading || evalLoading}>
                       {evalCreating ? t({ zh: "发起中…", en: "Starting…" }) : t({ zh: "发起测评", en: "Start" })}
                     </Button>
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <Input
+                      value={evalTopicId}
+                      onChange={(e) => setEvalTopicId(e.target.value)}
+                      placeholder={t({ zh: "真实话题ID", en: "Topic ID" })}
+                    />
+                    <Input
+                      value={evalWorkItemId}
+                      onChange={(e) => setEvalWorkItemId(e.target.value)}
+                      placeholder={t({ zh: "真实任务ID", en: "Work item ID" })}
+                    />
+                    <Input
+                      value={evalSourceRunId}
+                      onChange={(e) => setEvalSourceRunId(e.target.value)}
+                      placeholder={t({ zh: "真实场景RunID", en: "Source run ID" })}
+                    />
                   </div>
 
                   {evalError ? <div className="mt-2 text-sm text-destructive">{evalError}</div> : null}
@@ -1025,6 +1068,17 @@ export function AgentCardWizardDialog({
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="truncate text-sm font-medium">{ev.topic || t({ zh: "（未命名话题）", en: "(untitled topic)" })}</div>
+                                {ev.source?.kind ? (
+                                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                    {t({ zh: "来源：", en: "Source: " })}
+                                    {ev.source.kind === "topic"
+                                      ? t({ zh: "话题", en: "Topic" })
+                                      : ev.source.kind === "work_item"
+                                        ? t({ zh: "任务", en: "Task" })
+                                        : t({ zh: "场景", en: "Scenario" })}
+                                    {ev.source.title ? ` · ${String(ev.source.title).trim()}` : ""}
+                                  </div>
+                                ) : null}
                                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                   <Badge variant="secondary">{fmtRunStatus(ev.status)}</Badge>
                                   <span>{fmtTime(ev.created_at)}</span>

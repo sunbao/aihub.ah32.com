@@ -14,15 +14,19 @@ import (
 )
 
 type adminPreReviewEvaluationDTO struct {
-	EvaluationID string `json:"evaluation_id"`
-	OwnerID      string `json:"owner_id"`
-	AgentID      string `json:"agent_id"`
-	AgentName    string `json:"agent_name"`
-	RunID        string `json:"run_id"`
-	Topic        string `json:"topic"`
-	RunStatus    string `json:"run_status"`
-	CreatedAt    string `json:"created_at"`
-	ExpiresAt    string `json:"expires_at"`
+	EvaluationID string                        `json:"evaluation_id"`
+	OwnerID      string                        `json:"owner_id"`
+	AgentID      string                        `json:"agent_id"`
+	AgentName    string                        `json:"agent_name"`
+	RunID        string                        `json:"run_id"`
+	Topic        string                        `json:"topic"`
+	TopicID      string                        `json:"topic_id,omitempty"`
+	WorkItemID   string                        `json:"work_item_id,omitempty"`
+	SourceRunID  string                        `json:"source_run_id,omitempty"`
+	Source       *preReviewEvaluationSourceDTO `json:"source,omitempty"`
+	RunStatus    string                        `json:"run_status"`
+	CreatedAt    string                        `json:"created_at"`
+	ExpiresAt    string                        `json:"expires_at"`
 }
 
 type adminListPreReviewEvaluationsResponse struct {
@@ -63,6 +67,9 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 			"e.agent_id::text ilike $" + strconv.Itoa(argN),
 			"e.owner_id::text ilike $" + strconv.Itoa(argN),
 			"e.topic ilike $" + strconv.Itoa(argN),
+			"coalesce(e.source_topic_id, '') ilike $" + strconv.Itoa(argN),
+			"coalesce(e.source_run_id::text, '') ilike $" + strconv.Itoa(argN),
+			"coalesce(e.source_work_item_id::text, '') ilike $" + strconv.Itoa(argN),
 			"a.name ilike $" + strconv.Itoa(argN),
 		}
 		where = append(where, "("+strings.Join(parts, " or ")+")")
@@ -75,7 +82,7 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	sql := `
 		select
 			e.id, e.owner_id, e.agent_id, coalesce(a.name, '') as agent_name,
-			e.run_id, e.topic,
+			e.run_id, e.topic, e.source_run_id, e.source_topic_id, e.source_work_item_id, e.source_snapshot,
 			coalesce(r.status, '') as run_status,
 			e.created_at, e.expires_at
 		from agent_pre_review_evaluations e
@@ -99,22 +106,26 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	out := make([]adminPreReviewEvaluationDTO, 0, limit)
 	for rows.Next() {
 		var (
-			evalID    uuid.UUID
-			ownerID   uuid.UUID
-			agentID   uuid.UUID
-			agentName string
-			runID     uuid.UUID
-			topic     string
-			runStatus string
-			createdAt time.Time
-			expiresAt time.Time
+			evalID          uuid.UUID
+			ownerID         uuid.UUID
+			agentID         uuid.UUID
+			agentName       string
+			runID           uuid.UUID
+			topic           string
+			sourceRun       *uuid.UUID
+			sourceTopic     *string
+			sourceWorkItem  *uuid.UUID
+			sourceSnapshotB []byte
+			runStatus       string
+			createdAt       time.Time
+			expiresAt       time.Time
 		)
-		if err := rows.Scan(&evalID, &ownerID, &agentID, &agentName, &runID, &topic, &runStatus, &createdAt, &expiresAt); err != nil {
+		if err := rows.Scan(&evalID, &ownerID, &agentID, &agentName, &runID, &topic, &sourceRun, &sourceTopic, &sourceWorkItem, &sourceSnapshotB, &runStatus, &createdAt, &expiresAt); err != nil {
 			logError(ctx, "admin list pre-review evaluations scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
-		out = append(out, adminPreReviewEvaluationDTO{
+		dto := adminPreReviewEvaluationDTO{
 			EvaluationID: evalID.String(),
 			OwnerID:      ownerID.String(),
 			AgentID:      agentID.String(),
@@ -124,7 +135,18 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 			RunStatus:    strings.TrimSpace(runStatus),
 			CreatedAt:    createdAt.UTC().Format(time.RFC3339),
 			ExpiresAt:    expiresAt.UTC().Format(time.RFC3339),
-		})
+		}
+		if sourceRun != nil {
+			dto.SourceRunID = sourceRun.String()
+		}
+		if sourceTopic != nil {
+			dto.TopicID = strings.TrimSpace(*sourceTopic)
+		}
+		if sourceWorkItem != nil {
+			dto.WorkItemID = sourceWorkItem.String()
+		}
+		dto.Source = preReviewSourceFromSnapshot(sourceSnapshotB)
+		out = append(out, dto)
 	}
 	if err := rows.Err(); err != nil {
 		logError(ctx, "admin list pre-review evaluations iterate failed", err)

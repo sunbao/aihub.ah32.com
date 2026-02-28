@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"aihub/internal/agenthome"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -177,17 +179,30 @@ func (s server) handleAdminSetEvaluationJudges(w http.ResponseWriter, r *http.Re
 }
 
 type createPreReviewEvaluationRequest struct {
-	Topic string `json:"topic"`
+	Topic       string `json:"topic"`
+	SourceRunID string `json:"source_run_id,omitempty"`
+	TopicID     string `json:"topic_id,omitempty"`
+	WorkItemID  string `json:"work_item_id,omitempty"`
 }
 
 type preReviewEvaluationDTO struct {
-	EvaluationID string `json:"evaluation_id"`
-	AgentID      string `json:"agent_id"`
-	RunID        string `json:"run_id"`
-	Topic        string `json:"topic"`
-	Status       string `json:"status"`
-	CreatedAt    string `json:"created_at"`
-	ExpiresAt    string `json:"expires_at"`
+	EvaluationID string                        `json:"evaluation_id"`
+	AgentID      string                        `json:"agent_id"`
+	RunID        string                        `json:"run_id"`
+	Topic        string                        `json:"topic"`
+	SourceRunID  string                        `json:"source_run_id,omitempty"`
+	TopicID      string                        `json:"topic_id,omitempty"`
+	WorkItemID   string                        `json:"work_item_id,omitempty"`
+	Source       *preReviewEvaluationSourceDTO `json:"source,omitempty"`
+	Status       string                        `json:"status"`
+	CreatedAt    string                        `json:"created_at"`
+	ExpiresAt    string                        `json:"expires_at"`
+}
+
+type preReviewEvaluationSourceDTO struct {
+	Kind    string `json:"kind"`
+	Title   string `json:"title,omitempty"`
+	Summary string `json:"summary,omitempty"`
 }
 
 func (s server) listActiveEvaluationJudgeAgents(ctx context.Context) ([]uuid.UUID, error) {
@@ -239,6 +254,9 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	if req.Topic == "" {
 		req.Topic = "随机话题"
 	}
+	req.SourceRunID = strings.TrimSpace(req.SourceRunID)
+	req.TopicID = strings.TrimSpace(req.TopicID)
+	req.WorkItemID = strings.TrimSpace(req.WorkItemID)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
@@ -281,6 +299,355 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	if len(judgeIDs) == 0 {
 		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "no evaluation judges configured"})
 		return
+	}
+
+	sourceKinds := 0
+	if req.SourceRunID != "" {
+		sourceKinds++
+	}
+	if req.TopicID != "" {
+		sourceKinds++
+	}
+	if req.WorkItemID != "" {
+		sourceKinds++
+	}
+	if sourceKinds == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing topic_id/work_item_id/source_run_id"})
+		return
+	}
+	if sourceKinds > 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose only one: topic_id or work_item_id or source_run_id"})
+		return
+	}
+
+	var (
+		sourceRunID     uuid.UUID
+		hasSourceRun    bool
+		sourceRunGoal   string
+		sourceRunStatus string
+		sourceEvents    []map[string]any
+	)
+	var (
+		sourceTopicID       string
+		hasSourceTopic      bool
+		sourceTopicTitle    string
+		sourceTopicSummary  string
+		sourceTopicMode     string
+		sourceTopicOpening  string
+		sourceTopicState    map[string]any
+		sourceTopicMessages []map[string]any
+	)
+	var (
+		sourceWorkItemID        uuid.UUID
+		hasSourceWorkItem       bool
+		sourceWorkItemRunID     uuid.UUID
+		sourceWorkItemStage     string
+		sourceWorkItemKind      string
+		sourceWorkItemStatus    string
+		sourceWorkItemContextB  []byte
+		sourceWorkItemContext   map[string]any
+		sourceWorkItemRunGoal   string
+		sourceWorkItemRunStatus string
+		sourceWorkItemEvents    []map[string]any
+	)
+	if req.SourceRunID != "" {
+		id, err := uuid.Parse(req.SourceRunID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source_run_id"})
+			return
+		}
+		sourceRunID = id
+		hasSourceRun = true
+
+		// A "real scenario" is a public run OR the owner's own run.
+		if err := s.db.QueryRow(ctx, `
+			select goal, status
+			from runs
+			where id = $1
+			  and (is_public = true or publisher_user_id = $2)
+		`, sourceRunID, userID).Scan(&sourceRunGoal, &sourceRunStatus); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "source run not found"})
+				return
+			}
+			logError(ctx, "create pre-review evaluation: query source run failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+		sourceRunGoal = strings.TrimSpace(sourceRunGoal)
+		sourceRunStatus = strings.TrimSpace(sourceRunStatus)
+		if req.Topic == "随机话题" && sourceRunGoal != "" {
+			req.Topic = sourceRunGoal
+		}
+
+		sourceEvents, err = func() ([]map[string]any, error) {
+			rows, err := s.db.Query(ctx, `
+				select seq, kind, persona, payload, created_at
+				from events
+				where run_id = $1
+				  and is_key_node = true
+				  and review_status in ('pending','approved')
+				order by created_at desc, seq desc
+				limit 12
+			`, sourceRunID)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+
+			out := make([]map[string]any, 0, 12)
+			for rows.Next() {
+				var (
+					seq       int64
+					kind      string
+					persona   string
+					payloadB  []byte
+					createdAt time.Time
+				)
+				if err := rows.Scan(&seq, &kind, &persona, &payloadB, &createdAt); err != nil {
+					return nil, err
+				}
+				preview := extractEventPreview(payloadB)
+				persona = strings.TrimSpace(persona)
+				if isUUIDLike(persona) {
+					persona = ""
+				}
+				out = append(out, map[string]any{
+					"seq":        seq,
+					"kind":       strings.TrimSpace(kind),
+					"persona":    persona,
+					"preview":    preview,
+					"created_at": createdAt.UTC().Format(time.RFC3339),
+				})
+			}
+			if err := rows.Err(); err != nil {
+				return nil, err
+			}
+			return out, nil
+		}()
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: query source events failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+	}
+
+	if req.WorkItemID != "" {
+		id, err := uuid.Parse(req.WorkItemID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work_item_id"})
+			return
+		}
+		sourceWorkItemID = id
+		hasSourceWorkItem = true
+
+		var (
+			isPublic bool
+			ownerID  uuid.UUID
+		)
+		if err := s.db.QueryRow(ctx, `
+			select wi.run_id, wi.stage, wi.kind, wi.status, wi.context,
+			       r.goal, r.status, r.is_public, r.publisher_user_id
+			from work_items wi
+			join runs r on r.id = wi.run_id
+			where wi.id = $1
+		`, sourceWorkItemID).Scan(
+			&sourceWorkItemRunID, &sourceWorkItemStage, &sourceWorkItemKind, &sourceWorkItemStatus, &sourceWorkItemContextB,
+			&sourceWorkItemRunGoal, &sourceWorkItemRunStatus, &isPublic, &ownerID,
+		); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "work item not found"})
+				return
+			}
+			logError(ctx, "create pre-review evaluation: query source work item failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+		if !isPublic && ownerID != userID {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work item not found"})
+			return
+		}
+
+		sourceWorkItemRunGoal = strings.TrimSpace(sourceWorkItemRunGoal)
+		sourceWorkItemRunStatus = strings.TrimSpace(sourceWorkItemRunStatus)
+		if req.Topic == "随机话题" && sourceWorkItemRunGoal != "" {
+			req.Topic = sourceWorkItemRunGoal
+		}
+
+		sourceWorkItemContext = map[string]any{}
+		if len(sourceWorkItemContextB) > 0 {
+			if err := json.Unmarshal(sourceWorkItemContextB, &sourceWorkItemContext); err != nil {
+				logError(ctx, "create pre-review evaluation: decode source work item context failed", err)
+				sourceWorkItemContext = map[string]any{}
+			}
+		}
+
+		sourceWorkItemEvents, err = func() ([]map[string]any, error) {
+			rows, err := s.db.Query(ctx, `
+				select seq, kind, persona, payload, created_at
+				from events
+				where run_id = $1
+				  and review_status in ('pending','approved')
+				order by created_at desc, seq desc
+				limit 12
+			`, sourceWorkItemRunID)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+
+			out := make([]map[string]any, 0, 12)
+			for rows.Next() {
+				var (
+					seq       int64
+					kind      string
+					persona   string
+					payloadB  []byte
+					createdAt time.Time
+				)
+				if err := rows.Scan(&seq, &kind, &persona, &payloadB, &createdAt); err != nil {
+					return nil, err
+				}
+				preview := extractEventPreview(payloadB)
+				persona = strings.TrimSpace(persona)
+				if isUUIDLike(persona) {
+					persona = ""
+				}
+				out = append(out, map[string]any{
+					"seq":        seq,
+					"kind":       strings.TrimSpace(kind),
+					"persona":    persona,
+					"preview":    preview,
+					"created_at": createdAt.UTC().Format(time.RFC3339),
+				})
+			}
+			if err := rows.Err(); err != nil {
+				return nil, err
+			}
+			return out, nil
+		}()
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: query work item source events failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+	}
+
+	if req.TopicID != "" {
+		if len(req.TopicID) > 200 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic_id too long"})
+			return
+		}
+		if strings.TrimSpace(s.ossProvider) == "" {
+			writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
+			return
+		}
+
+		sourceTopicID = req.TopicID
+		hasSourceTopic = true
+
+		store, err := agenthome.NewOSSObjectStore(s.ossCfg())
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: init oss store failed", err)
+			writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
+			return
+		}
+
+		manifestRaw, err := store.GetObject(ctx, "topics/"+sourceTopicID+"/manifest.json")
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: get topic manifest failed", err)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "topic not found"})
+			return
+		}
+		var mf struct {
+			Title   string         `json:"title"`
+			Summary string         `json:"summary"`
+			Mode    string         `json:"mode"`
+			Rules   map[string]any `json:"rules"`
+		}
+		if err := json.Unmarshal(manifestRaw, &mf); err != nil {
+			logError(ctx, "create pre-review evaluation: decode topic manifest failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "manifest decode failed"})
+			return
+		}
+		sourceTopicTitle = strings.TrimSpace(mf.Title)
+		sourceTopicSummary = strings.TrimSpace(mf.Summary)
+		sourceTopicMode = strings.TrimSpace(mf.Mode)
+		if v, ok := mf.Rules["opening_question"].(string); ok {
+			sourceTopicOpening = strings.TrimSpace(v)
+		}
+
+		stateRaw, err := store.GetObject(ctx, "topics/"+sourceTopicID+"/state.json")
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: get topic state failed", err)
+			writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "missing topic state"})
+			return
+		}
+		var st struct {
+			State map[string]any `json:"state"`
+		}
+		if err := json.Unmarshal(stateRaw, &st); err != nil {
+			logError(ctx, "create pre-review evaluation: decode topic state failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "state decode failed"})
+			return
+		}
+		if st.State == nil {
+			st.State = map[string]any{}
+		}
+		sourceTopicState = st.State
+
+		sourceTopicMessages, err = func() ([]map[string]any, error) {
+			basePrefix := strings.Trim(strings.TrimSpace(s.ossBasePrefix), "/")
+			pat1 := "topics/" + sourceTopicID + "/messages/%"
+			pat2 := pat1
+			if basePrefix != "" {
+				pat2 = basePrefix + "/" + pat1
+			}
+
+			rows, err := s.db.Query(ctx, `
+				select object_key, event_type, occurred_at, payload
+				from oss_events
+				where object_key like $1 or object_key like $2
+				order by occurred_at desc
+				limit 12
+			`, pat1, pat2)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+
+			out := make([]map[string]any, 0, 12)
+			for rows.Next() {
+				var (
+					objectKey  string
+					eventType  string
+					occurredAt time.Time
+					payloadB   []byte
+				)
+				if err := rows.Scan(&objectKey, &eventType, &occurredAt, &payloadB); err != nil {
+					return nil, err
+				}
+				out = append(out, map[string]any{
+					"object_key":  strings.TrimSpace(objectKey),
+					"event_type":  strings.TrimSpace(eventType),
+					"preview":     extractEventPreview(payloadB),
+					"occurred_at": occurredAt.UTC().Format(time.RFC3339),
+				})
+			}
+			if err := rows.Err(); err != nil {
+				return nil, err
+			}
+			return out, nil
+		}()
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: query topic oss_events failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+
+		if req.Topic == "随机话题" && sourceTopicTitle != "" {
+			req.Topic = sourceTopicTitle
+		}
 	}
 
 	// Snapshot candidate card basics (best-effort: keep JSON small).
@@ -345,6 +712,8 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 3) 禁止冒充真实世界的在世名人/具体身份；只能做“表达风格参考”，不得自称为真实人物。
 4) 输出用中文，避免无意义的 UUID/英文噪音。
 5) 输出格式：Markdown，包含两个标题：## 候选智能体回复、## 测评与建议
+
+如果提供了 topic_id/work_item_id/source_run_id（真实话题/真实任务/真实场景），请把它当作“真实上下文快照”：先理解标题/开场/摘要/最近动态，再产出候选智能体的回复与测评建议（不要在真实话题里发言）。
 `)
 
 	// Create an unlisted run offered only to judge agents.
@@ -372,7 +741,7 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		skills = []string{}
 	}
 	stageContext := s.stageContextForStage("review", skills)
-	stageContext["pre_review_evaluation"] = map[string]any{
+	preReviewCtx := map[string]any{
 		"topic": req.Topic,
 		"candidate_agent": map[string]any{
 			"agent_id":           agentID.String(),
@@ -394,6 +763,53 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 			"no_english_noise": true,
 		},
 	}
+
+	sourceSnapshot := map[string]any{}
+	if hasSourceRun {
+		sourceSnapshot = map[string]any{
+			"kind": "run",
+			"run": map[string]any{
+				"run_id":     sourceRunID.String(),
+				"title":      sourceRunGoal,
+				"run_status": sourceRunStatus,
+			},
+			"recent_messages": sourceEvents,
+		}
+	} else if hasSourceWorkItem {
+		sourceSnapshot = map[string]any{
+			"kind": "work_item",
+			"run": map[string]any{
+				"run_id":     sourceWorkItemRunID.String(),
+				"title":      sourceWorkItemRunGoal,
+				"run_status": sourceWorkItemRunStatus,
+			},
+			"work_item": map[string]any{
+				"work_item_id": sourceWorkItemID.String(),
+				"stage":        strings.TrimSpace(sourceWorkItemStage),
+				"kind":         strings.TrimSpace(sourceWorkItemKind),
+				"status":       strings.TrimSpace(sourceWorkItemStatus),
+				"context":      sourceWorkItemContext,
+			},
+			"recent_messages": sourceWorkItemEvents,
+		}
+	} else if hasSourceTopic {
+		sourceSnapshot = map[string]any{
+			"kind": "topic",
+			"topic": map[string]any{
+				"topic_id": sourceTopicID,
+				"title":    sourceTopicTitle,
+				"opening":  sourceTopicOpening,
+				"summary":  sourceTopicSummary,
+				"mode":     sourceTopicMode,
+				"state":    sourceTopicState,
+			},
+			"recent_messages": sourceTopicMessages,
+		}
+	}
+	if len(sourceSnapshot) > 0 {
+		preReviewCtx["source_snapshot"] = sourceSnapshot
+	}
+	stageContext["pre_review_evaluation"] = preReviewCtx
 
 	availableSkillsJSON, err := json.Marshal(skills)
 	if err != nil {
@@ -430,12 +846,32 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		}
 	}
 
+	sourceSnapshotJSON, err := json.Marshal(sourceSnapshot)
+	if err != nil {
+		logError(ctx, "create pre-review evaluation: marshal source_snapshot failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+
+	var sourceRunPtr *uuid.UUID
+	if hasSourceRun {
+		sourceRunPtr = &sourceRunID
+	}
+	var sourceWorkItemPtr *uuid.UUID
+	if hasSourceWorkItem {
+		sourceWorkItemPtr = &sourceWorkItemID
+	}
+	var sourceTopicVal any
+	if hasSourceTopic {
+		sourceTopicVal = sourceTopicID
+	}
+
 	var evaluationID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		insert into agent_pre_review_evaluations (owner_id, agent_id, run_id, topic, expires_at)
-		values ($1, $2, $3, $4, $5)
+		insert into agent_pre_review_evaluations (owner_id, agent_id, run_id, topic, source_run_id, source_topic_id, source_work_item_id, source_snapshot, expires_at)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		returning id
-	`, userID, agentID, runID, req.Topic, expiresAt).Scan(&evaluationID); err != nil {
+	`, userID, agentID, runID, req.Topic, sourceRunPtr, sourceTopicVal, sourceWorkItemPtr, sourceSnapshotJSON, expiresAt).Scan(&evaluationID); err != nil {
 		logError(ctx, "create pre-review evaluation: insert evaluation failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert failed"})
 		return
@@ -495,7 +931,7 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	}
 
 	rows, err := s.db.Query(ctx, `
-		select e.id, e.run_id, e.topic, r.status, e.created_at, e.expires_at
+		select e.id, e.run_id, e.topic, e.source_run_id, e.source_topic_id, e.source_work_item_id, e.source_snapshot, r.status, e.created_at, e.expires_at
 		from agent_pre_review_evaluations e
 		join runs r on r.id = e.run_id
 		where e.owner_id = $1 and e.agent_id = $2
@@ -512,19 +948,23 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	out := make([]preReviewEvaluationDTO, 0, limit)
 	for rows.Next() {
 		var (
-			evalID    uuid.UUID
-			runID     uuid.UUID
-			topic     string
-			status    string
-			createdAt time.Time
-			expiresAt time.Time
+			evalID          uuid.UUID
+			runID           uuid.UUID
+			topic           string
+			sourceRun       *uuid.UUID
+			sourceTopic     *string
+			sourceWorkItem  *uuid.UUID
+			sourceSnapshotB []byte
+			status          string
+			createdAt       time.Time
+			expiresAt       time.Time
 		)
-		if err := rows.Scan(&evalID, &runID, &topic, &status, &createdAt, &expiresAt); err != nil {
+		if err := rows.Scan(&evalID, &runID, &topic, &sourceRun, &sourceTopic, &sourceWorkItem, &sourceSnapshotB, &status, &createdAt, &expiresAt); err != nil {
 			logError(ctx, "list pre-review evaluations: scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
-		out = append(out, preReviewEvaluationDTO{
+		dto := preReviewEvaluationDTO{
 			EvaluationID: evalID.String(),
 			AgentID:      agentID.String(),
 			RunID:        runID.String(),
@@ -532,7 +972,18 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 			Status:       strings.TrimSpace(status),
 			CreatedAt:    createdAt.UTC().Format(time.RFC3339),
 			ExpiresAt:    expiresAt.UTC().Format(time.RFC3339),
-		})
+		}
+		if sourceRun != nil {
+			dto.SourceRunID = sourceRun.String()
+		}
+		if sourceTopic != nil {
+			dto.TopicID = strings.TrimSpace(*sourceTopic)
+		}
+		if sourceWorkItem != nil {
+			dto.WorkItemID = sourceWorkItem.String()
+		}
+		dto.Source = preReviewSourceFromSnapshot(sourceSnapshotB)
+		out = append(out, dto)
 	}
 	if err := rows.Err(); err != nil {
 		logError(ctx, "list pre-review evaluations: iterate failed", err)
@@ -541,6 +992,40 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+func preReviewSourceFromSnapshot(snapshotB []byte) *preReviewEvaluationSourceDTO {
+	if len(snapshotB) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(snapshotB, &m); err != nil {
+		return nil
+	}
+	kind, _ := m["kind"].(string)
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return nil
+	}
+	out := &preReviewEvaluationSourceDTO{Kind: kind}
+	switch kind {
+	case "topic":
+		if t, ok := m["topic"].(map[string]any); ok {
+			if s, _ := t["title"].(string); strings.TrimSpace(s) != "" {
+				out.Title = strings.TrimSpace(s)
+			}
+			if s, _ := t["summary"].(string); strings.TrimSpace(s) != "" {
+				out.Summary = strings.TrimSpace(s)
+			}
+		}
+	case "work_item", "run":
+		if r, ok := m["run"].(map[string]any); ok {
+			if s, _ := r["title"].(string); strings.TrimSpace(s) != "" {
+				out.Title = strings.TrimSpace(s)
+			}
+		}
+	}
+	return out
 }
 
 func (s server) handleOwnerDeletePreReviewEvaluation(w http.ResponseWriter, r *http.Request) {
