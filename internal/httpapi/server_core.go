@@ -28,8 +28,8 @@ type server struct {
 	githubClientSecret     string
 	skillsGatewayWhitelist []string
 
-	matchingParticipantCount     int
-	workItemLeaseSeconds         int
+	matchingParticipantCount int
+	workItemLeaseSeconds     int
 
 	br *broker
 
@@ -1797,6 +1797,9 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "r.publisher_user_id <> $"+strconv.Itoa(platformArg))
 	}
 
+	// Unlisted runs are not discoverable via public list/search.
+	where = append(where, "r.is_public = true")
+
 	// Rejected runs are not discoverable via public list/search.
 	where = append(where, "r.review_status <> 'rejected'")
 
@@ -1859,15 +1862,15 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 	out := make([]runListItemDTO, 0, limit)
 	for rows.Next() {
 		var (
-			id          uuid.UUID
-			goal        string
-			constraints string
-			status      string
-			createdAt   time.Time
-			updatedAt   time.Time
-			outVer      int
-			outKind     string
-			keyNodeText string
+			id           uuid.UUID
+			goal         string
+			constraints  string
+			status       string
+			createdAt    time.Time
+			updatedAt    time.Time
+			outVer       int
+			outKind      string
+			keyNodeText  string
 			artifactText string
 		)
 		var isSystem bool

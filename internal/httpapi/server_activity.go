@@ -81,6 +81,7 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 	where = append(where, "r.review_status in ('pending','approved')")
 	where = append(where, "e.review_status in ('pending','approved')")
 	where = append(where, "e.is_key_node = true")
+	where = append(where, "r.is_public = true")
 
 	limitPlusOne := limit + 1
 

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useNavigate } from "react-router-dom";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
-import { fmtAgentStatus, trunc } from "@/lib/format";
+import { fmtAgentStatus, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { getAgentCardCatalogs, renderCatalogTemplate, type AgentCardCatalogs, type CatalogLabeledItem, type CatalogTextTemplate } from "@/app/lib/agentCardCatalogs";
 
@@ -72,6 +74,16 @@ type ApprovedPersonaTemplate = {
   review_status: "approved";
   persona: any;
   updated_at: string;
+};
+
+type PreReviewEvaluation = {
+  evaluation_id: string;
+  agent_id: string;
+  run_id: string;
+  topic: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
 };
 
 function normalizeText(s: string): string {
@@ -198,6 +210,7 @@ export function AgentCardWizardDialog({
 }) {
   const { toast } = useToast();
   const { t } = useI18n();
+  const nav = useNavigate();
 
   const isOpen = open ?? true;
 
@@ -209,6 +222,13 @@ export function AgentCardWizardDialog({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const [evalTopic, setEvalTopic] = useState("");
+  const [evals, setEvals] = useState<PreReviewEvaluation[]>([]);
+  const [evalLoading, setEvalLoading] = useState(false);
+  const [evalCreating, setEvalCreating] = useState(false);
+  const [evalDeletingId, setEvalDeletingId] = useState("");
+  const [evalError, setEvalError] = useState("");
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -348,6 +368,86 @@ export function AgentCardWizardDialog({
     void loadAll(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, isOpen]);
+
+  async function loadEvaluations() {
+    if (!agentId) return;
+    setEvalLoading(true);
+    setEvalError("");
+    try {
+      const res = await apiFetchJson<{ items: PreReviewEvaluation[] }>(
+        `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations?limit=20`,
+        { apiKey: userApiKey },
+      );
+      setEvals(Array.isArray(res.items) ? res.items : []);
+    } catch (e: any) {
+      console.warn("[AIHub] AgentCardWizardDialog load evaluations failed", { agentId, error: e });
+      setEvalError(String(e?.message ?? t({ zh: "测评记录加载失败", en: "Failed to load evaluations" })));
+    } finally {
+      setEvalLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (step !== 6) return;
+    loadEvaluations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, agentId]);
+
+  async function createEvaluation() {
+    if (!agentId) return;
+    setEvalCreating(true);
+    setEvalError("");
+    try {
+      await apiFetchJson<{ evaluation_id: string; run_id: string; expires_at: string }>(
+        `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations`,
+        {
+          method: "POST",
+          apiKey: userApiKey,
+          body: { topic: evalTopic.trim() },
+        },
+      );
+      toast({ title: t({ zh: "已发起测评", en: "Evaluation started" }) });
+      setEvalTopic("");
+      await loadEvaluations();
+    } catch (e: any) {
+      console.warn("[AIHub] AgentCardWizardDialog create evaluation failed", { agentId, error: e });
+      setEvalError(String(e?.message ?? t({ zh: "发起测评失败", en: "Failed to start evaluation" })));
+      toast({
+        title: t({ zh: "发起测评失败", en: "Failed to start evaluation" }),
+        description: String(e?.message ?? ""),
+        variant: "destructive",
+      });
+    } finally {
+      setEvalCreating(false);
+    }
+  }
+
+  async function deleteEvaluation(ev: PreReviewEvaluation) {
+    if (!agentId) return;
+    if (!ev?.evaluation_id) return;
+    const ok = window.confirm(t({ zh: "确定删除本次测评数据？删除后不可恢复。", en: "Delete this evaluation? This cannot be undone." }));
+    if (!ok) return;
+    setEvalDeletingId(ev.evaluation_id);
+    setEvalError("");
+    try {
+      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations/${encodeURIComponent(ev.evaluation_id)}`, {
+        method: "DELETE",
+        apiKey: userApiKey,
+      });
+      toast({ title: t({ zh: "已删除", en: "Deleted" }) });
+      await loadEvaluations();
+    } catch (e: any) {
+      console.warn("[AIHub] AgentCardWizardDialog delete evaluation failed", { agentId, error: e });
+      setEvalError(String(e?.message ?? t({ zh: "删除失败", en: "Delete failed" })));
+      toast({
+        title: t({ zh: "删除失败", en: "Delete failed" }),
+        description: String(e?.message ?? ""),
+        variant: "destructive",
+      });
+    } finally {
+      setEvalDeletingId("");
+    }
+  }
 
   const willNeedReview = useMemo(() => {
     if (!catalogs) return true;
@@ -687,6 +787,70 @@ export function AgentCardWizardDialog({
                   <Button variant="secondary" size="sm" onClick={() => loadAll(true)} disabled={loading || saving}>
                     {t({ zh: "刷新目录数据", en: "Refresh catalogs" })}
                   </Button>
+                </div>
+
+                <div className="pt-3 border-t">
+                  <div className="font-medium text-foreground">{t({ zh: "提审前测评", en: "Pre-review evaluation" })}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {t({
+                      zh: "会创建一条不公开的测评任务，由平台配置的“测评智能体”执行。测评数据可随时删除，默认 7 天后自动清理。",
+                      en: "Creates an unlisted evaluation task executed by admin-configured judge agents. You can delete it anytime; it expires in 7 days by default.",
+                    })}
+                  </div>
+
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      value={evalTopic}
+                      onChange={(e) => setEvalTopic(e.target.value)}
+                      placeholder={t({ zh: "输入要测的话题（可空）", en: "Topic to test (optional)" })}
+                    />
+                    <Button size="sm" onClick={createEvaluation} disabled={evalCreating || saving || loading || evalLoading}>
+                      {evalCreating ? t({ zh: "发起中…", en: "Starting…" }) : t({ zh: "发起测评", en: "Start" })}
+                    </Button>
+                  </div>
+
+                  {evalError ? <div className="mt-2 text-sm text-destructive">{evalError}</div> : null}
+
+                  <div className="mt-2 space-y-2">
+                    {evalLoading ? <div className="text-xs text-muted-foreground">{t({ zh: "加载测评记录中…", en: "Loading…" })}</div> : null}
+                    {!evalLoading && evals.length ? (
+                      <div className="space-y-2">
+                        {evals.slice(0, 5).map((ev) => (
+                          <div key={ev.evaluation_id} className="rounded-md border bg-background px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium">{ev.topic || t({ zh: "（未命名话题）", en: "(untitled topic)" })}</div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  <Badge variant="secondary">{fmtRunStatus(ev.status)}</Badge>
+                                  <span>{fmtTime(ev.created_at)}</span>
+                                  <span>
+                                    {t({ zh: "到期：", en: "Expires: " })}
+                                    {fmtTime(ev.expires_at)}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 gap-2">
+                                <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_id)}`)}>
+                                  {t({ zh: "查看结果", en: "Open" })}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={evalDeletingId === ev.evaluation_id}
+                                  onClick={() => deleteEvaluation(ev)}
+                                >
+                                  {evalDeletingId === ev.evaluation_id ? t({ zh: "删除中…", en: "Deleting…" }) : t({ zh: "删除", en: "Delete" })}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {!evalLoading && !evals.length ? (
+                      <div className="text-xs text-muted-foreground">{t({ zh: "暂无测评记录", en: "No evaluations yet." })}</div>
+                    ) : null}
+                  </div>
                 </div>
               </CardContent>
             </Card>

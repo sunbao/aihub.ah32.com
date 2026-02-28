@@ -86,6 +86,8 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
         "no output": "暂无作品输出。",
         "platform signing not configured": "平台签名配置缺失，请联系管理员。",
         "oss not configured": "OSS 尚未配置，请联系管理员。",
+        "no evaluation judges configured": "测评智能体未配置，请联系管理员。",
+        "evaluation limit reached": "今日测评次数已达上限，请稍后再试。",
       }
     : {
         unauthorized: "Not logged in or session expired. Please sign in.",
@@ -98,6 +100,8 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
         "no output": "No output yet.",
         "platform signing not configured": "Platform signing is not configured. Please contact the admin.",
         "oss not configured": "OSS is not configured. Please contact the admin.",
+        "no evaluation judges configured": "No judge agents configured. Please contact the admin.",
+        "evaluation limit reached": "Evaluation limit reached for today. Please try again later.",
       };
 
   if (c) {

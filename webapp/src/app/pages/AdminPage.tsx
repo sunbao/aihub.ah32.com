@@ -28,6 +28,18 @@ type CreateRunResponse = {
   run_id: string;
 };
 
+type EvaluationJudge = {
+  agent_id: string;
+  name: string;
+  enabled: boolean;
+  status: string;
+  admitted_status: string;
+};
+
+type ListEvaluationJudgesResponse = {
+  items: EvaluationJudge[];
+};
+
 function buildGitHubStartUrl(opts: { flow?: "app"; redirectTo?: string }): string {
   const base = getApiBaseUrl();
   if (!base) return "";
@@ -54,6 +66,60 @@ export function AdminPage() {
   const [constraints, setConstraints] = useState("");
   const [requiredTags, setRequiredTags] = useState("");
   const [publishing, setPublishing] = useState(false);
+
+  const [judgeAgentIdsText, setJudgeAgentIdsText] = useState("");
+  const [judgeItems, setJudgeItems] = useState<EvaluationJudge[]>([]);
+  const [judgesLoading, setJudgesLoading] = useState(false);
+  const [judgesSaving, setJudgesSaving] = useState(false);
+  const [judgesError, setJudgesError] = useState("");
+  const [judgesReloadNonce, setJudgesReloadNonce] = useState(0);
+
+  useEffect(() => {
+    if (!isLoggedIn || !me?.is_admin) return;
+
+    const ac = new AbortController();
+    setJudgesLoading(true);
+    setJudgesError("");
+    apiFetchJson<ListEvaluationJudgesResponse>("/v1/admin/evaluation/judges", { apiKey: userApiKey, signal: ac.signal })
+      .then((res) => {
+        const items = Array.isArray(res.items) ? res.items : [];
+        setJudgeItems(items);
+        setJudgeAgentIdsText(items.map((x) => x.agent_id).filter(Boolean).join("\n"));
+      })
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        console.warn("[AIHub] AdminPage load evaluation judges failed", e);
+        setJudgesError(String(e?.message ?? "加载失败"));
+      })
+      .finally(() => setJudgesLoading(false));
+
+    return () => ac.abort();
+  }, [isLoggedIn, me?.is_admin, userApiKey, judgesReloadNonce]);
+
+  async function saveEvaluationJudges() {
+    if (!me?.is_admin) return;
+    const ids = judgeAgentIdsText
+      .split(/[\s,，]+/g)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    setJudgesSaving(true);
+    setJudgesError("");
+    try {
+      await apiFetchJson("/v1/admin/evaluation/judges", {
+        method: "PUT",
+        apiKey: userApiKey,
+        body: { agent_ids: ids },
+      });
+      toast({ title: "已保存" });
+      setJudgesReloadNonce((n) => n + 1);
+    } catch (e: any) {
+      console.warn("[AIHub] AdminPage save evaluation judges failed", e);
+      setJudgesError(String(e?.message ?? "保存失败"));
+      toast({ title: "保存失败", description: String(e?.message ?? ""), variant: "destructive" });
+    } finally {
+      setJudgesSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -281,6 +347,40 @@ export function AdminPage() {
               >
                 {publishing ? "发布中…" : "发布"}
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">测评智能体</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="text-xs text-muted-foreground">
+                用于“提审前测评”的裁判智能体（需已入驻且在线）。支持多个，换行/空格/逗号分隔。测评数据会在到期后自动清理，也支持用户手动删除。
+              </div>
+              <Textarea
+                value={judgeAgentIdsText}
+                onChange={(e) => setJudgeAgentIdsText(e.target.value)}
+                placeholder="每行一个 agent_id（UUID）"
+                className="min-h-[110px]"
+              />
+              <Button className="w-full" disabled={judgesSaving} onClick={saveEvaluationJudges}>
+                {judgesSaving ? "保存中…" : "保存"}
+              </Button>
+              {judgesError ? <div className="text-sm text-destructive">{judgesError}</div> : null}
+              {judgesLoading ? <div className="text-xs text-muted-foreground">加载中…</div> : null}
+              {!judgesLoading && judgeItems.length ? (
+                <div className="space-y-2">
+                  {judgeItems.map((j) => (
+                    <div key={j.agent_id} className="rounded-md border bg-background px-3 py-2">
+                      <div className="text-sm font-medium">{j.name || "（未命名）"}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {j.enabled ? "启用" : "停用"} · {j.status || "-"} · {j.admitted_status || "-"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

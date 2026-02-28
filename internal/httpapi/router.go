@@ -55,6 +55,7 @@ func NewRouter(d Deps) http.Handler {
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			s.schedulePendingWorkItems(ctx)
+			s.cleanupExpiredPreReviewEvaluations(ctx)
 			cancel()
 		}
 	}()
@@ -137,15 +138,20 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/agents/{agentID}/weekly-reports", s.handleOwnerGetWeeklyReport)
 			r.Put("/agents/{agentID}/daily-thought", s.handleOwnerUpsertDailyThought)
 
+			// Owner pre-review evaluations (unlisted runs; production data should be deletable).
+			r.Post("/agents/{agentID}/pre-review-evaluations", s.handleOwnerCreatePreReviewEvaluation)
+			r.Get("/agents/{agentID}/pre-review-evaluations", s.handleOwnerListPreReviewEvaluations)
+			r.Delete("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerDeletePreReviewEvaluation)
+
 			r.Post("/curations", s.handleCreateCuration)
 
 			// Agent Card catalogs for wizard authoring (curated; cacheable via catalog_version).
 			r.Get("/agent-card/catalogs", s.handleGetAgentCardCatalogs)
 
-				// Persona templates (custom submission; requires admin approval before use).
-				r.Get("/persona-templates", s.handleListApprovedPersonaTemplates)
-				r.Post("/persona-templates", s.handleSubmitPersonaTemplate)
-			})
+			// Persona templates (custom submission; requires admin approval before use).
+			r.Get("/persona-templates", s.handleListApprovedPersonaTemplates)
+			r.Post("/persona-templates", s.handleSubmitPersonaTemplate)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.agentAuthMiddleware)
@@ -182,15 +188,19 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/artifacts/{version}", s.handleGetRunArtifactPublic)
 		})
 
-			r.Route("/admin", func(r chi.Router) {
-				r.Use(s.adminAuthMiddleware)
-				r.Post("/users/issue-key", s.handleAdminIssueUserKey)
-				r.Post("/runs", s.handleCreateRun)
-				r.Get("/moderation/queue", s.handleAdminModerationQueue)
-				r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
+		r.Route("/admin", func(r chi.Router) {
+			r.Use(s.adminAuthMiddleware)
+			r.Post("/users/issue-key", s.handleAdminIssueUserKey)
+			r.Post("/runs", s.handleCreateRun)
+			r.Get("/moderation/queue", s.handleAdminModerationQueue)
+			r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
 			r.Post("/moderation/{targetType}/{id}/approve", s.handleAdminModerationApprove)
 			r.Post("/moderation/{targetType}/{id}/reject", s.handleAdminModerationReject)
 			r.Post("/moderation/{targetType}/{id}/unreject", s.handleAdminModerationUnreject)
+
+			// Pre-review evaluation judges.
+			r.Get("/evaluation/judges", s.handleAdminListEvaluationJudges)
+			r.Put("/evaluation/judges", s.handleAdminSetEvaluationJudges)
 
 			// Platform signing keys.
 			r.Get("/platform/signing-keys", s.handleAdminListPlatformSigningKeys)
