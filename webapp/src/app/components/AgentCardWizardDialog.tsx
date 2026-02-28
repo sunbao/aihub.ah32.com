@@ -159,6 +159,24 @@ type OwnerGetPreReviewEvaluationResponse = {
   expires_at: string;
 };
 
+function isUuidLike(s: string): boolean {
+  const v = String(s ?? "").trim();
+  if (!v) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function redactUuids(v: any): any {
+  if (v == null) return v;
+  if (typeof v === "string") return isUuidLike(v) ? "（已隐藏）" : v;
+  if (Array.isArray(v)) return v.map(redactUuids);
+  if (typeof v === "object") {
+    const out: any = {};
+    for (const k of Object.keys(v)) out[k] = redactUuids((v as any)[k]);
+    return out;
+  }
+  return v;
+}
+
 function normalizeText(s: string): string {
   return String(s ?? "")
     .trim()
@@ -371,6 +389,7 @@ export function AgentCardWizardDialog({
   const [recentRunsError, setRecentRunsError] = useState("");
 
   const [workItemRunId, setWorkItemRunId] = useState("");
+  const [workItemRunTitle, setWorkItemRunTitle] = useState("");
   const [workItemRunItems, setWorkItemRunItems] = useState<OwnerRunWorkItem[]>([]);
   const [workItemRunLoading, setWorkItemRunLoading] = useState(false);
   const [workItemRunError, setWorkItemRunError] = useState("");
@@ -379,6 +398,7 @@ export function AgentCardWizardDialog({
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshotError, setSnapshotError] = useState("");
   const [snapshotData, setSnapshotData] = useState<OwnerGetPreReviewEvaluationResponse | null>(null);
+  const [snapshotShowRaw, setSnapshotShowRaw] = useState(false);
   const [evals, setEvals] = useState<PreReviewEvaluation[]>([]);
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalCreating, setEvalCreating] = useState(false);
@@ -642,6 +662,54 @@ export function AgentCardWizardDialog({
     setEvalSourceRunId("");
   }
 
+  function fmtWorkItemStatus(status: string): string {
+    const v = String(status ?? "").trim().toLowerCase();
+    switch (v) {
+      case "offered":
+        return t({ zh: "待领取", en: "Offered" });
+      case "claimed":
+        return t({ zh: "进行中", en: "Claimed" });
+      case "completed":
+        return t({ zh: "已完成", en: "Completed" });
+      case "failed":
+        return t({ zh: "失败", en: "Failed" });
+      case "scheduled":
+        return t({ zh: "已排队", en: "Scheduled" });
+      default:
+        return status || "";
+    }
+  }
+
+  function fmtWorkItemStage(stage: string): string {
+    const v = String(stage ?? "").trim().toLowerCase();
+    switch (v) {
+      case "review":
+        return t({ zh: "评审", en: "Review" });
+      case "onboarding":
+        return t({ zh: "入驻", en: "Onboarding" });
+      case "checkin":
+        return t({ zh: "签到", en: "Check-in" });
+      case "ideation":
+        return t({ zh: "构思", en: "Ideation" });
+      default:
+        return stage || "";
+    }
+  }
+
+  function fmtWorkItemKind(kind: string): string {
+    const v = String(kind ?? "").trim().toLowerCase();
+    switch (v) {
+      case "draft":
+        return t({ zh: "草稿", en: "Draft" });
+      case "contribute":
+        return t({ zh: "贡献", en: "Contribute" });
+      case "review":
+        return t({ zh: "评审", en: "Review" });
+      default:
+        return kind || "";
+    }
+  }
+
   function pickTopic(topic: RecentTopicForEvaluation) {
     clearEvalSourceIds();
     setEvalSourceKind("topic");
@@ -697,6 +765,7 @@ export function AgentCardWizardDialog({
       setEvalTopic("");
       clearEvalSourceIds();
       setWorkItemRunId("");
+      setWorkItemRunTitle("");
       setWorkItemRunItems([]);
       await loadEvaluations();
     } catch (e: any) {
@@ -714,6 +783,7 @@ export function AgentCardWizardDialog({
     setSnapshotLoading(true);
     setSnapshotError("");
     setSnapshotData(null);
+    setSnapshotShowRaw(false);
     try {
       const res = await apiFetchJson<OwnerGetPreReviewEvaluationResponse>(
         `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations/${encodeURIComponent(ev.evaluation_id)}`,
@@ -1213,13 +1283,34 @@ export function AgentCardWizardDialog({
                   <div className="mt-2 space-y-2">
                     <div className="text-xs text-muted-foreground">{t({ zh: "选择测评对象（必填，三选一）", en: "Pick a real context (required, choose one)" })}</div>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant={evalSourceKind === "topic" ? "default" : "secondary"} onClick={() => setEvalSourceKind("topic")}>
+                      <Button
+                        size="sm"
+                        variant={evalSourceKind === "topic" ? "default" : "secondary"}
+                        onClick={() => {
+                          clearEvalSourceIds();
+                          setEvalSourceKind("topic");
+                        }}
+                      >
                         {t({ zh: "广场话题", en: "Topic" })}
                       </Button>
-                      <Button size="sm" variant={evalSourceKind === "work_item" ? "default" : "secondary"} onClick={() => setEvalSourceKind("work_item")}>
+                      <Button
+                        size="sm"
+                        variant={evalSourceKind === "work_item" ? "default" : "secondary"}
+                        onClick={() => {
+                          clearEvalSourceIds();
+                          setEvalSourceKind("work_item");
+                        }}
+                      >
                         {t({ zh: "任务", en: "Task" })}
                       </Button>
-                      <Button size="sm" variant={evalSourceKind === "run" ? "default" : "secondary"} onClick={() => setEvalSourceKind("run")}>
+                      <Button
+                        size="sm"
+                        variant={evalSourceKind === "run" ? "default" : "secondary"}
+                        onClick={() => {
+                          clearEvalSourceIds();
+                          setEvalSourceKind("run");
+                        }}
+                      >
                         {t({ zh: "场景", en: "Scenario" })}
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setEvalAdvancedIds((v) => !v)}>
@@ -1280,17 +1371,78 @@ export function AgentCardWizardDialog({
                     {evalSourceKind === "work_item" ? (
                       <div className="rounded-md border bg-background p-3 space-y-2">
                         <div className="text-xs text-muted-foreground">{t({ zh: "先选一个 Run，再选其中一个任务", en: "Pick a run, then pick a work item" })}</div>
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <Input value={workItemRunId} onChange={(e) => setWorkItemRunId(e.target.value)} placeholder={t({ zh: "输入 RunID（可从下方最近场景选择）", en: "Run ID" })} />
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={!workItemRunId.trim() || workItemRunLoading}
-                            onClick={() => loadWorkItemsForRun(workItemRunId)}
-                          >
-                            {workItemRunLoading ? t({ zh: "加载中…", en: "Loading…" }) : t({ zh: "加载任务", en: "Load" })}
-                          </Button>
-                        </div>
+
+                        {workItemRunId ? (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                            <div className="min-w-0 text-sm">
+                              <span className="text-muted-foreground">{t({ zh: "已选择：", en: "Selected: " })}</span>
+                              <span className="font-medium">{workItemRunTitle || t({ zh: "（已选择场景）", en: "(selected run)" })}</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={workItemRunLoading}
+                                onClick={() => loadWorkItemsForRun(workItemRunId)}
+                              >
+                                {workItemRunLoading ? t({ zh: "加载中…", en: "Loading…" }) : t({ zh: "刷新任务", en: "Refresh" })}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setWorkItemRunId("");
+                                  setWorkItemRunTitle("");
+                                  setWorkItemRunItems([]);
+                                  setWorkItemRunError("");
+                                }}
+                              >
+                                {t({ zh: "更换", en: "Change" })}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="text-xs text-muted-foreground">{t({ zh: "从最近场景中选择一个（不会展示 UUID）", en: "Pick from recent runs (UUID hidden)" })}</div>
+                            <div className="flex flex-wrap gap-2">
+                              {recentRuns.slice(0, 8).map((it) => (
+                                <Button
+                                  key={it.run_id}
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    const title = String(it.run_goal ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" });
+                                    setWorkItemRunId(String(it.run_id));
+                                    setWorkItemRunTitle(title);
+                                    void loadWorkItemsForRun(String(it.run_id));
+                                  }}
+                                >
+                                  {String(it.run_goal ?? "").trim().slice(0, 12) || t({ zh: "（无标题）", en: "(untitled)" })}
+                                </Button>
+                              ))}
+                            </div>
+                            {evalAdvancedIds ? (
+                              <div className="pt-2 border-t">
+                                <div className="text-xs text-muted-foreground">{t({ zh: "高级：手动输入 RunID（仅在必要时）", en: "Advanced: paste Run ID (only if needed)" })}</div>
+                                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                  <Input
+                                    value={workItemRunId}
+                                    onChange={(e) => setWorkItemRunId(e.target.value)}
+                                    placeholder={t({ zh: "输入 RunID", en: "Run ID" })}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={!workItemRunId.trim() || workItemRunLoading}
+                                    onClick={() => loadWorkItemsForRun(workItemRunId)}
+                                  >
+                                    {workItemRunLoading ? t({ zh: "加载中…", en: "Loading…" }) : t({ zh: "加载任务", en: "Load" })}
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
                         {workItemRunError ? <div className="text-xs text-destructive">{workItemRunError}</div> : null}
                         {workItemRunItems.length ? (
                           <div className="space-y-2">
@@ -1299,10 +1451,10 @@ export function AgentCardWizardDialog({
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="min-w-0">
                                     <div className="truncate text-sm font-medium">
-                                      {String(wi.stage ?? "").trim() || "-"} · {String(wi.kind ?? "").trim() || "-"}
+                                      {fmtWorkItemStage(wi.stage) || "-"} · {fmtWorkItemKind(wi.kind) || "-"}
                                     </div>
                                     {wi.stage_description ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(wi.stage_description).trim()}</div> : null}
-                                    <div className="mt-0.5 text-xs text-muted-foreground">{t({ zh: "状态：", en: "Status: " }) + String(wi.status ?? "").trim()}</div>
+                                    <div className="mt-0.5 text-xs text-muted-foreground">{t({ zh: "状态：", en: "Status: " }) + fmtWorkItemStatus(wi.status)}</div>
                                   </div>
                                   <Button size="sm" variant="secondary" onClick={() => pickWorkItem(wi)}>
                                     {t({ zh: "选择", en: "Pick" })}
@@ -1310,26 +1462,6 @@ export function AgentCardWizardDialog({
                                 </div>
                               </div>
                             ))}
-                          </div>
-                        ) : null}
-                        {recentRuns.length ? (
-                          <div className="pt-2 border-t">
-                            <div className="text-xs text-muted-foreground">{t({ zh: "最近场景（点击填入 RunID）", en: "Recent runs (click to fill)" })}</div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {recentRuns.slice(0, 6).map((it) => (
-                                <Button
-                                  key={it.run_id}
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setWorkItemRunId(String(it.run_id));
-                                    void loadWorkItemsForRun(String(it.run_id));
-                                  }}
-                                >
-                                  {String(it.run_goal ?? "").trim().slice(0, 10) || String(it.run_id).slice(0, 10)}
-                                </Button>
-                              ))}
-                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -1481,6 +1613,7 @@ export function AgentCardWizardDialog({
             setSnapshotEval(null);
             setSnapshotData(null);
             setSnapshotError("");
+            setSnapshotShowRaw(false);
           }
         }}
       >
@@ -1495,7 +1628,63 @@ export function AgentCardWizardDialog({
             {snapshotLoading ? <div className="text-xs text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
             {snapshotError ? <div className="text-xs text-destructive">{snapshotError}</div> : null}
             {!snapshotLoading && snapshotData?.source_snapshot ? (
-              <pre className="whitespace-pre-wrap break-words text-xs">{JSON.stringify(snapshotData.source_snapshot, null, 2)}</pre>
+              <div className="space-y-3">
+                <div className="rounded-md border bg-muted/10 px-3 py-2">
+                  <div className="text-xs text-muted-foreground">{t({ zh: "来源摘要", en: "Summary" })}</div>
+                  <div className="mt-1 text-sm font-medium">
+                    {(() => {
+                      const snap: any = snapshotData.source_snapshot ?? {};
+                      const kind = String(snap?.kind ?? "").trim();
+                      if (kind === "topic") return String(snap?.topic?.title ?? "").trim() || t({ zh: "（未命名话题）", en: "(untitled topic)" });
+                      return String(snap?.run?.title ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" });
+                    })()}
+                  </div>
+                  {(() => {
+                    const snap: any = snapshotData.source_snapshot ?? {};
+                    const kind = String(snap?.kind ?? "").trim();
+                    if (kind !== "topic") return null;
+                    const summary = String(snap?.topic?.summary ?? "").trim();
+                    const opening = String(snap?.topic?.opening ?? "").trim();
+                    return (
+                      <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                        {summary ? <div>{summary}</div> : null}
+                        {opening ? <div>{t({ zh: "开场：", en: "Opening: " }) + opening}</div> : null}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {Array.isArray((snapshotData.source_snapshot as any)?.recent_messages) && (snapshotData.source_snapshot as any).recent_messages.length ? (
+                  <div className="rounded-md border bg-background px-3 py-2">
+                    <div className="text-xs text-muted-foreground">{t({ zh: "最近动态（快照）", en: "Recent activity (snapshot)" })}</div>
+                    <div className="mt-2 space-y-2">
+                      {(snapshotData.source_snapshot as any).recent_messages.slice(0, 8).map((m: any, idx: number) => {
+                        const preview = String(m?.preview ?? "").trim();
+                        const at = String(m?.occurred_at ?? m?.created_at ?? "").trim();
+                        const persona = String(m?.persona ?? "").trim();
+                        return (
+                          <div key={idx} className="rounded-md border px-2 py-1.5">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                              {at ? <span>{fmtTime(at)}</span> : null}
+                              {persona && !isUuidLike(persona) ? <span>{persona}</span> : null}
+                            </div>
+                            {preview ? <div className="mt-1 text-xs">{preview}</div> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <Button size="sm" variant="outline" onClick={() => setSnapshotShowRaw((v) => !v)}>
+                    {snapshotShowRaw ? t({ zh: "收起原始JSON", en: "Hide raw JSON" }) : t({ zh: "高级：查看原始JSON（已脱敏）", en: "Advanced: raw JSON (redacted)" })}
+                  </Button>
+                  {snapshotShowRaw ? (
+                    <pre className="mt-2 whitespace-pre-wrap break-words text-xs">{JSON.stringify(redactUuids(snapshotData.source_snapshot), null, 2)}</pre>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
             {!snapshotLoading && snapshotData && !snapshotData.source_snapshot ? (
               <div className="text-xs text-muted-foreground">{t({ zh: "暂无快照数据", en: "No snapshot" })}</div>
