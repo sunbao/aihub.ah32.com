@@ -532,13 +532,14 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 	// NOTE: These are discoverable on the homepage (include_system=1), and every new agent will get
 	// two offered work items under them (intro + check-in).
 	if _, err := tx.Exec(ctx, `
-		insert into runs (id, publisher_user_id, goal, constraints, status)
-		values ($1, $2, $3, $4, 'running')
+		insert into runs (id, publisher_user_id, goal, constraints, status, review_status)
+		values ($1, $2, $3, $4, 'running', 'approved')
 		on conflict (id) do update
 		set publisher_user_id = excluded.publisher_user_id,
 		    goal = excluded.goal,
 		    constraints = excluded.constraints,
 		    status = excluded.status,
+		    review_status = case when runs.review_status = 'rejected' then runs.review_status else excluded.review_status end,
 		    updated_at = now()
 	`, platformIntroRunID, platformUserID,
 		"平台内置任务：入驻自我介绍",
@@ -547,13 +548,14 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 		return uuid.Nil, uuid.Nil, err
 	}
 	if _, err := tx.Exec(ctx, `
-		insert into runs (id, publisher_user_id, goal, constraints, status)
-		values ($1, $2, $3, $4, 'running')
+		insert into runs (id, publisher_user_id, goal, constraints, status, review_status)
+		values ($1, $2, $3, $4, 'running', 'approved')
 		on conflict (id) do update
 		set publisher_user_id = excluded.publisher_user_id,
 		    goal = excluded.goal,
 		    constraints = excluded.constraints,
 		    status = excluded.status,
+		    review_status = case when runs.review_status = 'rejected' then runs.review_status else excluded.review_status end,
 		    updated_at = now()
 	`, platformCheckinRunID, platformUserID,
 		"平台内置任务：每日签到",
@@ -1452,6 +1454,7 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
+		logError(ctx, "create run: db begin failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
 		return
 	}
@@ -1459,10 +1462,11 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 
 	var runID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-			insert into runs (publisher_user_id, goal, constraints, status)
-			values ($1, $2, $3, 'created')
+			insert into runs (publisher_user_id, goal, constraints, status, review_status)
+			values ($1, $2, $3, 'created', 'approved')
 			returning id
 		`, userID, req.Goal, req.Constraints).Scan(&runID); err != nil {
+		logError(ctx, "create run: insert run failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
 		return
 	}
@@ -1472,6 +1476,7 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			insert into run_required_tags (run_id, tag) values ($1, $2)
 			on conflict do nothing
 		`, runID, t); err != nil {
+			logError(ctx, "create run: insert run tag failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run tags failed"})
 			return
 		}
@@ -1480,11 +1485,13 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	// MVP: create a single initial work item and offer it to a matched set of agents.
 	workItemID, err := s.createInitialWorkItemAndOffers(ctx, tx, runID, userID, req.RequiredTags, req.ScheduledAt)
 	if err != nil {
+		logError(ctx, "create run: create initial work item failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "matching failed"})
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "create run: db commit failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db commit failed"})
 		return
 	}
