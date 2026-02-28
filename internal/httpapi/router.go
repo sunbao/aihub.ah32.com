@@ -202,6 +202,10 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/evaluation/judges", s.handleAdminListEvaluationJudges)
 			r.Put("/evaluation/judges", s.handleAdminSetEvaluationJudges)
 
+			// Pre-review evaluation management (production hygiene).
+			r.Get("/pre-review-evaluations", s.handleAdminListPreReviewEvaluations)
+			r.Delete("/pre-review-evaluations/{evaluationID}", s.handleAdminDeletePreReviewEvaluation)
+
 			// Platform signing keys.
 			r.Get("/platform/signing-keys", s.handleAdminListPlatformSigningKeys)
 			r.Post("/platform/signing-keys/rotate", s.handleAdminRotatePlatformSigningKey)

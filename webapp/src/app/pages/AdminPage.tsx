@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson, ApiRequestError, getApiBaseUrl } from "@/lib/api";
+import { fmtTime } from "@/lib/format";
 import { getUserApiKey, setUserApiKey } from "@/lib/storage";
 
 type MeResponse = {
@@ -38,6 +40,24 @@ type EvaluationJudge = {
 
 type ListEvaluationJudgesResponse = {
   items: EvaluationJudge[];
+};
+
+type AdminPreReviewEvaluation = {
+  evaluation_id: string;
+  owner_id: string;
+  agent_id: string;
+  agent_name: string;
+  run_id: string;
+  topic: string;
+  run_status: string;
+  created_at: string;
+  expires_at: string;
+};
+
+type AdminListPreReviewEvaluationsResponse = {
+  items: AdminPreReviewEvaluation[];
+  has_more: boolean;
+  next_offset: number;
 };
 
 function buildGitHubStartUrl(opts: { flow?: "app"; redirectTo?: string }): string {
@@ -73,6 +93,15 @@ export function AdminPage() {
   const [judgesSaving, setJudgesSaving] = useState(false);
   const [judgesError, setJudgesError] = useState("");
   const [judgesReloadNonce, setJudgesReloadNonce] = useState(0);
+
+  const [evalQ, setEvalQ] = useState("");
+  const [evalItems, setEvalItems] = useState<AdminPreReviewEvaluation[]>([]);
+  const [evalLoading, setEvalLoading] = useState(false);
+  const [evalError, setEvalError] = useState("");
+  const [evalOffset, setEvalOffset] = useState(0);
+  const [evalHasMore, setEvalHasMore] = useState(false);
+  const [evalDeletingId, setEvalDeletingId] = useState("");
+  const [evalReloadNonce, setEvalReloadNonce] = useState(0);
 
   useEffect(() => {
     if (!isLoggedIn || !me?.is_admin) return;
@@ -120,6 +149,59 @@ export function AdminPage() {
       setJudgesSaving(false);
     }
   }
+
+  async function loadAdminEvaluations(opts: { reset: boolean }) {
+    if (!me?.is_admin) return;
+    if (evalLoading) return;
+    setEvalLoading(true);
+    setEvalError("");
+    try {
+      const offset = opts.reset ? 0 : evalOffset;
+      const url =
+        `/v1/admin/pre-review-evaluations?limit=50&offset=${encodeURIComponent(String(offset))}` +
+        (evalQ.trim() ? `&q=${encodeURIComponent(evalQ.trim())}` : "");
+      const res = await apiFetchJson<AdminListPreReviewEvaluationsResponse>(url, { apiKey: userApiKey });
+      const list = Array.isArray(res.items) ? res.items : [];
+      setEvalItems((prev) => (opts.reset ? list : prev.concat(list)));
+      setEvalHasMore(Boolean(res.has_more));
+      setEvalOffset(Number(res.next_offset ?? 0));
+    } catch (e: any) {
+      console.warn("[AIHub] AdminPage load pre-review evaluations failed", e);
+      setEvalError(String(e?.message ?? "加载失败"));
+    } finally {
+      setEvalLoading(false);
+    }
+  }
+
+  async function deleteAdminEvaluation(ev: AdminPreReviewEvaluation) {
+    if (!me?.is_admin) return;
+    const id = String(ev?.evaluation_id ?? "").trim();
+    if (!id) return;
+    const ok = window.confirm("确定删除这条测评数据？删除后不可恢复。");
+    if (!ok) return;
+    setEvalDeletingId(id);
+    setEvalError("");
+    try {
+      await apiFetchJson(`/v1/admin/pre-review-evaluations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        apiKey: userApiKey,
+      });
+      toast({ title: "已删除" });
+      setEvalItems((prev) => prev.filter((x) => String(x.evaluation_id) !== id));
+    } catch (e: any) {
+      console.warn("[AIHub] AdminPage delete pre-review evaluation failed", e);
+      setEvalError(String(e?.message ?? "删除失败"));
+      toast({ title: "删除失败", description: String(e?.message ?? ""), variant: "destructive" });
+    } finally {
+      setEvalDeletingId("");
+    }
+  }
+
+  useEffect(() => {
+    if (!isLoggedIn || !me?.is_admin) return;
+    loadAdminEvaluations({ reset: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, me?.is_admin, userApiKey, evalReloadNonce]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -380,6 +462,92 @@ export function AdminPage() {
                     </div>
                   ))}
                 </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">测评管理</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="text-xs text-muted-foreground">
+                用于处理“提审前测评”的业务漏项：查看全站测评记录、定位问题、必要时强制删除测评数据（生产环境请谨慎）。
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input value={evalQ} onChange={(e) => setEvalQ(e.target.value)} placeholder="搜索：话题/智能体名/ID（支持模糊）" />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setEvalOffset(0);
+                    setEvalItems([]);
+                    setEvalReloadNonce((n) => n + 1);
+                  }}
+                  disabled={evalLoading}
+                >
+                  {evalLoading ? "加载中…" : "刷新"}
+                </Button>
+              </div>
+
+              {evalError ? <div className="text-sm text-destructive">{evalError}</div> : null}
+
+              {!evalLoading && !evalItems.length ? (
+                <div className="text-xs text-muted-foreground">暂无测评记录</div>
+              ) : null}
+
+              {evalItems.length ? (
+                <div className="space-y-2">
+                  {evalItems.slice(0, 50).map((ev) => (
+                    <div key={ev.evaluation_id} className="rounded-md border bg-background px-3 py-2">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">
+                            {ev.topic || "（未命名话题）"} · {ev.agent_name || "（未命名智能体）"}
+                          </div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <Badge variant="secondary">{ev.run_status || "-"}</Badge>
+                            <span>{fmtTime(ev.created_at)}</span>
+                            <span>到期：{fmtTime(ev.expires_at)}</span>
+                          </div>
+                          <details className="mt-1 text-xs text-muted-foreground">
+                            <summary className="cursor-pointer select-none">更多信息</summary>
+                            <div className="mt-1 space-y-1">
+                              <div>evaluation_id：{ev.evaluation_id}</div>
+                              <div>run_id：{ev.run_id}</div>
+                              <div>agent_id：{ev.agent_id}</div>
+                              <div>owner_id：{ev.owner_id}</div>
+                            </div>
+                          </details>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_id)}`)}>
+                            查看
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={evalDeletingId === ev.evaluation_id}
+                            onClick={() => deleteAdminEvaluation(ev)}
+                          >
+                            {evalDeletingId === ev.evaluation_id ? "删除中…" : "删除"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {evalHasMore ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={evalLoading}
+                  onClick={() => loadAdminEvaluations({ reset: false })}
+                >
+                  {evalLoading ? "加载中…" : "加载更多"}
+                </Button>
               ) : null}
             </CardContent>
           </Card>
