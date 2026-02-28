@@ -5,6 +5,16 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -228,6 +238,7 @@ export function AgentCardWizardDialog({
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalCreating, setEvalCreating] = useState(false);
   const [evalDeletingId, setEvalDeletingId] = useState("");
+  const [evalConfirmDelete, setEvalConfirmDelete] = useState<PreReviewEvaluation | null>(null);
   const [evalError, setEvalError] = useState("");
 
   const [name, setName] = useState("");
@@ -412,11 +423,6 @@ export function AgentCardWizardDialog({
     } catch (e: any) {
       console.warn("[AIHub] AgentCardWizardDialog create evaluation failed", { agentId, error: e });
       setEvalError(String(e?.message ?? t({ zh: "发起测评失败", en: "Failed to start evaluation" })));
-      toast({
-        title: t({ zh: "发起测评失败", en: "Failed to start evaluation" }),
-        description: String(e?.message ?? ""),
-        variant: "destructive",
-      });
     } finally {
       setEvalCreating(false);
     }
@@ -425,8 +431,6 @@ export function AgentCardWizardDialog({
   async function deleteEvaluation(ev: PreReviewEvaluation) {
     if (!agentId) return;
     if (!ev?.evaluation_id) return;
-    const ok = window.confirm(t({ zh: "确定删除本次测评数据？删除后不可恢复。", en: "Delete this evaluation? This cannot be undone." }));
-    if (!ok) return;
     setEvalDeletingId(ev.evaluation_id);
     setEvalError("");
     try {
@@ -439,11 +443,6 @@ export function AgentCardWizardDialog({
     } catch (e: any) {
       console.warn("[AIHub] AgentCardWizardDialog delete evaluation failed", { agentId, error: e });
       setEvalError(String(e?.message ?? t({ zh: "删除失败", en: "Delete failed" })));
-      toast({
-        title: t({ zh: "删除失败", en: "Delete failed" }),
-        description: String(e?.message ?? ""),
-        variant: "destructive",
-      });
     } finally {
       setEvalDeletingId("");
     }
@@ -496,7 +495,6 @@ export function AgentCardWizardDialog({
     } catch (e: any) {
       console.warn("[AIHub] AgentCardWizardDialog save failed", { agentId, error: e });
       setError(String(e?.message ?? "保存失败"));
-      toast({ title: "保存失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -837,7 +835,7 @@ export function AgentCardWizardDialog({
                                   size="sm"
                                   variant="destructive"
                                   disabled={evalDeletingId === ev.evaluation_id}
-                                  onClick={() => deleteEvaluation(ev)}
+                                  onClick={() => setEvalConfirmDelete(ev)}
                                 >
                                   {evalDeletingId === ev.evaluation_id ? t({ zh: "删除中…", en: "Deleting…" }) : t({ zh: "删除", en: "Delete" })}
                                 </Button>
@@ -872,6 +870,38 @@ export function AgentCardWizardDialog({
           </Button>
         )}
       </DialogFooter>
+
+      <AlertDialog
+        open={Boolean(evalConfirmDelete)}
+        onOpenChange={(open) => {
+          if (!open) setEvalConfirmDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t({ zh: "删除测评数据？", en: "Delete evaluation?" })}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t({ zh: "删除后不可恢复。对应的测评任务也会一起删除。", en: "This cannot be undone. The evaluation run will be deleted as well." })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!evalDeletingId}>{t({ zh: "取消", en: "Cancel" })}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!evalConfirmDelete || evalDeletingId === evalConfirmDelete?.evaluation_id}
+              onClick={() => {
+                const ev = evalConfirmDelete;
+                setEvalConfirmDelete(null);
+                if (ev) void deleteEvaluation(ev);
+              }}
+            >
+              {evalDeletingId && evalConfirmDelete?.evaluation_id && evalDeletingId === evalConfirmDelete.evaluation_id
+                ? t({ zh: "删除中…", en: "Deleting…" })
+                : t({ zh: "删除", en: "Delete" })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DialogContent>
   );
 }

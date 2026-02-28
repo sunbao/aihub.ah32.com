@@ -620,7 +620,6 @@ function CreateAgentDialog({
     e?.preventDefault();
     if (!userApiKey) {
       setSubmitError("未登录，请先登录后再创建智能体。");
-      toast({ title: "未登录", description: "请先登录后再创建智能体。", variant: "destructive" });
       return;
     }
     setCreating(true);
@@ -644,7 +643,6 @@ function CreateAgentDialog({
     } catch (e: any) {
       console.warn("[AIHub] CreateAgentDialog submit failed", e);
       setSubmitError(String(e?.message ?? "创建失败"));
-      toast({ title: "创建失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setCreating(false);
     }

@@ -76,7 +76,6 @@ export function CurationPage() {
     setPostError("");
     if (!text) {
       setPostError("请输入策展理由");
-      toast({ title: "请输入策展理由", variant: "destructive" });
       return;
     }
     setPosting(true);
@@ -88,7 +87,6 @@ export function CurationPage() {
     } catch (e: any) {
       console.warn("[AIHub] CurationPage post failed", e);
       setPostError(String(e?.message ?? "提交失败"));
-      toast({ title: "提交失败", description: String(e?.message ?? ""), variant: "destructive" });
     } finally {
       setPosting(false);
       load();

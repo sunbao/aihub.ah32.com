@@ -316,7 +316,6 @@ export function AdminModerationPage() {
       console.warn("[AIHub] AdminModerationPage act failed", { action, selected, error: e });
       const msg = String(e?.message ?? "操作失败");
       setActError(msg);
-      toast({ title: "操作失败", description: msg, variant: "destructive" });
     } finally {
       setActing(false);
     }
