@@ -34,6 +34,31 @@ func bearerToken(r *http.Request) string {
 	return strings.TrimSpace(parts[1])
 }
 
+// maybeUserIDFromRequest attempts to authenticate a user from Authorization: Bearer <api_key>.
+// It returns (uuid.Nil, false, nil) when no valid user token is present.
+func (s server) maybeUserIDFromRequest(ctx context.Context, r *http.Request) (uuid.UUID, bool, error) {
+	apiKey := bearerToken(r)
+	if apiKey == "" {
+		return uuid.Nil, false, nil
+	}
+	hash := keys.HashAPIKey(s.pepper, apiKey)
+
+	var userID uuid.UUID
+	err := s.db.QueryRow(ctx, `
+		select u.id
+		from user_api_keys k
+		join users u on u.id = k.user_id
+		where k.key_hash = $1 and k.revoked_at is null
+	`, hash).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	return userID, true, nil
+}
+
 func (s server) userAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := bearerToken(r)

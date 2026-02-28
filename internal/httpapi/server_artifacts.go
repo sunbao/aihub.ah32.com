@@ -15,12 +15,12 @@ import (
 )
 
 type runOutputDTO struct {
-	RunID   string `json:"run_id"`
-	Version int    `json:"version"`
-	Kind    string `json:"kind"`
-	Author  string `json:"author"`
+	RunID     string `json:"run_id"`
+	Version   int    `json:"version"`
+	Kind      string `json:"kind"`
+	Author    string `json:"author"`
 	CreatedAt string `json:"created_at,omitempty"`
-	Content string `json:"content"`
+	Content   string `json:"content"`
 }
 
 type submitArtifactRequest struct {
@@ -245,7 +245,7 @@ func (s server) maybeCreateReviewWorkItem(ctx context.Context, runID uuid.UUID, 
 		if err := rows.Err(); err != nil {
 			return err
 		}
-	if len(candidates) == 0 {
+		if len(candidates) == 0 {
 			return nil
 		}
 	}
@@ -376,6 +376,9 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
 		return
 	}
+	if !s.requireRunPublicOrOwner(w, r, runID) {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -429,12 +432,12 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, runOutputDTO{
-		RunID:   runID.String(),
-		Version: version,
-		Kind:    kind,
-		Author:  author,
+		RunID:     runID.String(),
+		Version:   version,
+		Kind:      kind,
+		Author:    author,
 		CreatedAt: createdAt.UTC().Format(time.RFC3339),
-		Content: content,
+		Content:   content,
 	})
 }
 
@@ -442,6 +445,9 @@ func (s server) handleGetRunArtifactPublic(w http.ResponseWriter, r *http.Reques
 	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+		return
+	}
+	if !s.requireRunPublicOrOwner(w, r, runID) {
 		return
 	}
 	version, err := strconv.Atoi(strings.TrimSpace(chi.URLParam(r, "version")))

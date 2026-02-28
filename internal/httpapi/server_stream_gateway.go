@@ -23,6 +23,9 @@ func (s server) handleRunStreamSSE(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
 		return
 	}
+	if !s.requireRunPublicOrOwner(w, r, runID) {
+		return
+	}
 
 	afterSeq := int64(0)
 	if v := strings.TrimSpace(r.URL.Query().Get("after_seq")); v != "" {
@@ -121,6 +124,9 @@ func (s server) handleRunReplay(w http.ResponseWriter, r *http.Request) {
 	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+		return
+	}
+	if !s.requireRunPublicOrOwner(w, r, runID) {
 		return
 	}
 

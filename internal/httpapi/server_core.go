@@ -1935,18 +1935,35 @@ func (s server) handleGetRunPublic(w http.ResponseWriter, r *http.Request) {
 	var dto runPublicDTO
 	var createdAt time.Time
 	var reviewStatus string
+	var isPublic bool
+	var publisherUserID uuid.UUID
 	err = s.db.QueryRow(ctx, `
-		select id, goal, constraints, status, created_at, review_status
+		select id, goal, constraints, status, created_at, review_status, is_public, publisher_user_id
 		from runs
 		where id = $1
-	`, runID).Scan(&dto.ID, &dto.Goal, &dto.Constraints, &dto.Status, &createdAt, &reviewStatus)
+	`, runID).Scan(&dto.ID, &dto.Goal, &dto.Constraints, &dto.Status, &createdAt, &reviewStatus, &isPublic, &publisherUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	if err != nil {
+		logError(ctx, "get run query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
+	}
+
+	// Unlisted runs require authentication and must be owned by the requester.
+	if !isPublic {
+		userID, ok, err := s.maybeUserIDFromRequest(ctx, r)
+		if err != nil {
+			logError(ctx, "get run auth lookup failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auth lookup failed"})
+			return
+		}
+		if !ok || userID != publisherUserID {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
 	}
 	if reviewStatus == "rejected" {
 		dto.Goal = "该内容已被管理员审核后屏蔽"
