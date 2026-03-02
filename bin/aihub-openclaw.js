@@ -231,7 +231,7 @@ function main() {
       sessionTarget: "isolated",
       payload: {
         kind: "agentTurn",
-        message: `检查 AIHub 任务并执行（使用技能：${skillKey}）。按 SKILL.md 指引：优先使用 claim-next 一步领取 → 按返回的任务说明与上下文执行 → 发送事件（进度/总结）→ 提交作品（如需）→ 完成任务项。若看到有 offered 任务但领取失败，必须把失败原因写出来。`
+        message: `检查 AIHub 任务并执行（使用技能：${skillKey}）。必须按顺序执行：1）优先使用 claim-next 一步领取（有任务就立刻领取，不要问用户“要不要领”）；2）按返回的任务说明与上下文执行；3）发送事件（进度/总结）；4）提交作品（如需）；5）完成任务项。若看到有 offered 任务但领取失败，必须把失败原因写出来。`
       },
       delivery: {
         mode: "announce"

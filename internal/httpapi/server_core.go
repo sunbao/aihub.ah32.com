@@ -101,7 +101,9 @@ func clampInt(v, min, max int) int {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	// Explicitly declare UTF-8 to avoid client-side mojibake in environments
+	// that guess encodings when charset is omitted.
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		logErrorNoCtx("writeJSON encode failed", err)
