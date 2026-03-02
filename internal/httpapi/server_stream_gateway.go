@@ -316,6 +316,13 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 
 	s.audit(ctx, "agent", agentID, "gateway_poll", map[string]any{})
 
+	selfCtx, err := s.attachSelfPromptContext(ctx, agentID, nil)
+	if err != nil {
+		logError(ctx, "gateway poll: attach self prompt context failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "agent lookup failed"})
+		return
+	}
+
 	rows, err := s.db.Query(ctx, `
 		select wi.id, wi.run_id, wi.stage, wi.kind, wi.status, wi.context, wi.available_skills, wi.review_context
 		from work_item_offers o
@@ -405,6 +412,9 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 		}
 		stageContext["available_skills"] = skills
 		stageContext["previous_artifacts"] = refs
+		for k, v := range selfCtx {
+			stageContext[k] = v
+		}
 
 		offers = append(offers, offerDTO{
 			WorkItemID:      workItemID.String(),
@@ -609,6 +619,12 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 	}
 	stageContext["available_skills"] = skills
 	stageContext["previous_artifacts"] = refs
+	stageContext, err = s.attachSelfPromptContext(ctx, agentID, stageContext)
+	if err != nil {
+		logError(ctx, "gateway work item: attach self prompt context failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "agent lookup failed"})
+		return
+	}
 
 	s.audit(ctx, "agent", agentID, "work_item_read", map[string]any{"work_item_id": workItemID.String(), "run_id": runID.String()})
 	writeJSON(w, http.StatusOK, workItemDetailDTO{
@@ -771,7 +787,43 @@ func (s server) enrichStageContextForOffer(ctx context.Context, runID uuid.UUID,
 	return stageContext, nil
 }
 
-func (s server) buildClaimResponse(ctx context.Context, workItemID uuid.UUID, leaseExpiresAt time.Time) (claimResponse, error) {
+func (s server) attachSelfPromptContext(ctx context.Context, agentID uuid.UUID, stageContext map[string]any) (map[string]any, error) {
+	if stageContext == nil {
+		stageContext = map[string]any{}
+	}
+
+	var (
+		name       string
+		promptView string
+		personaRaw []byte
+	)
+	if err := s.db.QueryRow(ctx, `
+		select name, prompt_view, persona
+		from agents
+		where id = $1
+	`, agentID).Scan(&name, &promptView, &personaRaw); err != nil {
+		return nil, err
+	}
+
+	var persona any
+	if err := unmarshalJSONNullable(personaRaw, &persona); err != nil {
+		logError(ctx, "gateway: unmarshal agent persona failed", err)
+		persona = nil
+	}
+	if m, ok := persona.(map[string]any); ok && len(m) == 0 {
+		persona = nil
+	}
+
+	name = strings.TrimSpace(name)
+	promptView = strings.TrimSpace(promptView)
+	stageContext["self_agent_name"] = name
+	stageContext["self_prompt_view"] = promptView
+	stageContext["self_base_prompt"] = buildBasePrompt(name, persona)
+	stageContext["self_prompt_bundle"] = buildPromptBundle(agentID.String(), name, persona, promptView)
+	return stageContext, nil
+}
+
+func (s server) buildClaimResponse(ctx context.Context, agentID uuid.UUID, workItemID uuid.UUID, leaseExpiresAt time.Time) (claimResponse, error) {
 	var (
 		runID           uuid.UUID
 		stage           string
@@ -804,6 +856,10 @@ func (s server) buildClaimResponse(ctx context.Context, workItemID uuid.UUID, le
 		return claimResponse{}, err
 	}
 	stageContext, err := s.enrichStageContextForOffer(ctx, runID, stageContext, skills)
+	if err != nil {
+		return claimResponse{}, err
+	}
+	stageContext, err = s.attachSelfPromptContext(ctx, agentID, stageContext)
 	if err != nil {
 		return claimResponse{}, err
 	}
@@ -894,7 +950,7 @@ func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Reques
 	}
 
 	s.audit(ctx, "agent", agentID, "work_item_claimed", map[string]any{"work_item_id": workItemID.String(), "lease_expires_at": expiresAt.Format(time.RFC3339)})
-	resp, err := s.buildClaimResponse(ctx, workItemID, expiresAt)
+	resp, err := s.buildClaimResponse(ctx, agentID, workItemID, expiresAt)
 	if err != nil {
 		logError(ctx, "gateway claim: build response failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "response build failed"})
@@ -963,7 +1019,7 @@ func (s server) handleGatewayClaimNextWorkItem(w http.ResponseWriter, r *http.Re
 	}
 
 	s.audit(ctx, "agent", agentID, "work_item_claimed", map[string]any{"work_item_id": workItemID.String(), "lease_expires_at": expiresAt.Format(time.RFC3339)})
-	resp, err := s.buildClaimResponse(ctx, workItemID, expiresAt)
+	resp, err := s.buildClaimResponse(ctx, agentID, workItemID, expiresAt)
 	if err != nil {
 		logError(ctx, "gateway claim-next: build response failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "response build failed"})

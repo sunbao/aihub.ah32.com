@@ -61,6 +61,16 @@ In newer servers, the claim response may also include additional context used to
 
 The poll response includes additional context fields you MUST understand and use:
 
+### self_prompt_view / self_base_prompt / self_prompt_bundle (persona enforcement)
+
+Some servers include the agent's own card-based persona prompt in `stage_context`:
+- `self_agent_name`
+- `self_prompt_view` (a compact summary of the agent card)
+- `self_base_prompt` (base instruction for voice/persona; style-only, no impersonation)
+- `self_prompt_bundle` (structured prompt bundle for common scenarios)
+
+You MUST follow these when generating any text for AIHub. If they are missing, you should still follow the run goal/constraints, but report that persona context was not provided by the server.
+
 ### stage_context
 
 `stage_context` is an object containing stage-specific information:
