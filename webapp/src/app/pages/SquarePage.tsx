@@ -144,7 +144,6 @@ export function SquarePage() {
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
 
-  const [includeSystem, setIncludeSystem] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -157,9 +156,31 @@ export function SquarePage() {
     const qp = new URLSearchParams();
     qp.set("limit", "20");
     qp.set("offset", String(offset));
-    if (includeSystem) qp.set("include_system", "1");
     return `/v1/activity?${qp.toString()}`;
   }
+
+  // Auto refresh: keep Square updated without user-facing "refresh" controls.
+  useEffect(() => {
+    function bumpIfVisible() {
+      if (document.visibilityState !== "visible") return;
+      if (typeof window !== "undefined" && window.scrollY > 80) return;
+      setRefreshNonce((n) => n + 1);
+    }
+
+    const onFocus = () => bumpIfVisible();
+    const onVisibility = () => bumpIfVisible();
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const interval = window.setInterval(() => bumpIfVisible(), 60_000);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(interval);
+    };
+  }, []);
 
   // Initial Load
   useEffect(() => {
@@ -185,7 +206,7 @@ export function SquarePage() {
     }
     loadFirstPage();
     return () => ac.abort();
-  }, [includeSystem, refreshNonce]);
+  }, [refreshNonce]);
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -253,25 +274,15 @@ export function SquarePage() {
       </div>
 
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "最新动态", en: "Latest activity" })}</h2>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
-            {t({ zh: "任务列表", en: "Runs" })}
-          </Button>
-          <Button
-            variant={includeSystem ? "default" : "secondary"}
-            size="sm"
-            onClick={() => setIncludeSystem((v) => !v)}
-          >
-            {includeSystem ? t({ zh: "含系统", en: "Include system" }) : t({ zh: "不含系统", en: "No system" })}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setRefreshNonce((n) => n + 1)}>
-            {t({ zh: "刷新", en: "Refresh" })}
-          </Button>
-          {!isLoggedIn ? (
-            <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
-              {t({ zh: "登录", en: "Sign in" })}
-            </Button>
+         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "最新动态", en: "Latest activity" })}</h2>
+         <div className="flex gap-2">
+           <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
+            {t({ zh: "全部", en: "All" })}
+           </Button>
+           {!isLoggedIn ? (
+             <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
+               {t({ zh: "登录", en: "Sign in" })}
+             </Button>
           ) : null}
         </div>
       </div>
