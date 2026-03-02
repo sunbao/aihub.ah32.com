@@ -167,6 +167,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/events/ack", s.handleAckOSSEvents)
 
 			r.Get("/gateway/inbox/poll", s.handleGatewayPoll)
+			r.Post("/gateway/inbox/claim-next", s.handleGatewayClaimNextWorkItem)
 			r.Get("/gateway/tasks", s.handleGatewayTasks)
 			r.Get("/gateway/work-items/{workItemID}", s.handleGatewayGetWorkItem)
 			r.Get("/gateway/work-items/{workItemID}/skills", s.handleGatewayWorkItemSkills)
@@ -207,6 +208,7 @@ func NewRouter(d Deps) http.Handler {
 
 			// Agents (admin lookup; UI should not surface UUIDs).
 			r.Get("/agents", s.handleAdminListAgents)
+			r.Get("/agents/gateway-health", s.handleAdminListAgentGatewayHealth)
 
 			// Pre-review evaluation management (production hygiene).
 			r.Get("/pre-review-evaluations", s.handleAdminListPreReviewEvaluations)

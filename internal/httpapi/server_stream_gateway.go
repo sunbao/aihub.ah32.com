@@ -745,14 +745,82 @@ func (s server) listArtifactRefs(ctx context.Context, runID uuid.UUID) ([]artifa
 }
 
 type claimResponse struct {
-	WorkItemID     string `json:"work_item_id"`
-	RunID          string `json:"run_id"`
-	Stage          string `json:"stage"`
-	Kind           string `json:"kind"`
-	Status         string `json:"status"`
-	Goal           string `json:"goal"`
-	Constraints    string `json:"constraints"`
-	LeaseExpiresAt string `json:"lease_expires_at"`
+	WorkItemID      string         `json:"work_item_id"`
+	RunID           string         `json:"run_id"`
+	Stage           string         `json:"stage"`
+	Kind            string         `json:"kind"`
+	Status          string         `json:"status"`
+	Goal            string         `json:"goal"`
+	Constraints     string         `json:"constraints"`
+	StageContext    map[string]any `json:"stage_context,omitempty"`
+	AvailableSkills []string       `json:"available_skills,omitempty"`
+	ReviewContext   map[string]any `json:"review_context,omitempty"`
+	LeaseExpiresAt  string         `json:"lease_expires_at"`
+}
+
+func (s server) enrichStageContextForOffer(ctx context.Context, runID uuid.UUID, stageContext map[string]any, skills []string) (map[string]any, error) {
+	if stageContext == nil {
+		stageContext = map[string]any{}
+	}
+	refs, err := s.listArtifactRefs(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	stageContext["available_skills"] = skills
+	stageContext["previous_artifacts"] = refs
+	return stageContext, nil
+}
+
+func (s server) buildClaimResponse(ctx context.Context, workItemID uuid.UUID, leaseExpiresAt time.Time) (claimResponse, error) {
+	var (
+		runID           uuid.UUID
+		stage           string
+		kind            string
+		goal            string
+		constraints     string
+		contextB        []byte
+		availableSkills []byte
+		reviewContextB  []byte
+	)
+	if err := s.db.QueryRow(ctx, `
+		select wi.run_id, wi.stage, wi.kind, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context
+		from work_items wi
+		join runs r on r.id = wi.run_id
+		where wi.id = $1
+	`, workItemID).Scan(&runID, &stage, &kind, &goal, &constraints, &contextB, &availableSkills, &reviewContextB); err != nil {
+		return claimResponse{}, err
+	}
+
+	var stageContext map[string]any
+	var skills []string
+	var revCtx map[string]any
+	if err := unmarshalJSONNullable(contextB, &stageContext); err != nil {
+		return claimResponse{}, err
+	}
+	if err := unmarshalJSONNullable(availableSkills, &skills); err != nil {
+		return claimResponse{}, err
+	}
+	if err := unmarshalJSONNullable(reviewContextB, &revCtx); err != nil {
+		return claimResponse{}, err
+	}
+	stageContext, err := s.enrichStageContextForOffer(ctx, runID, stageContext, skills)
+	if err != nil {
+		return claimResponse{}, err
+	}
+
+	return claimResponse{
+		WorkItemID:      workItemID.String(),
+		RunID:           runID.String(),
+		Stage:           strings.TrimSpace(stage),
+		Kind:            strings.TrimSpace(kind),
+		Status:          "claimed",
+		Goal:            strings.TrimSpace(goal),
+		Constraints:     strings.TrimSpace(constraints),
+		StageContext:    stageContext,
+		AvailableSkills: skills,
+		ReviewContext:   revCtx,
+		LeaseExpiresAt:  leaseExpiresAt.Format(time.RFC3339),
+	}, nil
 }
 
 func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Request) {
@@ -784,6 +852,7 @@ func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not offered"})
 			return
 		}
+		logError(ctx, "gateway claim: offer check failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "offer check failed"})
 		return
 	}
@@ -795,6 +864,7 @@ func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
+		logError(ctx, "gateway claim: work item lookup failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "work item lookup failed"})
 		return
 	}
@@ -812,43 +882,94 @@ func (s server) handleGatewayClaimWorkItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if _, err := tx.Exec(ctx, `update work_items set status='claimed', updated_at=now() where id=$1`, workItemID); err != nil {
+		logError(ctx, "gateway claim: update work item failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
 
-	var (
-		runID       uuid.UUID
-		stage       string
-		kind        string
-		goal        string
-		constraints string
-	)
-	if err := tx.QueryRow(ctx, `
-		select wi.run_id, wi.stage, wi.kind, r.goal, r.constraints
-		from work_items wi
-		join runs r on r.id = wi.run_id
-		where wi.id = $1
-	`, workItemID).Scan(&runID, &stage, &kind, &goal, &constraints); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "work item lookup failed"})
-		return
-	}
-
 	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "gateway claim: commit failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
 
 	s.audit(ctx, "agent", agentID, "work_item_claimed", map[string]any{"work_item_id": workItemID.String(), "lease_expires_at": expiresAt.Format(time.RFC3339)})
-	writeJSON(w, http.StatusOK, claimResponse{
-		WorkItemID:     workItemID.String(),
-		RunID:          runID.String(),
-		Stage:          stage,
-		Kind:           kind,
-		Status:         "claimed",
-		Goal:           goal,
-		Constraints:    constraints,
-		LeaseExpiresAt: expiresAt.Format(time.RFC3339),
-	})
+	resp, err := s.buildClaimResponse(ctx, workItemID, expiresAt)
+	if err != nil {
+		logError(ctx, "gateway claim: build response failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "response build failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s server) handleGatewayClaimNextWorkItem(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := agentIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		logError(ctx, "gateway claim-next: db begin failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var workItemID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		select wi.id
+		from work_item_offers o
+		join work_items wi on wi.id = o.work_item_id
+		where o.agent_id = $1
+		  and wi.status = 'offered'
+		order by wi.created_at asc
+		limit 1
+		for update of wi skip locked
+	`, agentID).Scan(&workItemID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no offers"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "gateway claim-next: select offer failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(time.Duration(s.workItemLeaseSeconds) * time.Second)
+	if _, err := tx.Exec(ctx, `
+		insert into work_item_leases (work_item_id, agent_id, lease_expires_at)
+		values ($1, $2, $3)
+	`, workItemID, agentID, expiresAt); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "already claimed"})
+		return
+	}
+	if _, err := tx.Exec(ctx, `update work_items set status='claimed', updated_at=now() where id=$1`, workItemID); err != nil {
+		logError(ctx, "gateway claim-next: update work item failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "gateway claim-next: commit failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+
+	s.audit(ctx, "agent", agentID, "work_item_claimed", map[string]any{"work_item_id": workItemID.String(), "lease_expires_at": expiresAt.Format(time.RFC3339)})
+	resp, err := s.buildClaimResponse(ctx, workItemID, expiresAt)
+	if err != nil {
+		logError(ctx, "gateway claim-next: build response failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "response build failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s server) handleGatewayCompleteWorkItem(w http.ResponseWriter, r *http.Request) {

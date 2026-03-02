@@ -56,6 +56,24 @@ type AdminListAgentsResponse = {
   next_offset: number;
 };
 
+type AdminAgentGatewayHealth = {
+  agent_id: string;
+  name: string;
+  status: string;
+  admitted_status: string;
+  pending_offers: number;
+  active_claims: number;
+  last_poll_at?: string;
+  last_claim_at?: string;
+  last_complete_at?: string;
+};
+
+type AdminListAgentGatewayHealthResponse = {
+  items: AdminAgentGatewayHealth[];
+  has_more: boolean;
+  next_offset: number;
+};
+
 type AdminPreReviewEvaluation = {
   evaluation_id: string;
   owner_id: string;
@@ -108,6 +126,10 @@ export function AdminPage() {
   const [judgesError, setJudgesError] = useState("");
   const [judgesReloadNonce, setJudgesReloadNonce] = useState(0);
 
+  const [judgesHealthLoading, setJudgesHealthLoading] = useState(false);
+  const [judgesHealthError, setJudgesHealthError] = useState("");
+  const [judgesHealthById, setJudgesHealthById] = useState<Record<string, AdminAgentGatewayHealth>>({});
+
   const [agentQ, setAgentQ] = useState("");
   const [agentItems, setAgentItems] = useState<AdminAgent[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
@@ -146,6 +168,38 @@ export function AdminPage() {
 
     return () => ac.abort();
   }, [isLoggedIn, me?.is_admin, userApiKey, judgesReloadNonce]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !me?.is_admin) return;
+    if (!judgeItems.length) {
+      setJudgesHealthById({});
+      return;
+    }
+
+    const ac = new AbortController();
+    setJudgesHealthLoading(true);
+    setJudgesHealthError("");
+    const ids = judgeItems.map((x) => String(x.agent_id ?? "").trim()).filter(Boolean);
+    const url = `/v1/admin/agents/gateway-health?limit=50&agent_ids=${encodeURIComponent(ids.join(","))}`;
+    apiFetchJson<AdminListAgentGatewayHealthResponse>(url, { apiKey: userApiKey, signal: ac.signal })
+      .then((res) => {
+        const items = Array.isArray(res.items) ? res.items : [];
+        const next: Record<string, AdminAgentGatewayHealth> = {};
+        for (const it of items) {
+          const id = String(it?.agent_id ?? "").trim();
+          if (id) next[id] = it;
+        }
+        setJudgesHealthById(next);
+      })
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        console.warn("[AIHub] AdminPage load agent gateway health failed", e);
+        setJudgesHealthError(String(e?.message ?? "加载失败"));
+      })
+      .finally(() => setJudgesHealthLoading(false));
+
+    return () => ac.abort();
+  }, [isLoggedIn, me?.is_admin, userApiKey, judgeItems]);
 
   useEffect(() => {
     if (!isLoggedIn || !me?.is_admin) return;
@@ -576,13 +630,32 @@ export function AdminPage() {
               </Button>
               {judgesError ? <div className="text-sm text-destructive">{judgesError}</div> : null}
               {judgesLoading ? <div className="text-xs text-muted-foreground">加载中…</div> : null}
+              {judgesHealthError ? <div className="text-sm text-destructive">{judgesHealthError}</div> : null}
+              {judgesHealthLoading ? <div className="text-xs text-muted-foreground">任务领取状态加载中…</div> : null}
               {!judgesLoading && judgeItems.length ? (
                 <div className="space-y-2">
                   {judgeItems.map((j) => (
                     <div key={j.agent_id} className="rounded-md border bg-background px-3 py-2">
                       <div className="text-sm font-medium">{j.name || "（未命名）"}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {j.enabled ? "启用" : "停用"} · {j.status || "-"} · {j.admitted_status || "-"}
+                      <div className="mt-0.5 space-y-0.5 text-xs text-muted-foreground">
+                        <div>{j.enabled ? "启用" : "停用"} · {j.status || "-"} · {j.admitted_status || "-"}</div>
+                        {(() => {
+                          const h = judgesHealthById[String(j.agent_id ?? "").trim()];
+                          if (!h) return null;
+                          const pending = Number(h.pending_offers ?? 0);
+                          const active = Number(h.active_claims ?? 0);
+                          const lastPoll = String(h.last_poll_at ?? "").trim();
+                          const lastClaim = String(h.last_claim_at ?? "").trim();
+                          const warn = pending > 0 && (!lastClaim || (lastPoll && lastClaim && lastClaim < lastPoll));
+                          return (
+                            <div className={warn ? "text-destructive" : ""}>
+                              待领取 {pending} · 处理中 {active}
+                              {lastPoll ? ` · 最近轮询 ${fmtTime(lastPoll)}` : ""}
+                              {lastClaim ? ` · 最近领取 ${fmtTime(lastClaim)}` : ""}
+                              {warn ? " · 有任务未领取" : ""}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}
