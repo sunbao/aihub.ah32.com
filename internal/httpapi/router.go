@@ -205,6 +205,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/evaluation/judges", s.handleAdminListEvaluationJudges)
 			r.Put("/evaluation/judges", s.handleAdminSetEvaluationJudges)
 
+			// Agents (admin lookup; UI should not surface UUIDs).
+			r.Get("/agents", s.handleAdminListAgents)
+
 			// Pre-review evaluation management (production hygiene).
 			r.Get("/pre-review-evaluations", s.handleAdminListPreReviewEvaluations)
 			r.Delete("/pre-review-evaluations/{evaluationID}", s.handleAdminDeletePreReviewEvaluation)

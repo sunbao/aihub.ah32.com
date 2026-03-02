@@ -481,6 +481,11 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 				sourceWorkItemContext = map[string]any{}
 			}
 		}
+		if m, ok := redactTopicState(sourceWorkItemContext).(map[string]any); ok {
+			sourceWorkItemContext = m
+		} else {
+			sourceWorkItemContext = map[string]any{}
+		}
 
 		sourceWorkItemEvents, err = func() ([]map[string]any, error) {
 			rows, err := s.db.Query(ctx, `
@@ -619,7 +624,11 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		if st.State == nil {
 			st.State = map[string]any{}
 		}
-		sourceTopicState = st.State
+		if m, ok := redactTopicState(st.State).(map[string]any); ok {
+			sourceTopicState = m
+		} else {
+			sourceTopicState = map[string]any{}
+		}
 
 		sourceTopicMessages, err = func() ([]map[string]any, error) {
 			basePrefix := strings.Trim(strings.TrimSpace(s.ossBasePrefix), "/")
@@ -652,12 +661,16 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 				if err := rows.Scan(&objectKey, &eventType, &occurredAt, &payloadB); err != nil {
 					return nil, err
 				}
-				out = append(out, map[string]any{
-					"object_key":  strings.TrimSpace(objectKey),
-					"event_type":  strings.TrimSpace(eventType),
+				_ = objectKey
+				_ = eventType
+				msg := map[string]any{
 					"preview":     extractEventPreview(payloadB),
 					"occurred_at": occurredAt.UTC().Format(time.RFC3339),
-				})
+				}
+				if rel := strings.TrimSpace(extractThreadRelation(payloadB)); rel != "" {
+					msg["relation"] = rel
+				}
+				out = append(out, msg)
 			}
 			if err := rows.Err(); err != nil {
 				return nil, err
@@ -739,6 +752,13 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 5) 输出格式：Markdown，包含两个标题：## 候选智能体回复、## 测评与建议
 
 如果提供了 topic_id/work_item_id/source_run_id（真实话题/真实任务/真实场景），请把它当作“真实上下文快照”：先理解标题/开场/摘要/最近动态，再产出候选智能体的回复与测评建议（不要在真实话题里发言）。
+
+如果 source_snapshot.kind = topic 且 topic.mode = threaded（跟帖模式），请明确区分三种关系（不要输出任何内部 ID/路径，只引用对方内容的短句即可）：
+- 跟帖：对主贴（A）的内容进行点评（B→A）
+- 回复：对某条跟帖（B）的内容进行点评（C→B）
+- 续写：沿着主贴主题继续创作（D→A）
+
+请在“候选智能体回复”开头先用 1 句说明你是在做哪一种（跟帖/回复/续写），以及你针对的是哪句话（用短引用，不要用 ID）。
 `)
 
 	// Create an unlisted run offered only to judge agents.
@@ -769,7 +789,6 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	preReviewCtx := map[string]any{
 		"topic": req.Topic,
 		"candidate_agent": map[string]any{
-			"agent_id":           agentID.String(),
 			"name":               strings.TrimSpace(name),
 			"description":        strings.TrimSpace(description),
 			"prompt_view":        strings.TrimSpace(promptView),
@@ -794,7 +813,6 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		sourceSnapshot = map[string]any{
 			"kind": "run",
 			"run": map[string]any{
-				"run_id":     sourceRunID.String(),
 				"title":      sourceRunGoal,
 				"run_status": sourceRunStatus,
 			},
@@ -804,16 +822,14 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		sourceSnapshot = map[string]any{
 			"kind": "work_item",
 			"run": map[string]any{
-				"run_id":     sourceWorkItemRunID.String(),
 				"title":      sourceWorkItemRunGoal,
 				"run_status": sourceWorkItemRunStatus,
 			},
 			"work_item": map[string]any{
-				"work_item_id": sourceWorkItemID.String(),
-				"stage":        strings.TrimSpace(sourceWorkItemStage),
-				"kind":         strings.TrimSpace(sourceWorkItemKind),
-				"status":       strings.TrimSpace(sourceWorkItemStatus),
-				"context":      sourceWorkItemContext,
+				"stage":   strings.TrimSpace(sourceWorkItemStage),
+				"kind":    strings.TrimSpace(sourceWorkItemKind),
+				"status":  strings.TrimSpace(sourceWorkItemStatus),
+				"context": sourceWorkItemContext,
 			},
 			"recent_messages": sourceWorkItemEvents,
 		}
@@ -821,18 +837,24 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		sourceSnapshot = map[string]any{
 			"kind": "topic",
 			"topic": map[string]any{
-				"topic_id": sourceTopicID,
-				"title":    sourceTopicTitle,
-				"opening":  sourceTopicOpening,
-				"summary":  sourceTopicSummary,
-				"mode":     sourceTopicMode,
-				"state":    sourceTopicState,
+				"title":   sourceTopicTitle,
+				"opening": sourceTopicOpening,
+				"summary": sourceTopicSummary,
+				"mode":    sourceTopicMode,
+				"state":   sourceTopicState,
 			},
 			"recent_messages": sourceTopicMessages,
 		}
 	}
 	if len(sourceSnapshot) > 0 {
 		preReviewCtx["source_snapshot"] = sourceSnapshot
+	}
+	if hasSourceTopic && strings.TrimSpace(sourceTopicMode) == "threaded" {
+		preReviewCtx["threading"] = map[string]any{
+			"mode":      "threaded",
+			"relations": []string{"主贴", "跟帖", "回复", "续写"},
+			"notes":     "跟帖=对主贴点评；回复=对跟帖点评；续写=沿主贴主题继续创作。正文不要包含任何内部 ID/路径。",
+		}
 	}
 	stageContext["pre_review_evaluation"] = preReviewCtx
 

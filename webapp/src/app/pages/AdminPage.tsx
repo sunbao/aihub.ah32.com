@@ -42,6 +42,20 @@ type ListEvaluationJudgesResponse = {
   items: EvaluationJudge[];
 };
 
+type AdminAgent = {
+  agent_id: string;
+  name: string;
+  status: string;
+  admitted_status: string;
+  updated_at: string;
+};
+
+type AdminListAgentsResponse = {
+  items: AdminAgent[];
+  has_more: boolean;
+  next_offset: number;
+};
+
 type AdminPreReviewEvaluation = {
   evaluation_id: string;
   owner_id: string;
@@ -87,12 +101,20 @@ export function AdminPage() {
   const [requiredTags, setRequiredTags] = useState("");
   const [publishing, setPublishing] = useState(false);
 
-  const [judgeAgentIdsText, setJudgeAgentIdsText] = useState("");
+  const [judgeSelectedIds, setJudgeSelectedIds] = useState<string[]>([]);
   const [judgeItems, setJudgeItems] = useState<EvaluationJudge[]>([]);
   const [judgesLoading, setJudgesLoading] = useState(false);
   const [judgesSaving, setJudgesSaving] = useState(false);
   const [judgesError, setJudgesError] = useState("");
   const [judgesReloadNonce, setJudgesReloadNonce] = useState(0);
+
+  const [agentQ, setAgentQ] = useState("");
+  const [agentItems, setAgentItems] = useState<AdminAgent[]>([]);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentError, setAgentError] = useState("");
+  const [agentOffset, setAgentOffset] = useState(0);
+  const [agentHasMore, setAgentHasMore] = useState(false);
+  const [agentReloadNonce, setAgentReloadNonce] = useState(0);
 
   const [evalQ, setEvalQ] = useState("");
   const [evalItems, setEvalItems] = useState<AdminPreReviewEvaluation[]>([]);
@@ -113,7 +135,7 @@ export function AdminPage() {
       .then((res) => {
         const items = Array.isArray(res.items) ? res.items : [];
         setJudgeItems(items);
-        setJudgeAgentIdsText(items.map((x) => x.agent_id).filter(Boolean).join("\n"));
+        setJudgeSelectedIds(items.filter((x) => x.enabled).map((x) => x.agent_id).filter(Boolean));
       })
       .catch((e: any) => {
         if (e?.name === "AbortError") return;
@@ -125,12 +147,64 @@ export function AdminPage() {
     return () => ac.abort();
   }, [isLoggedIn, me?.is_admin, userApiKey, judgesReloadNonce]);
 
+  useEffect(() => {
+    if (!isLoggedIn || !me?.is_admin) return;
+
+    const ac = new AbortController();
+    setAgentLoading(true);
+    setAgentError("");
+    const offset = 0;
+    const url =
+      `/v1/admin/agents?limit=50&offset=${encodeURIComponent(String(offset))}` +
+      (agentQ.trim() ? `&q=${encodeURIComponent(agentQ.trim())}` : "");
+    apiFetchJson<AdminListAgentsResponse>(url, { apiKey: userApiKey, signal: ac.signal })
+      .then((res) => {
+        const items = Array.isArray(res.items) ? res.items : [];
+        setAgentItems(items);
+        setAgentHasMore(Boolean(res.has_more));
+        setAgentOffset(Number(res.next_offset ?? 0));
+      })
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        console.warn("[AIHub] AdminPage load agents failed", e);
+        setAgentError(String(e?.message ?? "加载失败"));
+      })
+      .finally(() => setAgentLoading(false));
+
+    return () => ac.abort();
+  }, [isLoggedIn, me?.is_admin, userApiKey, agentQ, agentReloadNonce]);
+
+  async function loadMoreAgents() {
+    if (!me?.is_admin) return;
+    if (agentLoading || !agentHasMore) return;
+    setAgentLoading(true);
+    setAgentError("");
+    try {
+      const url =
+        `/v1/admin/agents?limit=50&offset=${encodeURIComponent(String(agentOffset))}` +
+        (agentQ.trim() ? `&q=${encodeURIComponent(agentQ.trim())}` : "");
+      const res = await apiFetchJson<AdminListAgentsResponse>(url, { apiKey: userApiKey });
+      const items = Array.isArray(res.items) ? res.items : [];
+      setAgentItems((prev) => prev.concat(items));
+      setAgentHasMore(Boolean(res.has_more));
+      setAgentOffset(Number(res.next_offset ?? 0));
+    } catch (e: any) {
+      console.warn("[AIHub] AdminPage load more agents failed", e);
+      setAgentError(String(e?.message ?? "加载失败"));
+    } finally {
+      setAgentLoading(false);
+    }
+  }
+
+  function toggleJudgeSelected(id: string) {
+    id = String(id ?? "").trim();
+    if (!id) return;
+    setJudgeSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.concat(id)));
+  }
+
   async function saveEvaluationJudges() {
     if (!me?.is_admin) return;
-    const ids = judgeAgentIdsText
-      .split(/[\s,，]+/g)
-      .map((x) => x.trim())
-      .filter(Boolean);
+    const ids = Array.from(new Set(judgeSelectedIds.map((x) => String(x ?? "").trim()).filter(Boolean)));
     setJudgesSaving(true);
     setJudgesError("");
     try {
@@ -438,16 +512,67 @@ export function AdminPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="text-xs text-muted-foreground">
-                用于“提审前测评”的裁判智能体（需已入驻且在线）。支持多个，换行/空格/逗号分隔。测评数据会在到期后自动清理，也支持用户手动删除。
+                用于“提审前测评”的裁判智能体（需已入驻且在线）。支持多个。测评数据到期后会自动清理，也支持用户手动删除。
               </div>
-              <Textarea
-                value={judgeAgentIdsText}
-                onChange={(e) => setJudgeAgentIdsText(e.target.value)}
-                placeholder="每行一个 agent_id（UUID）"
-                className="min-h-[110px]"
-              />
+              <div className="rounded-md border bg-background p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input value={agentQ} onChange={(e) => setAgentQ(e.target.value)} placeholder="搜索智能体" />
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setAgentItems([]);
+                      setAgentOffset(0);
+                      setAgentReloadNonce((n) => n + 1);
+                    }}
+                    disabled={agentLoading}
+                  >
+                    {agentLoading ? "加载中…" : "刷新"}
+                  </Button>
+                </div>
+                {agentError ? <div className="mt-2 text-sm text-destructive">{agentError}</div> : null}
+                <div className="mt-2 text-xs text-muted-foreground">已选择：{judgeSelectedIds.length} 个</div>
+                <div className="mt-2 max-h-[260px] space-y-2 overflow-auto rounded-md border bg-muted/5 p-2">
+                  {agentLoading && !agentItems.length ? <div className="text-xs text-muted-foreground">加载中…</div> : null}
+                  {!agentLoading && !agentItems.length ? <div className="text-xs text-muted-foreground">暂无智能体</div> : null}
+                  {agentItems.map((a) => {
+                    const id = String(a.agent_id ?? "").trim();
+                    const name = String(a.name ?? "").trim() || "（未命名）";
+                    const selected = judgeSelectedIds.includes(id);
+                    return (
+                      <div
+                        key={id}
+                        className={
+                          "cursor-pointer rounded-md border px-3 py-2 transition-colors " +
+                          (selected ? "bg-primary/10 border-primary/30" : "bg-background hover:bg-muted/20")
+                        }
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleJudgeSelected(id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") toggleJudgeSelected(id);
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{name}</div>
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">
+                              {(a.status || "-") + " · " + (a.admitted_status || "-") + (a.updated_at ? " · " + fmtTime(a.updated_at) : "")}
+                            </div>
+                          </div>
+                          {selected ? <Badge variant="secondary">已选</Badge> : <span className="text-[11px] text-muted-foreground">点击选择</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {agentHasMore ? (
+                  <Button variant="outline" className="mt-2 w-full" disabled={agentLoading} onClick={loadMoreAgents}>
+                    {agentLoading ? "加载中…" : "加载更多"}
+                  </Button>
+                ) : null}
+              </div>
               <Button className="w-full" disabled={judgesSaving} onClick={saveEvaluationJudges}>
-                {judgesSaving ? "保存中…" : "保存"}
+                {judgesSaving ? "保存中…" : "保存启用列表"}
               </Button>
               {judgesError ? <div className="text-sm text-destructive">{judgesError}</div> : null}
               {judgesLoading ? <div className="text-xs text-muted-foreground">加载中…</div> : null}
@@ -476,7 +601,7 @@ export function AdminPage() {
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input value={evalQ} onChange={(e) => setEvalQ(e.target.value)} placeholder="搜索：话题/智能体名/ID（支持模糊）" />
+                <Input value={evalQ} onChange={(e) => setEvalQ(e.target.value)} placeholder="搜索：话题 / 智能体名称（支持模糊）" />
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -510,15 +635,6 @@ export function AdminPage() {
                             <span>{fmtTime(ev.created_at)}</span>
                             <span>到期：{fmtTime(ev.expires_at)}</span>
                           </div>
-                          <details className="mt-1 text-xs text-muted-foreground">
-                            <summary className="cursor-pointer select-none">更多信息</summary>
-                            <div className="mt-1 space-y-1">
-                              <div>evaluation_id：{ev.evaluation_id}</div>
-                              <div>run_id：{ev.run_id}</div>
-                              <div>agent_id：{ev.agent_id}</div>
-                              <div>owner_id：{ev.owner_id}</div>
-                            </div>
-                          </details>
                         </div>
                         <div className="flex shrink-0 gap-2">
                           <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_id)}`)}>

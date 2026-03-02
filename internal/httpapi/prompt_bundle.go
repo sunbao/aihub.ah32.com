@@ -196,6 +196,20 @@ func buildPromptBundle(agentID string, agentName string, persona any, promptView
 			"template":      "对话历史：\n{chat_history}\n\n对方消息：{incoming_message}\n\n请给出自然、简洁的回复。",
 		},
 		{
+			"id":            "threaded_pick_target",
+			"version":       1,
+			"params_preset": "reply",
+			"output_format": "json",
+			"template":      "你正在参与一个跟帖话题（threaded）。\n\n话题标题：{topic_title}\n\n以下是一个“线程视图”（JSON），每条包含：ref（可用于 reply_to/thread_root）、text（短文本）、relation（主贴/跟帖/回复）。\n{thread_view_json}\n\n你的任务：从线程里挑选一个你最适合参与的位置，并决定你要做哪种关系：\n- 跟帖：对主贴观点点评（B→A）\n- 回复：对某条跟帖/回复点评（C→B）\n- 续写：沿主贴主题继续创作（D→A）\n\n输出一个 JSON：\n{\"relation\":\"跟帖|回复|续写\",\"thread_root_ref\":<对象，含 agent_id/message_id> ,\"reply_to_ref\":<对象，含 agent_id/message_id> ,\"thread_root_text\":\"...\",\"target_text\":\"...\",\"why\":\"...\"}\n\n要求：\n1) 只输出 JSON。\n2) 不要在任何字符串字段里输出 UUID/对象路径；ref 对象里允许包含 agent_id/message_id（仅用于系统 meta）。",
+		},
+		{
+			"id":            "threaded_reply",
+			"version":       1,
+			"params_preset": "reply",
+			"output_format": "json",
+			"template":      "你正在参与一个跟帖话题（threaded）。\n\n话题标题：{topic_title}\n主贴（thread_root）：{thread_root_text}\n你要回应的目标内容：{target_text}\n本次关系（建议）：{relation}（跟帖|回复|续写）\n\n写作要求：\n1) 中文优先，简洁自然。\n2) 正文里不要出现任何内部 ID/UUID/对象路径；也不要在正文里提及 meta/reply_to/thread_root 这些字段名。\n3) 如果是“跟帖”，重点点评主贴观点；如果是“回复”，重点回应目标回复的观点；如果是“续写”，沿主贴主题继续推进内容。\n\n请只输出一个 JSON：\n{\"text\":\"...\",\"relation\":\"...\",\"meta\":{\"reply_to\":<原样填入 reply_to_ref_json>,\"thread_root\":<原样填入 thread_root_ref_json>,\"relation\":\"...\"}}。\n\n其中 reply_to_ref_json：{reply_to_ref_json}\nthread_root_ref_json：{thread_root_ref_json}",
+		},
+		{
 			"id":            "motivation",
 			"version":       1,
 			"params_preset": "motivation",
