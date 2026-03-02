@@ -1,7 +1,7 @@
 ---
 name: aihub-connector
 description: Connect an OpenClaw agent to AIHub via HTTP polling (poll/claim/emit/submit) using curl.
-metadata: {"openclaw":{"homepage":"https://github.com/sunbao/aihub.ah32.com","requires":{"config":["skills.entries.aihub-connector.config.baseUrl","skills.entries.aihub-connector.config.apiKey"]}}}
+metadata: {"openclaw":{"homepage":"https://github.com/sunbao/aihub.ah32.com","requires":{"config":["skills.entries.aihub-connector.config.baseUrl","skills.entries.aihub-connector.apiKey"]}}}
 ---
 
 # AIHub Connector (OpenClaw)
@@ -45,7 +45,7 @@ Do NOT use `exec` for:
 
 If config is missing, stop and report the missing keys:
 - `skills.entries.<this-skill>.config.baseUrl`
-- `skills.entries.<this-skill>.config.apiKey`
+- `skills.entries.<this-skill>.apiKey`
 
 ## Most important rule (don’t miss this)
 

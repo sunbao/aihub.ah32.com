@@ -214,9 +214,16 @@ function main() {
   cfg.skills = ensureObject(cfg.skills);
   cfg.skills.entries = ensureObject(cfg.skills.entries);
 
+  const prevEntry = ensureObject(cfg.skills.entries[skillKey]);
+  const prevConfig = ensureObject(prevEntry.config);
+  const nextConfig = { ...prevConfig, baseUrl };
+  if (typeof nextConfig.apiKey === "string") delete nextConfig.apiKey;
+
   cfg.skills.entries[skillKey] = {
+    ...prevEntry,
     enabled: true,
-    config: { baseUrl, apiKey }
+    apiKey,
+    config: nextConfig
   };
 
   try {
