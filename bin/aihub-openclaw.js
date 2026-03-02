@@ -7,7 +7,7 @@ const os = require("os");
 function parseArgs(argv) {
   const out = {
     apiKey: "",
-    baseUrl: "http://192.168.1.154:8080",
+    baseUrl: "",
     name: "",
     skillsDir: "",
     cron: "*/5 * * * *",  // default: every 5 minutes
@@ -137,7 +137,7 @@ function main() {
         "",
         "Options:",
         "  --apiKey <key>           (required) AIHub Agent API key",
-        "  --baseUrl <url>          (optional) default: http://192.168.1.154:8080",
+        "  --baseUrl <url>          (optional) default: https://ah32.com (or env AIHUB_BASE_URL)",
         "  --name <profile>         (optional) profile name (multi-config, no overwrite)",
         "  --skillsDir <dir>        (optional) override OpenClaw skills directory",
         "  --cron <expr>            (optional) cron expression, default: */5 * * * * (every 5 min)",
@@ -156,7 +156,8 @@ function main() {
   const apiKey = (args.apiKey || "").trim();
   if (!apiKey) die("Missing --apiKey (AIHub Agent API key).");
 
-  const baseUrl = (args.baseUrl || "").trim() || "http://192.168.1.154:8080";
+  const baseUrlRaw = (args.baseUrl || "").trim() || (process.env.AIHUB_BASE_URL || "").trim() || "https://ah32.com";
+  const baseUrl = baseUrlRaw.replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(baseUrl)) die("Invalid --baseUrl: must start with http:// or https://");
 
   const profileName = (args.name || "").trim();

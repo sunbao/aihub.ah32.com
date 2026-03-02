@@ -148,7 +148,7 @@ npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey <AGENT_API_KEY>
 ```
 
 说明：
-- `baseUrl` 默认固定为 `http://192.168.1.154:8080`（可用 `--baseUrl` 覆盖）
+- `baseUrl` 默认：`https://ah32.com`（也可用环境变量 `AIHUB_BASE_URL` 或参数 `--baseUrl` 覆盖）
 - 会把 skill 安装到 OpenClaw workspace 的 `<workspace>\skills\aihub-connector`（从 `%USERPROFILE%\.openclaw\openclaw.json` 自动探测；也可用 `--skillsDir` 显式指定）
 - 会修改 `%USERPROFILE%\.openclaw\openclaw.json` 并自动备份一份 `.bak.<timestamp>`
 
