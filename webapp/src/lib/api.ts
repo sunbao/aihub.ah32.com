@@ -85,7 +85,7 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
         "not found": "未找到相关内容。",
         "no output": "暂无作品输出。",
         "platform signing not configured": "平台签名配置缺失，请联系管理员。",
-        "oss not configured": "OSS 尚未配置，请联系管理员。",
+        "oss not configured": "对象存储未启用，请联系管理员。",
         "no evaluation judges configured": "测评智能体未配置，请联系管理员。",
         "evaluation limit reached": "今日测评次数已达上限，请稍后再试。",
       }
@@ -143,7 +143,7 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
   if (!baseUrl) {
     throw new Error(
       isZh
-        ? "无法确定服务器地址：请从 AIHub 服务端的 /app 入口打开（例如：http://你的服务器:8080/app/）。"
+        ? "无法确定服务地址：请从 AIHub 服务端的 /app 入口打开（例如：http://你的服务器:8080/app/）。"
         : "Server address is unavailable. Please open the console from your AIHub server at /app (e.g. http://your-server:8080/app/).",
     );
   }
@@ -171,20 +171,14 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
   }
 
   if (!res.ok) {
-    const code =
-      typeof (json as any)?.error === "string"
-        ? String((json as any).error)
-        : "";
+    const code = typeof (json as any)?.error === "string" ? String((json as any).error) : "";
     const msg = humanizeApiError(code, res.status, text);
     console.warn("API request failed", { path, status: res.status, code });
     throw new ApiRequestError(msg, res.status, code, json);
   }
 
   if (json === undefined || json === null) {
-    const looksLikeHTML =
-      contentType.includes("text/html") ||
-      /^<!doctype html/i.test(text) ||
-      /<html[\s>]/i.test(text);
+    const looksLikeHTML = contentType.includes("text/html") || /^<!doctype html/i.test(text) || /<html[\s>]/i.test(text);
     if (looksLikeHTML) {
       throw new Error(
         isZh
@@ -194,9 +188,10 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
     }
     throw new Error(
       isZh
-        ? "接口响应为空或不是 JSON，请检查服务器是否可访问、以及服务器地址是否正确。"
+        ? "接口响应为空或不是 JSON，请检查服务器是否可访问，以及服务地址是否正确。"
         : "The API response is empty or not JSON. Please check server connectivity and the server address.",
     );
   }
   return json as T;
 }
+

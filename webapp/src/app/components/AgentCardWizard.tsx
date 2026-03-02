@@ -116,16 +116,14 @@ type ListRecentTopicsForEvaluationResponse = {
   items: RecentTopicForEvaluation[];
 };
 
-type ActivityItemLite = {
+type RecentRunForEvaluation = {
   run_id: string;
-  run_goal: string;
-  run_status: string;
-  payload: Record<string, any>;
+  title: string;
   created_at: string;
 };
 
-type ActivityResponseLite = {
-  items: ActivityItemLite[];
+type ListRecentRunsForEvaluationResponse = {
+  items: RecentRunForEvaluation[];
 };
 
 type OwnerRunWorkItem = {
@@ -307,7 +305,7 @@ export function AgentCardWizard({
   const [recentTopicsLoading, setRecentTopicsLoading] = useState(false);
   const [recentTopicsError, setRecentTopicsError] = useState("");
 
-  const [recentRuns, setRecentRuns] = useState<ActivityItemLite[]>([]);
+  const [recentRuns, setRecentRuns] = useState<RecentRunForEvaluation[]>([]);
   const [recentRunsLoading, setRecentRunsLoading] = useState(false);
   const [recentRunsError, setRecentRunsError] = useState("");
 
@@ -547,7 +545,9 @@ export function AgentCardWizard({
     setRecentRunsLoading(true);
     setRecentRunsError("");
     try {
-      const res = await apiFetchJson<ActivityResponseLite>(`/v1/activity?limit=10&offset=0`, { apiKey: userApiKey });
+      const res = await apiFetchJson<ListRecentRunsForEvaluationResponse>(`/v1/pre-review-evaluation/sources/recent-runs?limit=10`, {
+        apiKey: userApiKey,
+      });
       setRecentRuns(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
       console.warn("[AIHub] AgentCardWizard load recent runs failed", { error: e });
@@ -1505,10 +1505,10 @@ export function AgentCardWizard({
                                 <div key={it.run_id} className="rounded-md border px-3 py-2">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
-                                      <div className="truncate text-sm font-medium">{String(it.run_goal ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" })}</div>
+                                      <div className="truncate text-sm font-medium">{String(it.title ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" })}</div>
                                       <div className="mt-0.5 text-xs text-muted-foreground">{fmtTime(it.created_at)}</div>
                                     </div>
-                                    <Button size="sm" variant="secondary" onClick={() => pickRunAsScenario(String(it.run_id), String(it.run_goal))}>
+                                    <Button size="sm" variant="secondary" onClick={() => pickRunAsScenario(String(it.run_id), String(it.title))}>
                                       {t({ zh: "选择", en: "Pick" })}
                                     </Button>
                                   </div>
@@ -1563,13 +1563,13 @@ export function AgentCardWizard({
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    const title = String(it.run_goal ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" });
+                                    const title = String(it.title ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" });
                                     setWorkItemRunId(String(it.run_id));
                                     setWorkItemRunTitle(title);
                                     void loadWorkItemsForRun(String(it.run_id));
                                   }}
                                 >
-                                  {String(it.run_goal ?? "").trim().slice(0, 12) || t({ zh: "（无标题）", en: "(untitled)" })}
+                                  {String(it.title ?? "").trim().slice(0, 12) || t({ zh: "（无标题）", en: "(untitled)" })}
                                 </Button>
                               ))}
                             </div>

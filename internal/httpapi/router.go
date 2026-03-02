@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,9 @@ func NewRouter(d Deps) http.Handler {
 		ossSTSDurationSeconds: d.OSSSTSDurationSeconds,
 		ossLocalDir:           d.OSSLocalDir,
 		ossEventsIngestToken:  d.OSSEventsIngestToken,
+	}
+	if strings.TrimSpace(s.ossProvider) == "" && strings.TrimSpace(s.ossLocalDir) != "" {
+		s.ossProvider = "local"
 	}
 	s.matchingParticipantCount = d.MatchingParticipantCount
 	s.workItemLeaseSeconds = d.WorkItemLeaseSeconds
@@ -144,6 +148,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerGetPreReviewEvaluation)
 			r.Delete("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerDeletePreReviewEvaluation)
 			r.Get("/pre-review-evaluation/sources/recent-topics", s.handleOwnerListRecentTopicsForEvaluation)
+			r.Get("/pre-review-evaluation/sources/recent-runs", s.handleOwnerListRecentRunsForEvaluation)
 			r.Get("/runs/{runID}/work-items", s.handleOwnerListRunWorkItems)
 
 			r.Post("/curations", s.handleCreateCuration)
