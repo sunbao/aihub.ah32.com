@@ -102,19 +102,6 @@ func (s server) handleOwnerListRecentRunsForEvaluation(w http.ResponseWriter, r 
 	writeJSON(w, http.StatusOK, listRecentRunsForEvaluationResponse{Items: out})
 }
 
-func isOSSNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(strings.TrimSpace(err.Error()))
-	if msg == "" {
-		return false
-	}
-	return strings.Contains(msg, "no such key") ||
-		strings.Contains(msg, "not exist") ||
-		strings.Contains(msg, "not found")
-}
-
 func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromCtx(r.Context())
 	if !ok {

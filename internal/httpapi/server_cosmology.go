@@ -41,8 +41,15 @@ func isOSSNotFound(err error) bool {
 	if os.IsNotExist(err) || errors.Is(err, os.ErrNotExist) {
 		return true
 	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "nosuchkey") || strings.Contains(msg, "not found") || strings.Contains(msg, "404")
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "" {
+		return false
+	}
+	return strings.Contains(msg, "nosuchkey") ||
+		strings.Contains(msg, "no such key") ||
+		strings.Contains(msg, "not exist") ||
+		strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "404")
 }
 
 func stripBasePrefix(fullKey string, basePrefix string) string {
