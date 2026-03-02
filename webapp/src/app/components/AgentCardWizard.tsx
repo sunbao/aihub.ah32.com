@@ -1042,12 +1042,6 @@ export function AgentCardWizard({
                   <summary className="cursor-pointer select-none font-medium text-foreground">{t({ zh: "预览", en: "Preview" })}</summary>
                   {promptPreviewText ? <div className="mt-2 text-xs text-foreground break-words">{promptPreviewText}</div> : null}
                   {requiredBlocker ? <div className="mt-2 text-xs text-destructive">{requiredBlocker}</div> : null}
-                  <details className="mt-2">
-                    <summary className="cursor-pointer select-none text-xs text-muted-foreground">
-                      {t({ zh: "已保存版本（prompt_view）", en: "Saved version (prompt_view)" })}
-                    </summary>
-                    <div className="mt-1 whitespace-pre-wrap text-xs">{agent.prompt_view || t({ zh: "（空）", en: "(empty)" })}</div>
-                  </details>
                 </details>
               </CardContent>
             </Card>
@@ -1324,11 +1318,11 @@ export function AgentCardWizard({
                   <div className="font-medium">{agent.card_review_status ? fmtReviewStatus(agent.card_review_status) : "-"}</div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">{t({ zh: "预计本次保存后", en: "Expected after save" })}</div>
+                  <div className="text-muted-foreground">{t({ zh: "本次修改", en: "This change" })}</div>
                   <div className="font-medium">
                     {willNeedReview
-                      ? t({ zh: "待审核（需要审核）", en: "Pending (needs review)" })
-                      : t({ zh: "已通过（自动通过）", en: "Approved (auto)" })}
+                      ? t({ zh: "需要审核", en: "Needs review" })
+                      : t({ zh: "无需审核", en: "No review needed" })}
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
@@ -1345,12 +1339,6 @@ export function AgentCardWizard({
                     })}
                   </div>
                 ) : null}
-
-                <div className="pt-2">
-                  <Button variant="secondary" size="sm" onClick={() => loadAll(true)} disabled={loading || saving}>
-                    {t({ zh: "刷新目录数据", en: "Refresh catalogs" })}
-                  </Button>
-                </div>
 
                 <div className="pt-3 border-t">
                   <div className="font-medium text-foreground">{t({ zh: "提审前测评", en: "Pre-review evaluation" })}</div>
@@ -1373,7 +1361,7 @@ export function AgentCardWizard({
                           setEvalSourceKind("topic");
                         }}
                       >
-                        {t({ zh: "广场话题", en: "Topic" })}
+                        {t({ zh: "话题", en: "Topic" })}
                       </Button>
                       <Button
                         size="sm"
@@ -1401,7 +1389,7 @@ export function AgentCardWizard({
 
                     {evalSourceKind === "topic" ? (
                       <div className="rounded-md border bg-background p-3">
-                        <div className="text-xs text-muted-foreground">{t({ zh: "最近活跃的话题", en: "Recent topics" })}</div>
+                        <div className="text-xs text-muted-foreground">{t({ zh: "最近话题", en: "Recent topics" })}</div>
                         {evalTopicId.trim() ? (
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
                             <div className="min-w-0 text-sm">
@@ -1424,7 +1412,7 @@ export function AgentCardWizard({
                             {recentTopicsLoading ? <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "加载中…", en: "Loading…" })}</div> : null}
                             {recentTopicsError ? <div className="mt-2 text-xs text-destructive">{recentTopicsError}</div> : null}
                             {!recentTopicsLoading && !recentTopics.length ? (
-                              <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "暂无可用话题（或 OSS 未配置）", en: "No topics available (or OSS not configured)" })}</div>
+                              <div className="mt-2 text-xs text-muted-foreground">{t({ zh: "暂无可用话题", en: "No topics available." })}</div>
                             ) : null}
                             <div className="mt-2 space-y-2">
                               {recentTopics.slice(0, 8).map((tp) => (
@@ -1449,7 +1437,7 @@ export function AgentCardWizard({
 
                     {evalSourceKind === "run" ? (
                       <div className="rounded-md border bg-background p-3">
-                        <div className="text-xs text-muted-foreground">{t({ zh: "最近场景（Run）", en: "Recent runs" })}</div>
+                        <div className="text-xs text-muted-foreground">{t({ zh: "最近场景", en: "Recent scenarios" })}</div>
                         {evalSourceRunId.trim() ? (
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
                             <div className="min-w-0 text-sm">
@@ -1526,7 +1514,7 @@ export function AgentCardWizard({
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            <div className="text-xs text-muted-foreground">{t({ zh: "从最近场景中选择一个（不会展示 UUID）", en: "Pick from recent runs (UUID hidden)" })}</div>
+                            <div className="text-xs text-muted-foreground">{t({ zh: "从最近场景中选择一个", en: "Pick from recent scenarios" })}</div>
                             <div className="flex flex-wrap gap-2">
                               {recentRuns.slice(0, 8).map((it) => (
                                 <Button
