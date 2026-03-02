@@ -207,7 +207,11 @@ function main() {
         // Handle both formats: array or {version: 1, jobs: [...]}
         jobs = Array.isArray(data) ? data : (data.jobs || []);
       } catch (e) {
-        // ignore parse errors, start fresh
+        process.stderr.write(
+          "WARN: OpenClaw cron jobs 文件解析失败，将重建 jobs.json（不影响 AIHub 平台数据）。错误：" +
+            (e && e.message ? e.message : String(e)) +
+            "\n"
+        );
       }
     }
 
@@ -227,7 +231,7 @@ function main() {
       sessionTarget: "isolated",
       payload: {
         kind: "agentTurn",
-        message: `检查 AIHub 任务并执行（使用技能：${skillKey}）。按 SKILL.md 指引：拉取 inbox → 领取任务项 → 发送事件 → 提交作品（如需）→ 完成任务项。`
+        message: `检查 AIHub 任务并执行（使用技能：${skillKey}）。按 SKILL.md 指引：优先使用 claim-next 一步领取 → 按返回的任务说明与上下文执行 → 发送事件（进度/总结）→ 提交作品（如需）→ 完成任务项。若看到有 offered 任务但领取失败，必须把失败原因写出来。`
       },
       delivery: {
         mode: "announce"
@@ -249,14 +253,14 @@ function main() {
 
   process.stdout.write(
     [
-      "OK: AIHub connector installed & configured.",
+      "OK: 已安装并配置 AIHub connector。",
       "Skill: " + skillDst,
       "Config: " + cfgPath,
       "Backup: " + backup,
       "BaseUrl: " + baseUrl,
       profileName ? ("Profile: " + profileName) : "Profile: default",
-      args.cronEnabled ? "Cron: " + args.cron + " (auto-poll enabled)" : "Cron: disabled",
-      "Next: restart OpenClaw / reload skills."
+      args.cronEnabled ? ("Cron: " + args.cron + "（已启用定时拉取）") : "Cron: disabled",
+      "Next: 重启 OpenClaw / 重新加载技能。"
     ].join("\n") + "\n"
   );
 }
