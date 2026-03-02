@@ -165,6 +165,14 @@ function isUuidLike(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+function isMostlyAscii(s: string): boolean {
+  const v = String(s ?? "").trim();
+  if (!v) return false;
+  let ascii = 0;
+  for (let i = 0; i < v.length; i++) if (v.charCodeAt(i) <= 0x7f) ascii++;
+  return ascii / v.length >= 0.9;
+}
+
 function redactUuids(v: any): any {
   if (v == null) return v;
   if (typeof v === "string") return isUuidLike(v) ? "（已隐藏）" : v;
@@ -837,13 +845,13 @@ export function AgentCardWizard({
       case 0:
         return t({ zh: "基础信息", en: "Basics" });
       case 1:
-        return t({ zh: "人设（风格参考）", en: "Persona (style reference)" });
+        return t({ zh: "人设（表达方式）", en: "Persona (expression)" });
       case 2:
-        return t({ zh: "性格预设", en: "Personality preset" });
+        return t({ zh: "表达预设", en: "Preset" });
       case 3:
-        return t({ zh: "兴趣", en: "Interests" });
+        return t({ zh: "偏好", en: "Preferences" });
       case 4:
-        return t({ zh: "能力", en: "Capabilities" });
+        return t({ zh: "擅长", en: "Strengths" });
       case 5:
         return t({ zh: "简介与问候", en: "Bio & greeting" });
       default:
@@ -920,43 +928,63 @@ export function AgentCardWizard({
     const nameV = String(name ?? "").trim();
     const descV = String(description ?? "").trim();
     if (nameV || descV) {
-      if (nameV && descV) parts.push(`${nameV}：${descV}`);
-      else parts.push(nameV || descV);
+      if (isZh) {
+        if (nameV && descV) parts.push(`你叫${nameV}，${descV}`);
+        else if (nameV) parts.push(`你叫${nameV}`);
+        else parts.push(descV);
+      } else {
+        if (nameV && descV) parts.push(`${nameV}: ${descV}`);
+        else parts.push(nameV || descV);
+      }
     }
 
     if (String(personaTemplateId ?? "").trim()) {
       const tpl = (personaTemplates ?? []).find((x) => String(x.template_id) === String(personaTemplateId));
       const label = tpl ? fmtPersonaTemplateLabel(tpl, 0) : "";
-      if (label) parts.push(label);
+      if (label && !(isZh && isMostlyAscii(label))) parts.push(label);
     }
 
     if (String(personalityPresetId ?? "").trim() && catalogs?.personality_presets?.length) {
       const pp = (catalogs.personality_presets ?? []).find((x) => String(x.id) === String(personalityPresetId));
       const label = pp ? (isZh ? String(pp.label ?? "") : String(pp.label_en ?? "").trim() || String(pp.label ?? "")) : "";
-      if (label) parts.push(label);
+      if (label && !(isZh && isMostlyAscii(label))) parts.push(label);
     }
 
-    const traitText = isZh
-      ? `外${Math.round(pExtrovert * 100)}/奇${Math.round(pCurious * 100)}/创${Math.round(pCreative * 100)}/稳${Math.round(pStable * 100)}`
-      : `E${Math.round(pExtrovert * 100)}/C${Math.round(pCurious * 100)}/Cr${Math.round(pCreative * 100)}/S${Math.round(pStable * 100)}`;
-    parts.push(traitText);
+    const traitBits: string[] = [];
+    const traitThreshold = 0.12;
+    function pushTrait(value: number, pos: { zh: string; en: string }, neg: { zh: string; en: string }) {
+      const d = value - 0.5;
+      if (Math.abs(d) < traitThreshold) return;
+      traitBits.push(isZh ? (d > 0 ? pos.zh : neg.zh) : d > 0 ? pos.en : neg.en);
+    }
+    pushTrait(pExtrovert, { zh: "更外向", en: "more outgoing" }, { zh: "更内向", en: "more reserved" });
+    pushTrait(pCurious, { zh: "更好奇", en: "more curious" }, { zh: "更克制", en: "more restrained" });
+    pushTrait(pCreative, { zh: "更有创意", en: "more creative" }, { zh: "更务实", en: "more practical" });
+    pushTrait(pStable, { zh: "更沉稳", en: "more steady" }, { zh: "更跳脱", en: "more spontaneous" });
+    if (traitBits.length) parts.push(traitBits.join(joiner));
 
     const interestsV = (interests ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
-    if (interestsV.length) parts.push(interestsV.slice(0, 24).join(joiner));
+    if (interestsV.length) {
+      const txt = interestsV.slice(0, 12).join(joiner);
+      parts.push(isZh ? `喜欢${txt}` : `Likes ${txt}`);
+    }
 
     const capabilitiesV = (capabilities ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
-    if (capabilitiesV.length) parts.push(capabilitiesV.slice(0, 24).join(joiner));
+    if (capabilitiesV.length) {
+      const txt = capabilitiesV.slice(0, 12).join(joiner);
+      parts.push(isZh ? `擅长${txt}` : `Good at ${txt}`);
+    }
 
-    const bioV = clip(String(bio ?? ""), 120);
+    const bioV = clip(String(bio ?? ""), 100);
     if (bioV) parts.push(bioV);
 
-    const greetV = clip(String(greeting ?? ""), 120);
+    const greetV = clip(String(greeting ?? ""), 80);
     if (greetV) parts.push(greetV);
 
-    const evalTopicV = String(evalTopic ?? "").trim();
     const evalSourceTitleV = String(evalSourceTitle ?? "").trim();
-    if (evalSourceTitleV) parts.push(evalSourceTitleV);
-    if (evalTopicV) parts.push(clip(evalTopicV, 120));
+    if (evalSourceTitleV) {
+      parts.push(isZh ? `测评基于「${clip(evalSourceTitleV, 40)}」` : `Tested on "${clip(evalSourceTitleV, 40)}"`);
+    }
 
     return parts.filter(Boolean).join(sep);
   }, [
@@ -996,9 +1024,9 @@ export function AgentCardWizard({
             {[
               t({ zh: "基础", en: "Basics" }),
               t({ zh: "人设", en: "Persona" }),
-              t({ zh: "性格", en: "Traits" }),
-              t({ zh: "兴趣", en: "Interests" }),
-              t({ zh: "能力", en: "Capabilities" }),
+              t({ zh: "表达", en: "Tone" }),
+              t({ zh: "偏好", en: "Preferences" }),
+              t({ zh: "擅长", en: "Strengths" }),
               t({ zh: "文案", en: "Copy" }),
               t({ zh: "状态", en: "Status" }),
             ].map((lbl, idx) => (
@@ -1038,11 +1066,17 @@ export function AgentCardWizard({
                   {agent.card_review_status ? <Badge variant="outline">{fmtReviewStatus(agent.card_review_status)}</Badge> : null}
                   {agent.admission?.status ? <Badge variant="outline">{fmtAdmissionStatus(agent.admission.status)}</Badge> : null}
                 </div>
-                <details className="mt-2" open>
-                  <summary className="cursor-pointer select-none font-medium text-foreground">{t({ zh: "预览", en: "Preview" })}</summary>
-                  {promptPreviewText ? <div className="mt-2 text-xs text-foreground break-words">{promptPreviewText}</div> : null}
-                  {requiredBlocker ? <div className="mt-2 text-xs text-destructive">{requiredBlocker}</div> : null}
-                </details>
+                <div className="mt-2 space-y-2">
+                  <div className="text-xs font-medium text-foreground">{t({ zh: "预览", en: "Preview" })}</div>
+                  {promptPreviewText ? (
+                    <div className="rounded-md bg-muted/30 px-3 py-2 text-xs text-foreground break-words">{promptPreviewText}</div>
+                  ) : (
+                    <div className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      {t({ zh: "选择内容后会在这里生成一句话预览", en: "A one-line preview appears here." })}
+                    </div>
+                  )}
+                  {requiredBlocker ? <div className="text-xs text-destructive">{requiredBlocker}</div> : null}
+                </div>
               </CardContent>
             </Card>
           ) : null}
@@ -1091,8 +1125,8 @@ export function AgentCardWizard({
                 <div className="text-sm font-medium">{t({ zh: "选择人设模板（可选）", en: "Pick a persona template (optional)" })}</div>
                 <div className="text-xs text-muted-foreground">
                   {t({
-                    zh: "仅允许“风格参考”。禁止冒充/自称为任何真实人物、虚构角色或具体动物个体。",
-                    en: "Style reference only. No impersonation of real people, fictional characters, or specific animals.",
+                    zh: "只做表达方式借鉴：可以追求“像”，但禁止冒充/自称为任何真实人物、虚构角色或具体动物个体。",
+                    en: "Expression-only inspiration: you may imitate the style, but do not impersonate any real person, fictional character, or specific animal.",
                   })}
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -1311,37 +1345,44 @@ export function AgentCardWizard({
           ) : null}
 
           {step === 6 ? (
-            <Card className={`shadow-none ${toneCard}`}>
-              <CardContent className="pt-4 space-y-2 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">{t({ zh: "当前审核状态", en: "Current review status" })}</div>
-                  <div className="font-medium">{agent.card_review_status ? fmtReviewStatus(agent.card_review_status) : "-"}</div>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">{t({ zh: "本次修改", en: "This change" })}</div>
-                  <div className="font-medium">
-                    {willNeedReview
-                      ? t({ zh: "需要审核", en: "Needs review" })
-                      : t({ zh: "无需审核", en: "No review needed" })}
+            <div className="space-y-3">
+              <Card className={`shadow-none ${toneCard}`}>
+                <CardContent className="pt-4 space-y-2 text-sm">
+                  <div className="font-medium text-foreground">{t({ zh: "审核与发布", en: "Review & publish" })}</div>
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-muted-foreground">{t({ zh: "当前状态", en: "Current status" })}</div>
+                      <div className="font-medium">{agent.card_review_status ? fmtReviewStatus(agent.card_review_status) : "-"}</div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-muted-foreground">{t({ zh: "本次修改", en: "This change" })}</div>
+                      <div className="font-medium">
+                        {willNeedReview
+                          ? t({ zh: "需要审核", en: "Needs review" })
+                          : t({ zh: "无需审核", en: "No review needed" })}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-muted-foreground">{t({ zh: "可同步到 OSS", en: "Can sync to OSS" })}</div>
+                      <div className="font-medium">
+                        {agent.card_review_status === "approved" ? t({ zh: "是", en: "Yes" }) : t({ zh: "否", en: "No" })}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-muted-foreground">{t({ zh: "可同步到 OSS", en: "Can sync to OSS" })}</div>
-                  <div className="font-medium">
-                    {agent.card_review_status === "approved" ? t({ zh: "是", en: "Yes" }) : t({ zh: "否", en: "No" })}
-                  </div>
-                </div>
-                {agent.card_review_status !== "approved" ? (
-                  <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    {t({
-                      zh: "提示：只有审核通过后才能同步到 OSS 并进入公开发现。",
-                      en: "Tip: only approved cards can be synced to OSS and shown in discovery.",
-                    })}
-                  </div>
-                ) : null}
+                  {agent.card_review_status !== "approved" ? (
+                    <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      {t({
+                        zh: "审核通过后，才能同步到 OSS 并进入公开发现。",
+                        en: "Only approved cards can be synced to OSS and shown in discovery.",
+                      })}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
 
-                <div className="pt-3 border-t">
-                  <div className="font-medium text-foreground">{t({ zh: "提审前测评", en: "Pre-review evaluation" })}</div>
+              <Card className={`shadow-none ${toneCard}`}>
+                <CardContent className="pt-4 space-y-2 text-sm">
+                  <div className="font-medium text-foreground">{t({ zh: "提交前测评", en: "Pre-review evaluation" })}</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {t({
                       zh: "会创建一条不公开的测评任务，由平台配置的“测评智能体”执行。测评数据可随时删除，默认 7 天后自动清理。",
@@ -1646,9 +1687,9 @@ export function AgentCardWizard({
                       <div className="text-xs text-muted-foreground">{t({ zh: "暂无测评记录", en: "No evaluations yet." })}</div>
                     ) : null}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           ) : null}
               </>
             ) : null}

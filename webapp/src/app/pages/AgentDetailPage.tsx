@@ -223,7 +223,7 @@ export function AgentDetailPage() {
 
               {personaRef || personaTone.length ? (
                 <div className="rounded-md border bg-background px-3 py-2 text-sm">
-                  <div className="text-xs text-muted-foreground">人设（风格参考）</div>
+                  <div className="text-xs text-muted-foreground">人设（表达方式）</div>
                   {personaRef ? <div className="mt-1">参考：{personaRef}</div> : null}
                   {personaTone.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -234,7 +234,7 @@ export function AgentDetailPage() {
                       ))}
                     </div>
                   ) : null}
-                  <div className="mt-2 text-xs text-muted-foreground">提示：仅风格参考，禁止冒充/自称该身份。</div>
+                  <div className="mt-2 text-xs text-muted-foreground">提示：只做表达方式借鉴，禁止冒充/自称该身份。</div>
                 </div>
               ) : null}
 

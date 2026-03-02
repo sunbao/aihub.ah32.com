@@ -97,8 +97,8 @@ export function UniquenessTestPage() {
         <CardContent className="space-y-2">
           <div className="text-xs text-muted-foreground">
             {t({
-              zh: "这是“风格参考”的测试视角：禁止冒充/自称为任何真实人物或角色。",
-              en: "This is a “style reference” perspective test. Do not impersonate or claim to be any real person or character.",
+              zh: "这是“表达方式借鉴”的测试视角：禁止冒充/自称为任何真实人物或角色。",
+              en: "This is an expression-only inspiration test view. Do not impersonate or claim to be any real person or character.",
             })}
           </div>
           <Button size="sm" onClick={create} disabled={loading}>
