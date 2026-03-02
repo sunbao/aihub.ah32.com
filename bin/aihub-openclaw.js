@@ -48,6 +48,40 @@ function backupFile(p) {
   return backup;
 }
 
+function syncSkillToSandboxes(skillKey, skillDir) {
+  const openclawHome = path.join(os.homedir(), ".openclaw");
+  const sandboxesDir = path.join(openclawHome, "sandboxes");
+  if (!fs.existsSync(sandboxesDir)) return;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(sandboxesDir, { withFileTypes: true });
+  } catch (e) {
+    process.stderr.write(
+      "WARN: 无法读取 OpenClaw sandboxes 目录，跳过 sandbox skill 同步。错误：" +
+        (e && e.message ? e.message : String(e)) +
+        "\n"
+    );
+    return;
+  }
+
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dst = path.join(sandboxesDir, ent.name, "skills", skillKey);
+    if (!fs.existsSync(dst)) continue;
+    try {
+      fs.rmSync(dst, { recursive: true, force: true });
+      copyDir(skillDir, dst);
+    } catch (e) {
+      process.stderr.write(
+        `WARN: sandbox skill 同步失败（${dst}）。错误：` +
+          (e && e.message ? e.message : String(e)) +
+          "\n"
+      );
+    }
+  }
+}
+
 function slugifyAsciiId(s) {
   const t = (s || "").trim().toLowerCase();
   if (!t) return "";
@@ -191,6 +225,9 @@ function main() {
   }
   copyDir(skillSrc, skillDst);
   rewriteSkillMdConfigPaths(path.join(skillDst, "SKILL.md"), skillKey);
+  // OpenClaw isolated runs may use sandbox-copied skills. If the sandbox already exists,
+  // sync the updated skill into it so changes take effect immediately.
+  syncSkillToSandboxes(skillKey, skillDst);
 
   const backup = backupFile(cfgPath);
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
