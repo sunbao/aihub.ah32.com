@@ -3,6 +3,10 @@ set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8080}"
 ADMIN_API_KEY="${ADMIN_API_KEY:-}"
+RUN_OFFER_POLL_MAX="${RUN_OFFER_POLL_MAX:-20}"
+RUN_OFFER_POLL_INTERVAL_SEC="${RUN_OFFER_POLL_INTERVAL_SEC:-1}"
+REVIEW_OFFER_POLL_MAX="${REVIEW_OFFER_POLL_MAX:-20}"
+REVIEW_OFFER_POLL_INTERVAL_SEC="${REVIEW_OFFER_POLL_INTERVAL_SEC:-1}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }
@@ -80,8 +84,27 @@ run_ref="$(echo "$run_json" | jq -r .run_ref)"
 echo "run_ref=$run_ref"
 
 echo "== poll run offer =="
-poll2_json="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_a_key")"
-run_work_item_id="$(echo "$poll2_json" | jq -r --arg rref "$run_ref" '.offers[] | select(.run_ref==$rref and .status=="offered") | .work_item_id' | head -n 1)"
+poll2_json=""
+run_work_item_id=""
+for attempt in $(seq 1 "$RUN_OFFER_POLL_MAX"); do
+  poll2_json="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_a_key")"
+  run_work_item_id="$(echo "$poll2_json" | jq -r --arg rref "$run_ref" '.offers[] | select(.run_ref==$rref and .status=="offered") | .work_item_id' | head -n 1)"
+  if [[ -n "$run_work_item_id" ]]; then
+    break
+  fi
+
+  other_work_item_id="$(echo "$poll2_json" | jq -r --arg rref "$run_ref" '.offers[] | select((.run_ref // "") != $rref and .status=="offered") | .work_item_id' | head -n 1)"
+  if [[ -n "$other_work_item_id" ]]; then
+    other_stage="$(echo "$poll2_json" | jq -r --arg wid "$other_work_item_id" '.offers[] | select(.work_item_id==$wid) | .stage' | head -n 1)"
+    other_run_ref="$(echo "$poll2_json" | jq -r --arg wid "$other_work_item_id" '.offers[] | select(.work_item_id==$wid) | .run_ref' | head -n 1)"
+    echo "drain non-target offer attempt=$attempt stage=$other_stage run_ref=$other_run_ref work_item_id=$other_work_item_id"
+    curl -fsS -X POST "$BASE/v1/gateway/work-items/$other_work_item_id/claim" -H "Authorization: Bearer $agent_a_key" >/dev/null
+    curl -fsS -X POST "$BASE/v1/gateway/work-items/$other_work_item_id/complete" -H "Authorization: Bearer $agent_a_key" >/dev/null
+  else
+    echo "run offer not ready yet attempt=$attempt/$RUN_OFFER_POLL_MAX"
+  fi
+  sleep "$RUN_OFFER_POLL_INTERVAL_SEC"
+done
 if [[ -z "$run_work_item_id" ]]; then
   echo "run offer not found in poll" >&2
   echo "$poll2_json" | jq . >&2
@@ -129,8 +152,17 @@ if [[ -z "$artifact_id" || "$artifact_id" == "null" ]]; then
 fi
 
 echo "== reviewer polls review work item =="
-poll_review="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_b_key")"
-review_work_item_id="$(echo "$poll_review" | jq -r --arg rref "$run_ref" '.offers[] | select(.run_ref==$rref and .kind=="review" and .status=="offered") | .work_item_id' | head -n 1)"
+poll_review=""
+review_work_item_id=""
+for attempt in $(seq 1 "$REVIEW_OFFER_POLL_MAX"); do
+  poll_review="$(curl -fsS "$BASE/v1/gateway/inbox/poll" -H "Authorization: Bearer $agent_b_key")"
+  review_work_item_id="$(echo "$poll_review" | jq -r --arg rref "$run_ref" '.offers[] | select(.run_ref==$rref and .kind=="review" and .status=="offered") | .work_item_id' | head -n 1)"
+  if [[ -n "$review_work_item_id" ]]; then
+    break
+  fi
+  echo "review offer not ready yet attempt=$attempt/$REVIEW_OFFER_POLL_MAX"
+  sleep "$REVIEW_OFFER_POLL_INTERVAL_SEC"
+done
 if [[ -z "$review_work_item_id" ]]; then
   echo "review work item not found in poll" >&2
   echo "$poll_review" | jq . >&2
