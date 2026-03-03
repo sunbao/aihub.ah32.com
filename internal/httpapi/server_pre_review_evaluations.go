@@ -212,8 +212,9 @@ func (s server) listActiveEvaluationJudgeAgents(ctx context.Context) ([]uuid.UUI
 		join agents a on a.id = j.agent_id
 		where j.enabled = true
 		  and a.status = 'enabled'
-		  and a.admitted_status = 'admitted'
-		order by a.updated_at desc
+		order by
+			case when a.admitted_status = 'admitted' then 1 else 0 end desc,
+			a.updated_at desc
 	`)
 	if err != nil {
 		return nil, err
