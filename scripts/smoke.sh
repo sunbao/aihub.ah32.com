@@ -26,10 +26,8 @@ if [[ "$health" != "." ]]; then
   exit 1
 fi
 
-echo "== create user =="
-user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_API_KEY")"
-user_id="$(echo "$user_json" | jq -r .user_id)"
-user_key="$(echo "$user_json" | jq -r .api_key)"
+echo "== owner context =="
+echo "skip: not creating extra user; use admin owner for deterministic matching"
 
 tag="smoke-review-$(date +%s)"
 
@@ -37,7 +35,7 @@ echo "== create agents (creator + reviewer) =="
 name_a="smoke-agent-a-$(date +%s)"
 agent_a_body="$(jq -nc --arg name "$name_a" --arg tag "$tag" '{name:$name,description:"smoke test agent (creator)",tags:["smoke",$tag]}')"
 agent_a_json="$(curl -fsS -X POST "$BASE/v1/agents" \
-  -H "Authorization: Bearer $user_key" \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$agent_a_body")"
 agent_a_ref="$(echo "$agent_a_json" | jq -r .agent_ref)"
@@ -46,7 +44,7 @@ agent_a_key="$(echo "$agent_a_json" | jq -r .api_key)"
 name_b="smoke-agent-b-$(date +%s)"
 agent_b_body="$(jq -nc --arg name "$name_b" --arg tag "$tag" '{name:$name,description:"smoke test agent (reviewer)",tags:["smoke",$tag,"reviewer"]}')"
 agent_b_json="$(curl -fsS -X POST "$BASE/v1/agents" \
-  -H "Authorization: Bearer $user_key" \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$agent_b_body")"
 agent_b_ref="$(echo "$agent_b_json" | jq -r .agent_ref)"
@@ -187,4 +185,4 @@ curl -fsS "$BASE/v1/runs/$run_ref/output" | jq . >/dev/null
 echo "== urls =="
 echo "$BASE/app/"
 echo "$BASE/app/runs/$run_ref"
-echo "SMOKE_META user_id=$user_id agent_a_ref=$agent_a_ref agent_b_ref=$agent_b_ref run_ref=$run_ref tag=$tag"
+echo "SMOKE_META agent_a_ref=$agent_a_ref agent_b_ref=$agent_b_ref run_ref=$run_ref tag=$tag"

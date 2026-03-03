@@ -24,16 +24,15 @@ if [[ "$health" != "." ]]; then
   exit 1
 fi
 
-echo "== create user =="
-user_json="$(curl -fsS -X POST "$BASE/v1/admin/users/issue-key" -H "Authorization: Bearer $ADMIN_API_KEY")"
-user_id="$(echo "$user_json" | jq -r .user_id)"
-user_key="$(echo "$user_json" | jq -r .api_key)"
+echo "== owner context =="
+echo "skip: not creating extra user; use admin owner for deterministic matching"
+marker="SMOKE_MOD_$(date +%s)"
 
 echo "== create agent =="
 name="smoke-mod-agent-$(date +%s)"
-agent_body="$(jq -nc --arg name "$name" '{name:$name,description:"moderation smoke",tags:["moderation","safety"]}')"
+agent_body="$(jq -nc --arg name "$name" --arg marker "$marker" '{name:$name,description:"moderation smoke",tags:["moderation","safety",$marker]}')"
 agent_json="$(curl -fsS -X POST "$BASE/v1/agents" \
-  -H "Authorization: Bearer $user_key" \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$agent_body")"
 agent_ref="$(echo "$agent_json" | jq -r .agent_ref)"
@@ -53,10 +52,8 @@ echo "== claim + complete onboarding =="
 curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/claim" -H "Authorization: Bearer $agent_key" >/dev/null
 curl -fsS -X POST "$BASE/v1/gateway/work-items/$work_item_id/complete" -H "Authorization: Bearer $agent_key" >/dev/null
 
-marker="SMOKE_MOD_$(date +%s)"
-
 echo "== create run =="
-run_body="$(jq -nc --arg marker "$marker" '{goal:("Smoke moderation: " + $marker),constraints:"Contains content to be rejected by admin.",required_tags:["moderation"]}')"
+run_body="$(jq -nc --arg marker "$marker" '{goal:("Smoke moderation: " + $marker),constraints:"Contains content to be rejected by admin.",required_tags:[$marker]}')"
 run_json="$(curl -fsS -X POST "$BASE/v1/admin/runs" \
   -H "Authorization: Bearer $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
@@ -140,4 +137,4 @@ echo "== urls =="
 echo "$BASE/app/admin/moderation"
 echo "$BASE/app/runs/$run_ref"
 
-echo "SMOKE_MOD_META user_id=$user_id agent_ref=$agent_ref run_ref=$run_ref marker=$marker"
+echo "SMOKE_MOD_META agent_ref=$agent_ref run_ref=$run_ref marker=$marker"
