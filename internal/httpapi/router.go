@@ -99,9 +99,9 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/activity", s.handleListActivityPublic)
 
 		// Public "cosmology" read APIs (OSS-backed).
-		r.Get("/agents/{agentID}/dimensions", s.handleGetAgentDimensions)
-		r.Get("/agents/{agentID}/daily-thought", s.handleGetAgentDailyThought)
-		r.Get("/agents/{agentID}/highlights", s.handleGetAgentHighlights)
+		r.Get("/agents/{agentRef}/dimensions", s.handleGetAgentDimensions)
+		r.Get("/agents/{agentRef}/daily-thought", s.handleGetAgentDailyThought)
+		r.Get("/agents/{agentRef}/highlights", s.handleGetAgentHighlights)
 		r.Get("/curations", s.handleListCurations)
 
 		// Public platform signing keyset (for agent-side verification).
@@ -109,7 +109,7 @@ func NewRouter(d Deps) http.Handler {
 
 		// Public agent discovery (from platform projection).
 		r.Get("/agents/discover", s.handleDiscoverAgents)
-		r.Get("/agents/discover/{agentID}", s.handleDiscoverAgentDetail)
+		r.Get("/agents/discover/{agentRef}", s.handleDiscoverAgentDetail)
 
 		// OAuth (GitHub).
 		r.Get("/auth/github/start", s.handleAuthGitHubStart)
@@ -121,35 +121,35 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/me", s.handleGetMe)
 			r.Post("/agents", s.handleCreateAgent)
 			r.Get("/agents", s.handleListAgents)
-			r.Get("/agents/{agentID}", s.handleGetAgent)
-			r.Delete("/agents/{agentID}", s.handleDeleteAgent)
-			r.Patch("/agents/{agentID}", s.handleUpdateAgent)
-			r.Post("/agents/{agentID}/disable", s.handleDisableAgent)
-			r.Post("/agents/{agentID}/keys/rotate", s.handleRotateAgentKey)
-			r.Put("/agents/{agentID}/tags", s.handleReplaceAgentTags)
-			r.Post("/agents/{agentID}/tags", s.handleAddAgentTag)
-			r.Delete("/agents/{agentID}/tags/{tag}", s.handleDeleteAgentTag)
+			r.Get("/agents/{agentRef}", s.handleGetAgent)
+			r.Delete("/agents/{agentRef}", s.handleDeleteAgent)
+			r.Patch("/agents/{agentRef}", s.handleUpdateAgent)
+			r.Post("/agents/{agentRef}/disable", s.handleDisableAgent)
+			r.Post("/agents/{agentRef}/keys/rotate", s.handleRotateAgentKey)
+			r.Put("/agents/{agentRef}/tags", s.handleReplaceAgentTags)
+			r.Post("/agents/{agentRef}/tags", s.handleAddAgentTag)
+			r.Delete("/agents/{agentRef}/tags/{tag}", s.handleDeleteAgentTag)
 
 			// Agent Home 32: owner-initiated sync/admission.
-			r.Post("/agents/{agentID}/sync-to-oss", s.handleSyncAgentToOSS)
-			r.Post("/agents/{agentID}/admission/start", s.handleAdmissionStart)
-			r.Get("/agents/{agentID}/prompt-bundle", s.handleGetAgentPromptBundle)
+			r.Post("/agents/{agentRef}/sync-to-oss", s.handleSyncAgentToOSS)
+			r.Post("/agents/{agentRef}/admission/start", s.handleAdmissionStart)
+			r.Get("/agents/{agentRef}/prompt-bundle", s.handleGetAgentPromptBundle)
 
 			// Cosmology owner APIs.
-			r.Get("/agents/{agentID}/timeline", s.handleOwnerGetTimeline)
-			r.Post("/agents/{agentID}/swap-tests", s.handleOwnerCreateSwapTest)
-			r.Get("/agents/{agentID}/swap-tests/{swapTestID}", s.handleOwnerGetSwapTest)
-			r.Get("/agents/{agentID}/weekly-reports", s.handleOwnerGetWeeklyReport)
-			r.Put("/agents/{agentID}/daily-thought", s.handleOwnerUpsertDailyThought)
+			r.Get("/agents/{agentRef}/timeline", s.handleOwnerGetTimeline)
+			r.Post("/agents/{agentRef}/swap-tests", s.handleOwnerCreateSwapTest)
+			r.Get("/agents/{agentRef}/swap-tests/{swapTestID}", s.handleOwnerGetSwapTest)
+			r.Get("/agents/{agentRef}/weekly-reports", s.handleOwnerGetWeeklyReport)
+			r.Put("/agents/{agentRef}/daily-thought", s.handleOwnerUpsertDailyThought)
 
 			// Owner pre-review evaluations (unlisted runs; production data should be deletable).
-			r.Post("/agents/{agentID}/pre-review-evaluations", s.handleOwnerCreatePreReviewEvaluation)
-			r.Get("/agents/{agentID}/pre-review-evaluations", s.handleOwnerListPreReviewEvaluations)
-			r.Get("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerGetPreReviewEvaluation)
-			r.Delete("/agents/{agentID}/pre-review-evaluations/{evaluationID}", s.handleOwnerDeletePreReviewEvaluation)
+			r.Post("/agents/{agentRef}/pre-review-evaluations", s.handleOwnerCreatePreReviewEvaluation)
+			r.Get("/agents/{agentRef}/pre-review-evaluations", s.handleOwnerListPreReviewEvaluations)
+			r.Get("/agents/{agentRef}/pre-review-evaluations/{evaluationID}", s.handleOwnerGetPreReviewEvaluation)
+			r.Delete("/agents/{agentRef}/pre-review-evaluations/{evaluationID}", s.handleOwnerDeletePreReviewEvaluation)
 			r.Get("/pre-review-evaluation/sources/recent-topics", s.handleOwnerListRecentTopicsForEvaluation)
 			r.Get("/pre-review-evaluation/sources/recent-runs", s.handleOwnerListRecentRunsForEvaluation)
-			r.Get("/runs/{runID}/work-items", s.handleOwnerListRunWorkItems)
+			r.Get("/runs/{runRef}/work-items", s.handleOwnerListRunWorkItems)
 
 			r.Post("/curations", s.handleCreateCuration)
 
@@ -164,8 +164,8 @@ func NewRouter(d Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.agentAuthMiddleware)
 			// Agent Home 32: admission + OSS access.
-			r.Get("/agents/{agentID}/admission/challenge", s.handleAdmissionChallenge)
-			r.Post("/agents/{agentID}/admission/complete", s.handleAdmissionComplete)
+			r.Get("/agents/{agentRef}/admission/challenge", s.handleAdmissionChallenge)
+			r.Post("/agents/{agentRef}/admission/complete", s.handleAdmissionComplete)
 
 			r.Post("/oss/credentials", s.handleIssueOSSCredentials)
 			r.Get("/oss/events/poll", s.handlePollOSSEvents)
@@ -178,8 +178,8 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/gateway/work-items/{workItemID}/skills", s.handleGatewayWorkItemSkills)
 			r.Post("/gateway/work-items/{workItemID}/claim", s.handleGatewayClaimWorkItem)
 			r.Post("/gateway/work-items/{workItemID}/complete", s.handleGatewayCompleteWorkItem)
-			r.Post("/gateway/runs/{runID}/events", s.handleGatewayEmitEvent)
-			r.Post("/gateway/runs/{runID}/artifacts", s.handleGatewaySubmitArtifact)
+			r.Post("/gateway/runs/{runRef}/events", s.handleGatewayEmitEvent)
+			r.Post("/gateway/runs/{runRef}/artifacts", s.handleGatewaySubmitArtifact)
 			r.Post("/gateway/tools/invoke", s.handleGatewayInvokeTool)
 		})
 
@@ -189,7 +189,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/events/ingest", s.handleIngestOSSEvents)
 		})
 
-		r.Route("/runs/{runID}", func(r chi.Router) {
+		r.Route("/runs/{runRef}", func(r chi.Router) {
 			r.Get("/", s.handleGetRunPublic)
 			r.Get("/output", s.handleGetRunOutputPublic)
 			r.Get("/stream", s.handleRunStreamSSE)

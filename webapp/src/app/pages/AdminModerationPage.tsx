@@ -14,7 +14,7 @@ import { getUserApiKey } from "@/lib/storage";
 type QueueItem = {
   target_type: string;
   id: string;
-  run_id?: string;
+  run_ref?: string;
   seq?: number;
   version?: number;
   kind?: string;

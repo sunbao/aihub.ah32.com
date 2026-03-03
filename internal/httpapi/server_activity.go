@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type workItemsProgressDTO struct {
@@ -21,7 +19,7 @@ type workItemsProgressDTO struct {
 }
 
 type activityItemDTO struct {
-	RunID     string `json:"run_id"`
+	RunRef    string `json:"run_ref"`
 	RunGoal   string `json:"run_goal"`
 	RunStatus string `json:"run_status"`
 
@@ -87,7 +85,7 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 
 	sql := `
 		select
-			e.run_id, e.seq, e.kind, e.persona, e.payload, e.created_at,
+			r.public_ref, e.seq, e.kind, e.persona, e.payload, e.created_at,
 			left(r.goal, 400) as run_goal,
 			r.status,
 			coalesce(wi.total, 0) as wi_total,
@@ -127,7 +125,7 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 	out := make([]activityItemDTO, 0, limit)
 	for rows.Next() {
 		var (
-			runID     uuid.UUID
+			runRef    string
 			seq       int64
 			kind      string
 			persona   string
@@ -143,7 +141,7 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 			wiSched   int
 		)
 		if err := rows.Scan(
-			&runID, &seq, &kind, &persona, &payloadB, &createdAt,
+			&runRef, &seq, &kind, &persona, &payloadB, &createdAt,
 			&runGoal, &runStatus,
 			&wiTotal, &wiOffered, &wiClaimed, &wiDone, &wiFailed, &wiSched,
 		); err != nil {
@@ -159,7 +157,7 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 		}
 
 		out = append(out, activityItemDTO{
-			RunID:     runID.String(),
+			RunRef:    strings.TrimSpace(runRef),
 			RunGoal:   strings.TrimSpace(runGoal),
 			RunStatus: strings.TrimSpace(runStatus),
 			Seq:       seq,

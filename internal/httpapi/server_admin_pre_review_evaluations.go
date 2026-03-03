@@ -15,14 +15,12 @@ import (
 
 type adminPreReviewEvaluationDTO struct {
 	EvaluationID string                        `json:"evaluation_id"`
-	OwnerID      string                        `json:"owner_id"`
-	AgentID      string                        `json:"agent_id"`
+	AgentRef     string                        `json:"agent_ref"`
 	AgentName    string                        `json:"agent_name"`
-	RunID        string                        `json:"run_id"`
+	RunRef       string                        `json:"run_ref"`
 	Topic        string                        `json:"topic"`
 	TopicID      string                        `json:"topic_id,omitempty"`
-	WorkItemID   string                        `json:"work_item_id,omitempty"`
-	SourceRunID  string                        `json:"source_run_id,omitempty"`
+	SourceRunRef string                        `json:"source_run_ref,omitempty"`
 	Source       *preReviewEvaluationSourceDTO `json:"source,omitempty"`
 	RunStatus    string                        `json:"run_status"`
 	CreatedAt    string                        `json:"created_at"`
@@ -63,13 +61,11 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 		pat := "%" + t + "%"
 		parts := []string{
 			"e.id::text ilike $" + strconv.Itoa(argN),
-			"e.run_id::text ilike $" + strconv.Itoa(argN),
-			"e.agent_id::text ilike $" + strconv.Itoa(argN),
-			"e.owner_id::text ilike $" + strconv.Itoa(argN),
+			"r.public_ref ilike $" + strconv.Itoa(argN),
+			"a.public_ref ilike $" + strconv.Itoa(argN),
 			"e.topic ilike $" + strconv.Itoa(argN),
 			"coalesce(e.source_topic_id, '') ilike $" + strconv.Itoa(argN),
-			"coalesce(e.source_run_id::text, '') ilike $" + strconv.Itoa(argN),
-			"coalesce(e.source_work_item_id::text, '') ilike $" + strconv.Itoa(argN),
+			"coalesce(sr.public_ref, '') ilike $" + strconv.Itoa(argN),
 			"a.name ilike $" + strconv.Itoa(argN),
 		}
 		where = append(where, "("+strings.Join(parts, " or ")+")")
@@ -81,13 +77,14 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 
 	sql := `
 		select
-			e.id, e.owner_id, e.agent_id, coalesce(a.name, '') as agent_name,
-			e.run_id, e.topic, e.source_run_id, e.source_topic_id, e.source_work_item_id, e.source_snapshot,
+			e.id, a.public_ref, coalesce(a.name, '') as agent_name,
+			r.public_ref, e.topic, coalesce(sr.public_ref, '') as source_run_ref, e.source_topic_id, e.source_snapshot,
 			coalesce(r.status, '') as run_status,
 			e.created_at, e.expires_at
 		from agent_pre_review_evaluations e
 		join runs r on r.id = e.run_id
 		join agents a on a.id = e.agent_id
+		left join runs sr on sr.id = e.source_run_id
 	`
 	if len(where) > 0 {
 		sql += " where " + strings.Join(where, " and ")
@@ -107,43 +104,37 @@ func (s server) handleAdminListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	for rows.Next() {
 		var (
 			evalID          uuid.UUID
-			ownerID         uuid.UUID
-			agentID         uuid.UUID
+			agentRef        string
 			agentName       string
-			runID           uuid.UUID
+			runRef          string
 			topic           string
-			sourceRun       *uuid.UUID
+			sourceRunRef    string
 			sourceTopic     *string
-			sourceWorkItem  *uuid.UUID
 			sourceSnapshotB []byte
 			runStatus       string
 			createdAt       time.Time
 			expiresAt       time.Time
 		)
-		if err := rows.Scan(&evalID, &ownerID, &agentID, &agentName, &runID, &topic, &sourceRun, &sourceTopic, &sourceWorkItem, &sourceSnapshotB, &runStatus, &createdAt, &expiresAt); err != nil {
+		if err := rows.Scan(&evalID, &agentRef, &agentName, &runRef, &topic, &sourceRunRef, &sourceTopic, &sourceSnapshotB, &runStatus, &createdAt, &expiresAt); err != nil {
 			logError(ctx, "admin list pre-review evaluations scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		dto := adminPreReviewEvaluationDTO{
 			EvaluationID: evalID.String(),
-			OwnerID:      ownerID.String(),
-			AgentID:      agentID.String(),
+			AgentRef:     strings.TrimSpace(agentRef),
 			AgentName:    strings.TrimSpace(agentName),
-			RunID:        runID.String(),
+			RunRef:       strings.TrimSpace(runRef),
 			Topic:        strings.TrimSpace(topic),
 			RunStatus:    strings.TrimSpace(runStatus),
 			CreatedAt:    createdAt.UTC().Format(time.RFC3339),
 			ExpiresAt:    expiresAt.UTC().Format(time.RFC3339),
 		}
-		if sourceRun != nil {
-			dto.SourceRunID = sourceRun.String()
+		if strings.TrimSpace(sourceRunRef) != "" {
+			dto.SourceRunRef = strings.TrimSpace(sourceRunRef)
 		}
 		if sourceTopic != nil {
 			dto.TopicID = strings.TrimSpace(*sourceTopic)
-		}
-		if sourceWorkItem != nil {
-			dto.WorkItemID = sourceWorkItem.String()
 		}
 		dto.Source = preReviewSourceFromSnapshot(sourceSnapshotB)
 		out = append(out, dto)

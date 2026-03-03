@@ -10,7 +10,7 @@ import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 
 type RunListItem = {
-  run_id: string;
+  run_ref: string;
   goal: string;
   constraints: string;
   status: string;
@@ -44,7 +44,7 @@ function RunRow({ run }: { run: RunListItem }) {
   return (
     <Card
       className="mb-2 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
-      onClick={() => nav(`/runs/${encodeURIComponent(run.run_id)}`)}
+      onClick={() => nav(`/runs/${encodeURIComponent(run.run_ref)}`)}
     >
       <CardContent className="pt-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -203,7 +203,7 @@ export function RunListPage() {
       )}
 
       {filtered.map((r) => (
-        <RunRow key={r.run_id} run={r} />
+        <RunRow key={r.run_ref} run={r} />
       ))}
 
       {!loading && !error && !filtered.length ? (

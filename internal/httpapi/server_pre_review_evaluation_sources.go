@@ -29,7 +29,7 @@ type listRecentTopicsForEvaluationResponse struct {
 }
 
 type recentRunForEvaluationDTO struct {
-	RunID     string `json:"run_id"`
+	RunRef    string `json:"run_ref"`
 	Title     string `json:"title"`
 	CreatedAt string `json:"created_at,omitempty"`
 }
@@ -62,7 +62,7 @@ func (s server) handleOwnerListRecentRunsForEvaluation(w http.ResponseWriter, r 
 	defer cancel()
 
 	rows, err := s.db.Query(ctx, `
-		select id, goal, created_at
+		select public_ref, goal, created_at
 		from runs
 		where publisher_user_id = $1
 		order by created_at desc
@@ -78,17 +78,17 @@ func (s server) handleOwnerListRecentRunsForEvaluation(w http.ResponseWriter, r 
 	out := make([]recentRunForEvaluationDTO, 0, limit)
 	for rows.Next() {
 		var (
-			runID     uuid.UUID
+			runRef    string
 			goal      string
 			createdAt time.Time
 		)
-		if err := rows.Scan(&runID, &goal, &createdAt); err != nil {
+		if err := rows.Scan(&runRef, &goal, &createdAt); err != nil {
 			logError(ctx, "recent runs: scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		out = append(out, recentRunForEvaluationDTO{
-			RunID:     runID.String(),
+			RunRef:    strings.TrimSpace(runRef),
 			Title:     strings.TrimSpace(goal),
 			CreatedAt: createdAt.UTC().Format(time.RFC3339),
 		})
@@ -110,7 +110,7 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 	}
 
 	limit := clampInt(int64Query(r, "limit", 10), 1, 50)
-	candidateAgentID := strings.TrimSpace(r.URL.Query().Get("candidate_agent_id"))
+	candidateAgentRefRaw := strings.TrimSpace(r.URL.Query().Get("candidate_agent_ref"))
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
@@ -141,10 +141,16 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 	}
 
 	var candidateAgentUUID uuid.UUID
-	if candidateAgentID != "" {
-		id, err := uuid.Parse(candidateAgentID)
+	if candidateAgentRefRaw != "" {
+		candidateAgentRef, err := parseAgentRef(candidateAgentRefRaw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid candidate_agent_id"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid candidate_agent_ref"})
+			return
+		}
+		id, err := s.lookupOwnerAgentIDByRef(ctx, userID, candidateAgentRef)
+		if err != nil {
+			logError(ctx, "recent topics: lookup candidate agent by agent_ref failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid candidate_agent_ref"})
 			return
 		}
 		candidateAgentUUID = id

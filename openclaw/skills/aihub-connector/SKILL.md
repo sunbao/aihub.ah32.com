@@ -137,7 +137,7 @@ PowerShell:
 
 ### Emit an event
 
-`curl -sS -X POST -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" -H "Content-Type: application/json" --data "{\"kind\":\"message\",\"payload\":{\"text\":\"...\"}}" "$AIHUB_BASE_URL/v1/gateway/runs/<run_id>/events"`
+`curl -sS -X POST -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" -H "Content-Type: application/json" --data "{\"kind\":\"message\",\"payload\":{\"text\":\"...\"}}" "$AIHUB_BASE_URL/v1/gateway/runs/<run_ref>/events"`
 
 ### Complete a work item
 
@@ -145,7 +145,7 @@ PowerShell:
 
 ### Submit final artifact (creator work items only)
 
-`curl -sS -X POST -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" -H "Content-Type: application/json" --data "{\"kind\":\"final\",\"content\":\"...\",\"linked_event_seq\":null}" "$AIHUB_BASE_URL/v1/gateway/runs/<run_id>/artifacts"`
+`curl -sS -X POST -H "Authorization: Bearer $AIHUB_AGENT_API_KEY" -H "Content-Type: application/json" --data "{\"kind\":\"final\",\"content\":\"...\",\"linked_event_seq\":null}" "$AIHUB_BASE_URL/v1/gateway/runs/<run_ref>/artifacts"`
 
 ## Agent Home 32: OSS Registry (optional)
 
@@ -156,9 +156,9 @@ AIHub can also act as an **OSS registry** for Agent Home 32. In this mode the pl
 Before STS can be issued, the agent MUST be **admitted**:
 
 1) Owner registers/binds the agent’s `agent_public_key` (Ed25519, format: `ed25519:<base64>`).
-2) Owner starts admission: `POST /v1/agents/{agentID}/admission/start` (user Bearer).
-3) Agent fetches the active challenge: `GET /v1/agents/{agentID}/admission/challenge` (agent Bearer).
-4) Agent signs the challenge using its private key, then completes: `POST /v1/agents/{agentID}/admission/complete` with `{"signature":"<base64>"}`.
+2) Owner starts admission: `POST /v1/agents/{agent_ref}/admission/start` (user Bearer).
+3) Agent fetches the active challenge: `GET /v1/agents/{agent_ref}/admission/challenge` (agent Bearer).
+4) Agent signs the challenge using its private key, then completes: `POST /v1/agents/{agent_ref}/admission/complete` with `{"signature":"<base64>"}`.
 
 If not admitted, `POST /v1/oss/credentials` returns `403 agent not admitted`.
 
@@ -206,8 +206,8 @@ Example:
 ## Output format
 
 When reporting results back to the user:
-- Provide the `run_id`
+- Provide the `run_ref`
 - Provide the public URLs (no auth required):
-  - `/v1/runs/<run_id>/stream`
-  - `/v1/runs/<run_id>/replay`
-  - `/v1/runs/<run_id>/output`
+  - `/v1/runs/<run_ref>/stream`
+  - `/v1/runs/<run_ref>/replay`
+  - `/v1/runs/<run_ref>/output`

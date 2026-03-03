@@ -21,7 +21,7 @@ type WorkItemsProgress = {
 };
 
 type ActivityItem = {
-  run_id: string;
+  run_ref: string;
   run_goal: string;
   run_status: string;
   seq: number;
@@ -99,7 +99,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
     <Card
       className="mb-3 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
       onClick={() => {
-        nav(`/runs/${encodeURIComponent(item.run_id)}`);
+        nav(`/runs/${encodeURIComponent(item.run_ref)}`);
       }}
     >
       <CardContent className="pt-4">
@@ -215,8 +215,8 @@ export function SquarePage() {
     try {
       const res = await apiFetchJson<ActivityResponse>(buildUrl(nextOffset));
       setItems((prev) => {
-        const existing = new Set(prev.map((x) => `${x.run_id}:${x.seq}`));
-        const next = (res.items ?? []).filter((x) => !existing.has(`${x.run_id}:${x.seq}`));
+        const existing = new Set(prev.map((x) => `${x.run_ref}:${x.seq}`));
+        const next = (res.items ?? []).filter((x) => !existing.has(`${x.run_ref}:${x.seq}`));
         return [...prev, ...next];
       });
       setHasMore(!!res.has_more);
@@ -259,7 +259,7 @@ export function SquarePage() {
           persona && !isUuidLike(persona) && !(isZh && isMostlyAscii(persona))
             ? persona
             : fmtEventKind(it.kind, locale) || t({ zh: "事件", en: "Event" });
-        return { id: `${it.run_id}:${it.seq}`, label, runId: it.run_id };
+        return { id: `${it.run_ref}:${it.seq}`, label, runId: it.run_ref };
       });
   }, [items, isZh, locale, t]);
 
@@ -302,7 +302,7 @@ export function SquarePage() {
         ) : null}
 
         {items.map((item) => (
-          <ActivityRow key={`${item.run_id}:${item.seq}`} item={item} />
+          <ActivityRow key={`${item.run_ref}:${item.seq}`} item={item} />
         ))}
 
         {loading && (

@@ -52,7 +52,7 @@ type server struct {
 }
 
 type eventDTO struct {
-	RunID     string         `json:"run_id"`
+	RunRef    string         `json:"run_ref"`
 	Seq       int64          `json:"seq"`
 	Kind      string         `json:"kind"`
 	Persona   string         `json:"persona"`
@@ -222,10 +222,9 @@ type createAgentRequest struct {
 }
 
 type createAgentResponse struct {
-	AgentID    string         `json:"agent_id"`
+	AgentRef   string         `json:"agent_ref"`
 	APIKey     string         `json:"api_key"`
 	Endpoints  map[string]any `json:"endpoints"`
-	Onboarding map[string]any `json:"onboarding,omitempty"`
 }
 
 func normalizeTags(tags []string) []string {
@@ -445,32 +444,57 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var agentID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-		insert into agents (
-			owner_id, name, description, status,
-			avatar_url, personality, interests, capabilities, bio, greeting,
-			discovery, autonomous, persona,
-			agent_public_key,
-			prompt_view,
-			card_review_status
-		)
-		values (
-			$1, $2, $3, 'enabled',
-			$4, $5, $6, $7, $8, $9,
-			$10, $11, $12,
-			$13,
-			$14,
-			$15
-		)
-		returning id
-	`, userID, req.Name, req.Description,
-		avatarURL, personalityJSON, interestsJSON, capabilitiesJSON, bio, greeting,
-		discoveryJSON, autonomousJSON, personaJSON,
-		agentPublicKey,
-		promptView,
-		cardReviewStatus,
-	).Scan(&agentID); err != nil {
+	agentRef := ""
+	for attempt := 0; attempt < 5; attempt++ {
+		ref, err := randomPublicRef(agentRefPrefix)
+		if err != nil {
+			logError(ctx, "generate agent_ref failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create agent failed"})
+			return
+		}
+		agentRef = ref
+
+		err = tx.QueryRow(ctx, `
+			insert into agents (
+				public_ref,
+				owner_id, name, description, status,
+				avatar_url, personality, interests, capabilities, bio, greeting,
+				discovery, autonomous, persona,
+				agent_public_key,
+				prompt_view,
+				card_review_status
+			)
+			values (
+				$1,
+				$2, $3, $4, 'enabled',
+				$5, $6, $7, $8, $9, $10,
+				$11, $12, $13,
+				$14,
+				$15,
+				$16
+			)
+			returning id
+		`, agentRef,
+			userID, req.Name, req.Description,
+			avatarURL, personalityJSON, interestsJSON, capabilitiesJSON, bio, greeting,
+			discoveryJSON, autonomousJSON, personaJSON,
+			agentPublicKey,
+			promptView,
+			cardReviewStatus,
+		).Scan(&agentID)
+		if err == nil {
+			break
+		}
+		if isUniqueViolation(err) {
+			logError(ctx, "agent_ref collision on insert", err)
+			continue
+		}
 		logError(ctx, "insert agent failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create agent failed"})
+		return
+	}
+	if agentID == uuid.Nil {
+		logError(ctx, "insert agent failed after retries", errors.New("agent_ref collision"))
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create agent failed"})
 		return
 	}
@@ -495,7 +519,7 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Offer platform built-in tasks (入驻自我介绍 + 每日签到), so new owners can satisfy
 	// the "先贡献后发布" gate by having their agent complete platform work.
-	onboardingRunID, onboardingWorkItemID, err := s.createOnboardingOffer(ctx, tx, agentID)
+	_, _, err := s.createOnboardingOffer(ctx, tx, agentID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create onboarding offer failed"})
 		return
@@ -508,14 +532,10 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	s.audit(ctx, "user", userID, "agent_api_key_issued", map[string]any{"agent_id": agentID.String()})
 	writeJSON(w, http.StatusCreated, createAgentResponse{
-		AgentID: agentID.String(),
-		APIKey:  apiKey,
+		AgentRef: agentRef,
+		APIKey:   apiKey,
 		Endpoints: map[string]any{
 			"poll": "/v1/gateway/inbox/poll",
-		},
-		Onboarding: map[string]any{
-			"run_id":       onboardingRunID.String(),
-			"work_item_id": onboardingWorkItemID.String(),
 		},
 	})
 }
@@ -533,33 +553,37 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 	// Ensure platform built-in runs exist (global, not per-agent).
 	// NOTE: These are discoverable on the homepage (include_system=1), and every new agent will get
 	// two offered work items under them (intro + check-in).
+	introRef := stablePublicRefFromUUID(runRefPrefix, platformIntroRunID)
 	if _, err := tx.Exec(ctx, `
-		insert into runs (id, publisher_user_id, goal, constraints, status, review_status)
-		values ($1, $2, $3, $4, 'running', 'approved')
+		insert into runs (id, public_ref, publisher_user_id, goal, constraints, status, review_status)
+		values ($1, $2, $3, $4, $5, 'running', 'approved')
 		on conflict (id) do update
-		set publisher_user_id = excluded.publisher_user_id,
+		set public_ref = excluded.public_ref,
+		    publisher_user_id = excluded.publisher_user_id,
 		    goal = excluded.goal,
 		    constraints = excluded.constraints,
 		    status = excluded.status,
 		    review_status = case when runs.review_status = 'rejected' then runs.review_status else excluded.review_status end,
 		    updated_at = now()
-	`, platformIntroRunID, platformUserID,
+	`, platformIntroRunID, introRef, platformUserID,
 		"平台内置任务：入驻自我介绍",
 		"要求：必须遵循任务项里写明的「预期输出」；只用中文；不要泄露密钥/Token/隐私信息；不需要人工中途指挥；最后要完成任务项。",
 	); err != nil {
 		return uuid.Nil, uuid.Nil, err
 	}
+	checkinRef := stablePublicRefFromUUID(runRefPrefix, platformCheckinRunID)
 	if _, err := tx.Exec(ctx, `
-		insert into runs (id, publisher_user_id, goal, constraints, status, review_status)
-		values ($1, $2, $3, $4, 'running', 'approved')
+		insert into runs (id, public_ref, publisher_user_id, goal, constraints, status, review_status)
+		values ($1, $2, $3, $4, $5, 'running', 'approved')
 		on conflict (id) do update
-		set publisher_user_id = excluded.publisher_user_id,
+		set public_ref = excluded.public_ref,
+		    publisher_user_id = excluded.publisher_user_id,
 		    goal = excluded.goal,
 		    constraints = excluded.constraints,
 		    status = excluded.status,
 		    review_status = case when runs.review_status = 'rejected' then runs.review_status else excluded.review_status end,
 		    updated_at = now()
-	`, platformCheckinRunID, platformUserID,
+	`, platformCheckinRunID, checkinRef, platformUserID,
 		"平台内置任务：每日签到",
 		"要求：必须遵循任务项里写明的「预期输出」；只用中文；不要泄露密钥/Token/隐私信息；不需要人工中途指挥；最后要完成任务项。",
 	); err != nil {
@@ -620,7 +644,7 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 }
 
 type agentDTO struct {
-	ID          string   `json:"id"`
+	AgentRef    string   `json:"agent_ref"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Status      string   `json:"status"`
@@ -638,12 +662,13 @@ func (s server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	rows, err := s.db.Query(ctx, `
-		select id, name, description, status
+		select id, public_ref, name, description, status
 		from agents
 		where owner_id = $1
 		order by created_at desc
 	`, userID)
 	if err != nil {
+		logError(ctx, "list agents query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -653,28 +678,36 @@ func (s server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var (
 			id          uuid.UUID
+			agentRef    string
 			name        string
 			description string
 			status      string
 		)
-		if err := rows.Scan(&id, &name, &description, &status); err != nil {
+		if err := rows.Scan(&id, &agentRef, &name, &description, &status); err != nil {
+			logError(ctx, "list agents scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 
 		tags, err := s.listAgentTags(ctx, id)
 		if err != nil {
+			logError(ctx, "list agents tags query failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tags query failed"})
 			return
 		}
 
 		out = append(out, agentDTO{
-			ID:          id.String(),
+			AgentRef:    agentRef,
 			Name:        name,
 			Description: description,
 			Status:      status,
 			Tags:        tags,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		logError(ctx, "list agents iterate failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"agents": out})
 }
@@ -704,26 +737,28 @@ func (s server) handleDisableAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	cmdTag, err := s.db.Exec(ctx, `
+	var agentID uuid.UUID
+	err := s.db.QueryRow(ctx, `
 		update agents
 		set status = 'disabled', updated_at = now()
-		where id = $1 and owner_id = $2
-	`, agentID, userID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
+		where public_ref = $1 and owner_id = $2
+		returning id
+	`, agentRef, userID).Scan(&agentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	if cmdTag.RowsAffected() == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	if err != nil {
+		logError(ctx, "disable agent failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
 
@@ -738,9 +773,8 @@ func (s server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
@@ -754,13 +788,14 @@ func (s server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Verify ownership.
-	var exists bool
-	if err := tx.QueryRow(ctx, `select true from agents where id=$1 and owner_id=$2`, agentID, userID).Scan(&exists); err != nil {
+	// Verify ownership and resolve internal agent id.
+	var agentID uuid.UUID
+	if err := tx.QueryRow(ctx, `select id from agents where public_ref=$1 and owner_id=$2`, agentRef, userID).Scan(&agentID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
+		logError(ctx, "query agent for delete failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -843,9 +878,8 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	var req updateAgentRequest
@@ -881,6 +915,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
+	var agentID uuid.UUID
 	var (
 		curName            string
 		curDescription     string
@@ -902,6 +937,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	)
 	err = tx.QueryRow(ctx, `
 		select
+			id,
 			name, description, status, avatar_url,
 			personality, interests, capabilities,
 			bio, greeting,
@@ -913,8 +949,9 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			card_cert,
 			card_review_status
 		from agents
-		where id = $1 and owner_id = $2
-	`, agentID, userID).Scan(
+		where public_ref = $1 and owner_id = $2
+	`, agentRef, userID).Scan(
+		&agentID,
 		&curName, &curDescription, &curStatus, &curAvatarURL,
 		&curPersonalityRaw, &curInterestsRaw, &curCapabilitiesRaw,
 		&curBio, &curGreeting,
@@ -1273,9 +1310,8 @@ func (s server) handleAddAgentTag(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	var req addTagRequest
@@ -1291,12 +1327,13 @@ func (s server) handleAddAgentTag(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var exists bool
-	if err := s.db.QueryRow(ctx, `select true from agents where id=$1 and owner_id=$2`, agentID, userID).Scan(&exists); err != nil {
+	var agentID uuid.UUID
+	if err := s.db.QueryRow(ctx, `select id from agents where public_ref=$1 and owner_id=$2`, agentRef, userID).Scan(&agentID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
+		logError(ctx, "query agent for add tag failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -1305,6 +1342,7 @@ func (s server) handleAddAgentTag(w http.ResponseWriter, r *http.Request) {
 		insert into agent_tags (agent_id, tag) values ($1, $2)
 		on conflict do nothing
 	`, agentID, tag); err != nil {
+		logError(ctx, "insert agent tag failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert failed"})
 		return
 	}
@@ -1317,9 +1355,8 @@ func (s server) handleDeleteAgentTag(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	tag := strings.TrimSpace(chi.URLParam(r, "tag"))
@@ -1331,12 +1368,23 @@ func (s server) handleDeleteAgentTag(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	var agentID uuid.UUID
+	if err := s.db.QueryRow(ctx, `select id from agents where public_ref=$1 and owner_id=$2`, agentRef, userID).Scan(&agentID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		logError(ctx, "query agent for delete tag failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
 	cmd, err := s.db.Exec(ctx, `
 		delete from agent_tags
 		where agent_id = $1 and tag = $2
-		  and exists (select 1 from agents where id=$1 and owner_id=$3)
-	`, agentID, tag, userID)
+	`, agentID, tag)
 	if err != nil {
+		logError(ctx, "delete agent tag failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
 	}
@@ -1353,14 +1401,14 @@ func (s server) handleRotateAgentKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
 	apiKey, err := keys.NewAPIKey()
 	if err != nil {
+		logError(r.Context(), "generate agent api key failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "key generation failed"})
 		return
 	}
@@ -1371,17 +1419,19 @@ func (s server) handleRotateAgentKey(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
+		logError(ctx, "db begin failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
 		return
 	}
 	defer tx.Rollback(ctx)
 
-	var exists bool
-	if err := tx.QueryRow(ctx, `select true from agents where id=$1 and owner_id=$2`, agentID, userID).Scan(&exists); err != nil {
+	var agentID uuid.UUID
+	if err := tx.QueryRow(ctx, `select id from agents where public_ref=$1 and owner_id=$2`, agentRef, userID).Scan(&agentID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
+		logError(ctx, "query agent for rotate key failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -1390,17 +1440,20 @@ func (s server) handleRotateAgentKey(w http.ResponseWriter, r *http.Request) {
 		update agent_api_keys set revoked_at = now()
 		where agent_id = $1 and revoked_at is null
 	`, agentID); err != nil {
+		logError(ctx, "revoke agent api keys failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "revoke failed"})
 		return
 	}
 	if _, err := tx.Exec(ctx, `
 		insert into agent_api_keys (agent_id, key_hash) values ($1, $2)
 	`, agentID, hash); err != nil {
+		logError(ctx, "insert agent api key failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert failed"})
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "db commit failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
@@ -1421,7 +1474,7 @@ type createRunRequest struct {
 }
 
 type createRunResponse struct {
-	RunID string `json:"run_id"`
+	RunRef string `json:"run_ref"`
 }
 
 func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
@@ -1463,12 +1516,33 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 
 	var runID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-			insert into runs (publisher_user_id, goal, constraints, status, review_status)
-			values ($1, $2, $3, 'created', 'approved')
-			returning id
-		`, userID, req.Goal, req.Constraints).Scan(&runID); err != nil {
+	runRef := ""
+	for attempt := 0; attempt < 5; attempt++ {
+		ref, err := randomPublicRef(runRefPrefix)
+		if err != nil {
+			logError(ctx, "create run: generate run_ref failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
+			return
+		}
+		runRef = ref
+		err = tx.QueryRow(ctx, `
+				insert into runs (public_ref, publisher_user_id, goal, constraints, status, review_status)
+				values ($1, $2, $3, $4, 'created', 'approved')
+				returning id
+			`, runRef, userID, req.Goal, req.Constraints).Scan(&runID)
+		if err == nil {
+			break
+		}
+		if isUniqueViolation(err) {
+			logError(ctx, "create run: run_ref collision on insert", err)
+			continue
+		}
 		logError(ctx, "create run: insert run failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
+		return
+	}
+	if runID == uuid.Nil {
+		logError(ctx, "create run: insert run failed after retries", errors.New("run_ref collision"))
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
 		return
 	}
@@ -1499,7 +1573,7 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(ctx, "user", userID, "run_created", map[string]any{"run_id": runID.String(), "initial_work_item_id": workItemID.String()})
-	writeJSON(w, http.StatusCreated, createRunResponse{RunID: runID.String()})
+	writeJSON(w, http.StatusCreated, createRunResponse{RunRef: runRef})
 }
 
 type stageTemplate struct {
@@ -1733,7 +1807,7 @@ func (s server) matchNonOwnerAgents(ctx context.Context, q interface {
 }
 
 type runPublicDTO struct {
-	ID          string `json:"id"`
+	RunRef      string `json:"run_ref"`
 	Goal        string `json:"goal"`
 	Constraints string `json:"constraints"`
 	Status      string `json:"status"`
@@ -1741,7 +1815,7 @@ type runPublicDTO struct {
 }
 
 type runListItemDTO struct {
-	RunID         string `json:"run_id"`
+	RunRef        string `json:"run_ref"`
 	Goal          string `json:"goal"`
 	Constraints   string `json:"constraints"`
 	Status        string `json:"status"`
@@ -1809,7 +1883,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 	for _, t := range terms {
 		pat := "%" + t + "%"
 		parts := []string{
-			"r.id::text ilike $" + strconv.Itoa(argN),
+			"r.public_ref ilike $" + strconv.Itoa(argN),
 			"r.goal ilike $" + strconv.Itoa(argN),
 			"r.constraints ilike $" + strconv.Itoa(argN),
 			"coalesce(a.content, '') ilike $" + strconv.Itoa(argN),
@@ -1823,7 +1897,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 	limitPlusOne := limit + 1
 
 	sql := `
-		select r.id, r.goal, r.constraints, r.status, r.created_at, r.updated_at,
+		select r.id, r.public_ref, r.goal, r.constraints, r.status, r.created_at, r.updated_at,
 		       coalesce(a.version, 0) as output_version,
 		       coalesce(a.kind, '') as output_kind,
 		       (r.publisher_user_id = $` + strconv.Itoa(platformArg) + `) as is_system,
@@ -1865,6 +1939,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var (
 			id           uuid.UUID
+			runRef       string
 			goal         string
 			constraints  string
 			status       string
@@ -1876,7 +1951,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 			artifactText string
 		)
 		var isSystem bool
-		if err := rows.Scan(&id, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind, &isSystem, &keyNodeText, &artifactText); err != nil {
+		if err := rows.Scan(&id, &runRef, &goal, &constraints, &status, &createdAt, &updatedAt, &outVer, &outKind, &isSystem, &keyNodeText, &artifactText); err != nil {
 			logError(ctx, "list runs scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
@@ -1889,7 +1964,7 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 		preview = strings.Join(strings.Fields(preview), " ")
 
 		out = append(out, runListItemDTO{
-			RunID:         id.String(),
+			RunRef:        runRef,
 			Goal:          goal,
 			Constraints:   constraints,
 			Status:        status,
@@ -1925,9 +2000,8 @@ func (s server) handleListRunsPublic(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s server) handleGetRunPublic(w http.ResponseWriter, r *http.Request) {
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runRef, ok := requireRunRefParam(w, r, "runRef")
+	if !ok {
 		return
 	}
 
@@ -1940,10 +2014,10 @@ func (s server) handleGetRunPublic(w http.ResponseWriter, r *http.Request) {
 	var isPublic bool
 	var publisherUserID uuid.UUID
 	err = s.db.QueryRow(ctx, `
-		select id, goal, constraints, status, created_at, review_status, is_public, publisher_user_id
+		select public_ref, goal, constraints, status, created_at, review_status, is_public, publisher_user_id
 		from runs
-		where id = $1
-	`, runID).Scan(&dto.ID, &dto.Goal, &dto.Constraints, &dto.Status, &createdAt, &reviewStatus, &isPublic, &publisherUserID)
+		where public_ref = $1
+	`, runRef).Scan(&dto.RunRef, &dto.Goal, &dto.Constraints, &dto.Status, &createdAt, &reviewStatus, &isPublic, &publisherUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return

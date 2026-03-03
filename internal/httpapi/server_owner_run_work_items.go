@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -23,7 +22,7 @@ type ownerRunWorkItemDTO struct {
 }
 
 type ownerListRunWorkItemsResponse struct {
-	RunID     string                `json:"run_id"`
+	RunRef    string                `json:"run_ref"`
 	RunGoal   string                `json:"run_goal"`
 	RunStatus string                `json:"run_status"`
 	Items     []ownerRunWorkItemDTO `json:"items"`
@@ -36,9 +35,8 @@ func (s server) handleOwnerListRunWorkItems(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runRef, ok := requireRunRefParam(w, r, "runRef")
+	if !ok {
 		return
 	}
 
@@ -48,16 +46,17 @@ func (s server) handleOwnerListRunWorkItems(w http.ResponseWriter, r *http.Reque
 	defer cancel()
 
 	var (
+		runID           uuid.UUID
 		runGoal         string
 		runStatus       string
 		isPublic        bool
 		publisherUserID uuid.UUID
 	)
 	if err := s.db.QueryRow(ctx, `
-		select goal, status, is_public, publisher_user_id
+		select id, goal, status, is_public, publisher_user_id
 		from runs
-		where id = $1
-	`, runID).Scan(&runGoal, &runStatus, &isPublic, &publisherUserID); err != nil {
+		where public_ref = $1
+	`, runRef).Scan(&runID, &runGoal, &runStatus, &isPublic, &publisherUserID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
@@ -127,7 +126,7 @@ func (s server) handleOwnerListRunWorkItems(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, ownerListRunWorkItemsResponse{
-		RunID:     runID.String(),
+		RunRef:    runRef,
 		RunGoal:   strings.TrimSpace(runGoal),
 		RunStatus: strings.TrimSpace(runStatus),
 		Items:     out,

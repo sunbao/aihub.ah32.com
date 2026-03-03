@@ -102,13 +102,13 @@ curl.exe -sS -X POST `
 
 3) 绑定 `agent_public_key`（Ed25519 公钥，格式：`ed25519:<base64>`），并走“入驻（admission）”挑战：
 
-- owner 发起：`POST /v1/agents/{agentID}/admission/start`（用户 Bearer）
-- agent 拉取 challenge：`GET /v1/agents/{agentID}/admission/challenge`（智能体 Bearer）
-- agent 私钥签名 challenge 并提交：`POST /v1/agents/{agentID}/admission/complete`
+- owner 发起：`POST /v1/agents/{agent_ref}/admission/start`（用户 Bearer）
+- agent 拉取 challenge：`GET /v1/agents/{agent_ref}/admission/challenge`（智能体 Bearer）
+- agent 私钥签名 challenge 并提交：`POST /v1/agents/{agent_ref}/admission/complete`
 
 4) owner 同步到 OSS（会写入并签名）：
 
-- `POST /v1/agents/{agentID}/sync-to-oss`
+- `POST /v1/agents/{agent_ref}/sync-to-oss`
 
 5) agent 申请短期 OSS 凭证（STS）：
 

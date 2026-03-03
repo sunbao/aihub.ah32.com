@@ -13,7 +13,7 @@ import { apiFetchJson, getApiBaseUrl } from "@/lib/api";
 import { fmtArtifactKind, fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 
 type RunPublic = {
-  id: string;
+  run_ref: string;
   goal: string;
   constraints: string;
   status: string;
@@ -21,7 +21,7 @@ type RunPublic = {
 };
 
 type EventDTO = {
-  run_id: string;
+  run_ref: string;
   seq: number;
   kind: string;
   persona: string;
@@ -31,7 +31,7 @@ type EventDTO = {
 };
 
 type ReplayResponse = {
-  run_id: string;
+  run_ref: string;
   events: EventDTO[];
   key_nodes: EventDTO[];
   after_seq: number;
@@ -39,7 +39,7 @@ type ReplayResponse = {
 };
 
 type RunOutput = {
-  run_id: string;
+  run_ref: string;
   version: number;
   kind: string;
   author?: string;
@@ -48,7 +48,7 @@ type RunOutput = {
 };
 
 type RunArtifact = {
-  run_id: string;
+  run_ref: string;
   version: number;
   kind: string;
   author?: string;
@@ -99,7 +99,7 @@ function EventCard({ ev }: { ev: EventDTO }) {
   );
 }
 
-function ProgressView({ runId }: { runId: string }) {
+function ProgressView({ runRef }: { runRef: string }) {
   const [events, setEvents] = useState<EventDTO[]>([]);
   const [error, setError] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -109,7 +109,7 @@ function ProgressView({ runId }: { runId: string }) {
 
   useEffect(() => {
     const base = getApiBaseUrl();
-    const url = `${base}/v1/runs/${encodeURIComponent(runId)}/stream?after_seq=0`;
+    const url = `${base}/v1/runs/${encodeURIComponent(runRef)}/stream?after_seq=0`;
 
     setEvents([]);
     setError("");
@@ -128,14 +128,14 @@ function ProgressView({ runId }: { runId: string }) {
       }
     });
     es.addEventListener("error", () => {
-      console.warn("[AIHub] SSE stream error, falling back to polling", { runId, url });
+      console.warn("[AIHub] SSE stream error, falling back to polling", { runRef, url });
       setError("进度流不可用，已切换为轮询模式（可切到【记录】查看历史）。");
       setUsePolling(true);
       es.close();
     });
 
     return () => es.close();
-  }, [runId]);
+  }, [runRef]);
 
   useEffect(() => {
     if (!usePolling) return;
@@ -145,7 +145,7 @@ function ProgressView({ runId }: { runId: string }) {
     async function tick() {
       try {
         const res = await apiFetchJson<ReplayResponse>(
-          `/v1/runs/${encodeURIComponent(runId)}/replay?after_seq=${afterSeq}&limit=200`,
+          `/v1/runs/${encodeURIComponent(runRef)}/replay?after_seq=${afterSeq}&limit=200`,
         );
         if (!alive) return;
         const list = Array.isArray(res.events) ? res.events : [];
@@ -158,7 +158,7 @@ function ProgressView({ runId }: { runId: string }) {
         });
       } catch (e: any) {
         if (!alive) return;
-        console.warn("[AIHub] RunDetailPage polling failed", { runId, error: e });
+        console.warn("[AIHub] RunDetailPage polling failed", { runRef, error: e });
       }
     }
 
@@ -168,7 +168,7 @@ function ProgressView({ runId }: { runId: string }) {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [runId, usePolling]);
+  }, [runRef, usePolling]);
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -216,7 +216,7 @@ function ProgressView({ runId }: { runId: string }) {
   );
 }
 
-function ReplayView({ runId }: { runId: string }) {
+function ReplayView({ runRef }: { runRef: string }) {
   const [events, setEvents] = useState<EventDTO[]>([]);
   const [keyNodes, setKeyNodes] = useState<EventDTO[]>([]);
   const [afterSeq, setAfterSeq] = useState(0);
@@ -232,7 +232,7 @@ function ReplayView({ runId }: { runId: string }) {
     try {
       const after = reset ? 0 : afterSeq;
       const res = await apiFetchJson<ReplayResponse>(
-        `/v1/runs/${encodeURIComponent(runId)}/replay?after_seq=${after}&limit=200`,
+        `/v1/runs/${encodeURIComponent(runRef)}/replay?after_seq=${after}&limit=200`,
       );
       const list = res.events ?? [];
       setEvents((prev) => (reset ? list : prev.concat(list)));
@@ -241,7 +241,7 @@ function ReplayView({ runId }: { runId: string }) {
       setAfterSeq(last);
       setHasMore(list.length >= 200);
     } catch (e: any) {
-      console.warn("[AIHub] RunDetailPage replay load failed", { runId, reset, error: e });
+      console.warn("[AIHub] RunDetailPage replay load failed", { runRef, reset, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -251,7 +251,7 @@ function ReplayView({ runId }: { runId: string }) {
   useEffect(() => {
     load({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId]);
+  }, [runRef]);
 
   // Infinite scroll for replay
   useEffect(() => {
@@ -331,7 +331,7 @@ function ReplayView({ runId }: { runId: string }) {
   );
 }
 
-function OutputView({ runId }: { runId: string }) {
+function OutputView({ runRef }: { runRef: string }) {
   const [latest, setLatest] = useState<RunOutput | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number>(0);
   const [selected, setSelected] = useState<RunArtifact | null>(null);
@@ -343,11 +343,11 @@ function OutputView({ runId }: { runId: string }) {
     setLoading(true);
     setError("");
     try {
-      const out = await apiFetchJson<RunOutput>(`/v1/runs/${encodeURIComponent(runId)}/output`);
+      const out = await apiFetchJson<RunOutput>(`/v1/runs/${encodeURIComponent(runRef)}/output`);
       setLatest(out);
       if (!selectedVersion) setSelectedVersion(out.version);
     } catch (e: any) {
-      console.warn("[AIHub] RunDetailPage output loadLatest failed", { runId, error: e });
+      console.warn("[AIHub] RunDetailPage output loadLatest failed", { runRef, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -357,21 +357,21 @@ function OutputView({ runId }: { runId: string }) {
   useEffect(() => {
     loadLatest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId]);
+  }, [runRef]);
 
   useEffect(() => {
     if (!selectedVersion) return;
     setSelected(null);
     setError("");
     apiFetchJson<RunArtifact>(
-      `/v1/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(String(selectedVersion))}`,
+      `/v1/runs/${encodeURIComponent(runRef)}/artifacts/${encodeURIComponent(String(selectedVersion))}`,
     )
       .then((a) => setSelected(a))
       .catch((e: any) => {
-        console.warn("[AIHub] RunDetailPage artifact load failed", { runId, version: selectedVersion, error: e });
+        console.warn("[AIHub] RunDetailPage artifact load failed", { runRef, version: selectedVersion, error: e });
         setError(String(e?.message ?? "加载失败"));
       });
-  }, [runId, selectedVersion]);
+  }, [runRef, selectedVersion]);
 
   const maxVersion = latest?.version ?? 0;
   const versionOptions = useMemo(() => {
@@ -461,8 +461,8 @@ function OutputView({ runId }: { runId: string }) {
 }
 
 export function RunDetailPage() {
-  const { runId } = useParams();
-  const rid = String(runId ?? "").trim();
+  const { runRef } = useParams();
+  const rid = String(runRef ?? "").trim();
 
   const [run, setRun] = useState<RunPublic | null>(null);
   const [error, setError] = useState("");
@@ -490,7 +490,7 @@ export function RunDetailPage() {
           console.debug("[AIHub] RunDetailPage load aborted", e);
           return;
         }
-        console.warn("[AIHub] RunDetailPage load failed", { runId: rid, error: e });
+        console.warn("[AIHub] RunDetailPage load failed", { runRef: rid, error: e });
         setError(String(e?.message ?? "加载失败"));
       })
       .finally(() => setLoading(false));
@@ -538,13 +538,13 @@ export function RunDetailPage() {
           <TabsTrigger value="output">作品</TabsTrigger>
         </TabsList>
         <TabsContent value="progress" className="mt-3">
-          <ProgressView runId={rid} />
+          <ProgressView runRef={rid} />
         </TabsContent>
         <TabsContent value="replay" className="mt-3">
-          <ReplayView runId={rid} />
+          <ReplayView runRef={rid} />
         </TabsContent>
         <TabsContent value="output" className="mt-3">
-          <OutputView runId={rid} />
+          <OutputView runRef={rid} />
         </TabsContent>
       </Tabs>
     </div>

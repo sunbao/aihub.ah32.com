@@ -44,7 +44,7 @@ type Autonomous = {
 };
 
 type AgentFull = {
-  id: string;
+  agent_ref: string;
   name: string;
   description: string;
   status: string;
@@ -90,10 +90,10 @@ type ApprovedPersonaTemplate = {
 
 type PreReviewEvaluation = {
   evaluation_id: string;
-  agent_id: string;
-  run_id: string;
+  agent_ref: string;
+  run_ref: string;
   topic: string;
-  source_run_id?: string;
+  source_run_ref?: string;
   topic_id?: string;
   work_item_id?: string;
   source?: { kind: string; title?: string; summary?: string };
@@ -117,7 +117,7 @@ type ListRecentTopicsForEvaluationResponse = {
 };
 
 type RecentRunForEvaluation = {
-  run_id: string;
+  run_ref: string;
   title: string;
   created_at: string;
 };
@@ -136,7 +136,7 @@ type OwnerRunWorkItem = {
 };
 
 type OwnerListRunWorkItemsResponse = {
-  run_id: string;
+  run_ref: string;
   run_goal: string;
   run_status: string;
   items: OwnerRunWorkItem[];
@@ -144,12 +144,12 @@ type OwnerListRunWorkItemsResponse = {
 
 type OwnerGetPreReviewEvaluationResponse = {
   evaluation_id: string;
-  agent_id: string;
-  run_id: string;
+  agent_ref: string;
+  run_ref: string;
   topic: string;
   topic_id?: string;
   work_item_id?: string;
-  source_run_id?: string;
+  source_run_ref?: string;
   source?: { kind: string; title?: string; summary?: string };
   source_snapshot?: any;
   status: string;
@@ -242,11 +242,11 @@ function mapLabelsToEn(labels: string[], map: Map<string, string>): string[] {
 }
 
 export function AgentCardWizard({
-  agentId,
+  agentRef,
   userApiKey,
   onSaved,
 }: {
-  agentId: string;
+  agentRef: string;
   userApiKey: string;
   onSaved?: () => void;
 }) {
@@ -426,12 +426,12 @@ export function AgentCardWizard({
   }
 
   async function loadAll(forceCatalogRefresh = false) {
-    if (!agentId) return;
+    if (!agentRef) return;
     setLoading(true);
     setError("");
     try {
       const [a, c, p] = await Promise.all([
-        apiFetchJson<AgentFull>(`/v1/agents/${encodeURIComponent(agentId)}`, { apiKey: userApiKey }),
+        apiFetchJson<AgentFull>(`/v1/agents/${encodeURIComponent(agentRef)}`, { apiKey: userApiKey }),
         getAgentCardCatalogs({ userApiKey, forceRefresh: forceCatalogRefresh }),
         apiFetchJson<{ items: ApprovedPersonaTemplate[] }>(`/v1/persona-templates?limit=200`, { apiKey: userApiKey }),
       ]);
@@ -481,7 +481,7 @@ export function AgentCardWizard({
       });
       setPersonalityPresetId(preset?.id ?? "");
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard loadAll failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard loadAll failed", { agentRef, error: e });
       setError(String(e?.message ?? "加载失败"));
     } finally {
       setLoading(false);
@@ -494,20 +494,20 @@ export function AgentCardWizard({
     setPersonaTemplateId("");
     void loadAll(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId]);
+  }, [agentRef]);
 
   async function loadEvaluations() {
-    if (!agentId) return;
+    if (!agentRef) return;
     setEvalLoading(true);
     setEvalError("");
     try {
       const res = await apiFetchJson<{ items: PreReviewEvaluation[] }>(
-        `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations?limit=20`,
+        `/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations?limit=20`,
         { apiKey: userApiKey },
       );
       setEvals(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard load evaluations failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard load evaluations failed", { agentRef, error: e });
       setEvalError(String(e?.message ?? t({ zh: "测评记录加载失败", en: "Failed to load evaluations" })));
     } finally {
       setEvalLoading(false);
@@ -520,20 +520,20 @@ export function AgentCardWizard({
     void loadRecentTopics();
     void loadRecentRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, agentId]);
+  }, [step, agentRef]);
 
   async function loadRecentTopics() {
-    if (!agentId) return;
+    if (!agentRef) return;
     setRecentTopicsLoading(true);
     setRecentTopicsError("");
     try {
       const res = await apiFetchJson<ListRecentTopicsForEvaluationResponse>(
-        `/v1/pre-review-evaluation/sources/recent-topics?limit=10&candidate_agent_id=${encodeURIComponent(agentId)}`,
+        `/v1/pre-review-evaluation/sources/recent-topics?limit=10&candidate_agent_ref=${encodeURIComponent(agentRef)}`,
         { apiKey: userApiKey },
       );
       setRecentTopics(Array.isArray(res.items) ? res.items : []);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard load recent topics failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard load recent topics failed", { agentRef, error: e });
       setRecentTopicsError(String(e?.message ?? t({ zh: "加载失败", en: "Load failed" })));
       setRecentTopics([]);
     } finally {
@@ -656,7 +656,7 @@ export function AgentCardWizard({
   }
 
   async function createEvaluation() {
-    if (!agentId) return;
+    if (!agentRef) return;
     setEvalCreating(true);
     setEvalError("");
     try {
@@ -676,10 +676,10 @@ export function AgentCardWizard({
       const body: any = { topic: evalTopic.trim() };
       if (topicId) body.topic_id = topicId;
       if (workItemId) body.work_item_id = workItemId;
-      if (sourceRunId) body.source_run_id = sourceRunId;
+      if (sourceRunId) body.source_run_ref = sourceRunId;
 
-      await apiFetchJson<{ evaluation_id: string; run_id: string; expires_at: string }>(
-        `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations`,
+      await apiFetchJson<{ evaluation_id: string; run_ref: string; expires_at: string }>(
+        `/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations`,
         {
           method: "POST",
           apiKey: userApiKey,
@@ -694,7 +694,7 @@ export function AgentCardWizard({
       setWorkItemRunItems([]);
       await loadEvaluations();
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard create evaluation failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard create evaluation failed", { agentRef, error: e });
       setEvalError(String(e?.message ?? t({ zh: "发起测评失败", en: "Failed to start evaluation" })));
     } finally {
       setEvalCreating(false);
@@ -702,7 +702,7 @@ export function AgentCardWizard({
   }
 
   async function openSnapshot(ev: PreReviewEvaluation) {
-    if (!agentId) return;
+    if (!agentRef) return;
     if (!ev?.evaluation_id) return;
     setSnapshotEval(ev);
     setSnapshotLoading(true);
@@ -711,12 +711,12 @@ export function AgentCardWizard({
     setSnapshotShowRaw(false);
     try {
       const res = await apiFetchJson<OwnerGetPreReviewEvaluationResponse>(
-        `/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations/${encodeURIComponent(ev.evaluation_id)}`,
+        `/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations/${encodeURIComponent(ev.evaluation_id)}`,
         { apiKey: userApiKey },
       );
       setSnapshotData(res);
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard load evaluation snapshot failed", { agentId, evaluationId: ev.evaluation_id, error: e });
+      console.warn("[AIHub] AgentCardWizard load evaluation snapshot failed", { agentRef, evaluationId: ev.evaluation_id, error: e });
       setSnapshotError(String(e?.message ?? t({ zh: "加载快照失败", en: "Failed to load snapshot" })));
     } finally {
       setSnapshotLoading(false);
@@ -724,19 +724,19 @@ export function AgentCardWizard({
   }
 
   async function deleteEvaluation(ev: PreReviewEvaluation) {
-    if (!agentId) return;
+    if (!agentRef) return;
     if (!ev?.evaluation_id) return;
     setEvalDeletingId(ev.evaluation_id);
     setEvalError("");
     try {
-      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/pre-review-evaluations/${encodeURIComponent(ev.evaluation_id)}`, {
+      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations/${encodeURIComponent(ev.evaluation_id)}`, {
         method: "DELETE",
         apiKey: userApiKey,
       });
       toast({ title: t({ zh: "已删除", en: "Deleted" }) });
       await loadEvaluations();
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard delete evaluation failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard delete evaluation failed", { agentRef, error: e });
       setEvalError(String(e?.message ?? t({ zh: "删除失败", en: "Delete failed" })));
     } finally {
       setEvalDeletingId("");
@@ -769,7 +769,7 @@ export function AgentCardWizard({
   ]);
 
   async function save() {
-    if (!agentId) return;
+    if (!agentRef) return;
     setSaving(true);
     setError("");
     try {
@@ -790,7 +790,7 @@ export function AgentCardWizard({
       };
       if (personaTouched) req.persona_template_id = personaTemplateId;
 
-      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}`, {
+      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}`, {
         method: "PATCH",
         apiKey: userApiKey,
         body: req,
@@ -799,7 +799,7 @@ export function AgentCardWizard({
       toast({ title: t({ zh: "已保存", en: "Saved" }) });
       onSaved?.();
     } catch (e: any) {
-      console.warn("[AIHub] AgentCardWizard save failed", { agentId, error: e });
+      console.warn("[AIHub] AgentCardWizard save failed", { agentRef, error: e });
       setError(String(e?.message ?? "保存失败"));
     } finally {
       setSaving(false);
@@ -1502,13 +1502,13 @@ export function AgentCardWizard({
                             {recentRunsError ? <div className="mt-2 text-xs text-destructive">{recentRunsError}</div> : null}
                             <div className="mt-2 space-y-2">
                               {recentRuns.slice(0, 8).map((it) => (
-                                <div key={it.run_id} className="rounded-md border px-3 py-2">
+                                <div key={it.run_ref} className="rounded-md border px-3 py-2">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
                                       <div className="truncate text-sm font-medium">{String(it.title ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" })}</div>
                                       <div className="mt-0.5 text-xs text-muted-foreground">{fmtTime(it.created_at)}</div>
                                     </div>
-                                    <Button size="sm" variant="secondary" onClick={() => pickRunAsScenario(String(it.run_id), String(it.title))}>
+                                    <Button size="sm" variant="secondary" onClick={() => pickRunAsScenario(String(it.run_ref), String(it.title))}>
                                       {t({ zh: "选择", en: "Pick" })}
                                     </Button>
                                   </div>
@@ -1559,14 +1559,14 @@ export function AgentCardWizard({
                             <div className="flex flex-wrap gap-2">
                               {recentRuns.slice(0, 8).map((it) => (
                                 <Button
-                                  key={it.run_id}
+                                  key={it.run_ref}
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
                                     const title = String(it.title ?? "").trim() || t({ zh: "（无标题）", en: "(untitled)" });
-                                    setWorkItemRunId(String(it.run_id));
+                                    setWorkItemRunId(String(it.run_ref));
                                     setWorkItemRunTitle(title);
-                                    void loadWorkItemsForRun(String(it.run_id));
+                                    void loadWorkItemsForRun(String(it.run_ref));
                                   }}
                                 >
                                   {String(it.title ?? "").trim().slice(0, 12) || t({ zh: "（无标题）", en: "(untitled)" })}
@@ -1663,7 +1663,7 @@ export function AgentCardWizard({
                                 </div>
                               </div>
                               <div className="flex shrink-0 gap-2">
-                                <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_id)}`)}>
+                                <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_ref)}`)}>
                                   {t({ zh: "查看结果", en: "Open" })}
                                 </Button>
                                 <Button size="sm" variant="outline" onClick={() => openSnapshot(ev)}>
@@ -1833,10 +1833,10 @@ export function AgentCardWizard({
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>{t({ zh: "关闭", en: "Close" })}</AlertDialogCancel>
-            {snapshotData?.run_id ? (
+            {snapshotData?.run_ref ? (
               <AlertDialogAction
                 onClick={() => {
-                  nav(`/runs/${encodeURIComponent(String(snapshotData.run_id))}`);
+                  nav(`/runs/${encodeURIComponent(String(snapshotData.run_ref))}`);
                   setSnapshotEval(null);
                 }}
               >

@@ -12,7 +12,7 @@ import { getUserApiKey } from "@/lib/storage";
 type SwapTest = {
   kind: string;
   schema_version: number;
-  agent_id: string;
+  agent_ref: string;
   swap_test_id: string;
   created_at: string;
   questions: Array<{ question: string; answer: string }>;
@@ -22,8 +22,8 @@ type SwapTest = {
 export function UniquenessTestPage() {
   const { toast } = useToast();
   const { t } = useI18n();
-  const { agentId } = useParams();
-  const id = String(agentId ?? "").trim();
+  const { agentRef } = useParams();
+  const id = String(agentRef ?? "").trim();
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
 

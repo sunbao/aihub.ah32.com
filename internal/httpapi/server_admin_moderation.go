@@ -73,7 +73,7 @@ type moderationActionRequest struct {
 type adminModerationQueueItemDTO struct {
 	TargetType   string `json:"target_type"`
 	ID           string `json:"id"`
-	RunID        string `json:"run_id,omitempty"`
+	RunRef       string `json:"run_ref,omitempty"`
 	Seq          *int64 `json:"seq,omitempty"`
 	Version      *int   `json:"version,omitempty"`
 	Kind         string `json:"kind,omitempty"`
@@ -129,11 +129,30 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 50
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse moderation queue limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 200)
-	offset, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("offset")))
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse moderation queue offset failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid offset"})
+			return
+		}
+		offset = parsed
+	}
 	if offset < 0 {
-		offset = 0
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid offset"})
+		return
 	}
 
 	var selects []string
@@ -142,7 +161,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 			select
 				'run'::text as target_type,
 				r.id as id,
-				r.id as run_id,
+				r.public_ref as run_ref,
 				null::bigint as seq,
 				null::int as version,
 				''::text as kind,
@@ -160,7 +179,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 			select
 				'event'::text as target_type,
 				e.id as id,
-				e.run_id as run_id,
+				r.public_ref as run_ref,
 				e.seq as seq,
 				null::int as version,
 				e.kind as kind,
@@ -179,7 +198,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 			select
 				'artifact'::text as target_type,
 				a.id as id,
-				a.run_id as run_id,
+				r.public_ref as run_ref,
 				null::bigint as seq,
 				a.version as version,
 				a.kind as kind,
@@ -223,7 +242,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 		var (
 			targetType   string
 			id           uuid.UUID
-			runID        uuid.UUID
+			runRef       string
 			seq          *int64
 			version      *int
 			kind         string
@@ -232,7 +251,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 			summary      string
 			createdAt    time.Time
 		)
-		if err := rows.Scan(&targetType, &id, &runID, &seq, &version, &kind, &persona, &reviewStatus, &summary, &createdAt); err != nil {
+		if err := rows.Scan(&targetType, &id, &runRef, &seq, &version, &kind, &persona, &reviewStatus, &summary, &createdAt); err != nil {
 			logError(ctx, "admin moderation queue: scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
@@ -240,7 +259,7 @@ func (s server) handleAdminModerationQueue(w http.ResponseWriter, r *http.Reques
 		out = append(out, adminModerationQueueItemDTO{
 			TargetType:   targetType,
 			ID:           id.String(),
-			RunID:        runID.String(),
+			RunRef:       strings.TrimSpace(runRef),
 			Seq:          seq,
 			Version:      version,
 			Kind:         strings.TrimSpace(kind),
@@ -297,6 +316,7 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 	case "run":
 		var (
 			runID         uuid.UUID
+			runRef        string
 			publisherUser uuid.UUID
 			goal          string
 			constraints   string
@@ -306,10 +326,10 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 			updatedAt     time.Time
 		)
 		err := s.db.QueryRow(ctx, `
-			select id, publisher_user_id, goal, constraints, status, review_status, created_at, updated_at
+			select id, public_ref, publisher_user_id, goal, constraints, status, review_status, created_at, updated_at
 			from runs
 			where id=$1
-		`, id).Scan(&runID, &publisherUser, &goal, &constraints, &status, &reviewStatus, &createdAt, &updatedAt)
+		`, id).Scan(&runID, &runRef, &publisherUser, &goal, &constraints, &status, &reviewStatus, &createdAt, &updatedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
@@ -349,8 +369,7 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 		rows.Close()
 
 		detail = map[string]any{
-			"id":                runID.String(),
-			"publisher_user_id": publisherUser.String(),
+			"run_ref":           strings.TrimSpace(runRef),
 			"goal":              goal,
 			"constraints":       constraints,
 			"status":            status,
@@ -362,7 +381,7 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 	case "event":
 		var (
 			eventID      uuid.UUID
-			runID        uuid.UUID
+			runRef       string
 			seq          int64
 			kind         string
 			persona      string
@@ -372,10 +391,11 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 			createdAt    time.Time
 		)
 		err := s.db.QueryRow(ctx, `
-			select id, run_id, seq, kind, persona, payload, is_key_node, review_status, created_at
-			from events
-			where id=$1
-		`, id).Scan(&eventID, &runID, &seq, &kind, &persona, &payload, &isKey, &reviewStatus, &createdAt)
+			select e.id, r.public_ref, e.seq, e.kind, e.persona, e.payload, e.is_key_node, e.review_status, e.created_at
+			from events e
+			join runs r on r.id = e.run_id
+			where e.id=$1
+		`, id).Scan(&eventID, &runRef, &seq, &kind, &persona, &payload, &isKey, &reviewStatus, &createdAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
@@ -392,7 +412,7 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 		}
 		detail = map[string]any{
 			"id":            eventID.String(),
-			"run_id":        runID.String(),
+			"run_ref":       strings.TrimSpace(runRef),
 			"seq":           seq,
 			"kind":          kind,
 			"persona":       persona,
@@ -404,7 +424,7 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 	case "artifact":
 		var (
 			artifactID   uuid.UUID
-			runID        uuid.UUID
+			runRef       string
 			version      int
 			kind         string
 			content      string
@@ -413,10 +433,11 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 			createdAt    time.Time
 		)
 		err := s.db.QueryRow(ctx, `
-			select id, run_id, version, kind, content, linked_event_seq, review_status, created_at
-			from artifacts
-			where id=$1
-		`, id).Scan(&artifactID, &runID, &version, &kind, &content, &linkedSeq, &reviewStatus, &createdAt)
+			select a.id, r.public_ref, a.version, a.kind, a.content, a.linked_event_seq, a.review_status, a.created_at
+			from artifacts a
+			join runs r on r.id = a.run_id
+			where a.id=$1
+		`, id).Scan(&artifactID, &runRef, &version, &kind, &content, &linkedSeq, &reviewStatus, &createdAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
@@ -428,7 +449,7 @@ func (s server) handleAdminModerationGet(w http.ResponseWriter, r *http.Request)
 		}
 		detail = map[string]any{
 			"id":            artifactID.String(),
-			"run_id":        runID.String(),
+			"run_ref":       strings.TrimSpace(runRef),
 			"version":       version,
 			"kind":          kind,
 			"content":       content,

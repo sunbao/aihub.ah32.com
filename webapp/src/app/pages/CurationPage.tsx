@@ -1,53 +1,45 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
-import { useI18n } from "@/lib/i18n";
 import { getUserApiKey } from "@/lib/storage";
+
+type CurationTargetRef = {
+  kind: "run" | "run_event" | "run_artifact";
+  run_ref: string;
+  event_seq?: number;
+  artifact_version?: number;
+};
 
 type CurationEntry = {
   kind: string;
   schema_version: number;
   curation_id: string;
-  review_status: string;
-  owner_id: string;
+  target: CurationTargetRef;
   reason: string;
-  refs?: Record<string, any>;
   created_at: string;
   updated_at: string;
 };
 
 export function CurationPage() {
   const { toast } = useToast();
-  const { t } = useI18n();
+  const nav = useNavigate();
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
-
-  function fmtReviewStatus(status: string): string {
-    const v = String(status ?? "").trim().toLowerCase();
-    switch (v) {
-      case "pending":
-        return t({ zh: "待审核", en: "Pending" });
-      case "approved":
-        return t({ zh: "已通过", en: "Approved" });
-      case "rejected":
-        return t({ zh: "已拒绝", en: "Rejected" });
-      default:
-        return status || "";
-    }
-  }
 
   const [items, setItems] = useState<CurationEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [targetInput, setTargetInput] = useState("");
   const [reason, setReason] = useState("");
   const [posting, setPosting] = useState(false);
   const [postDialogOpen, setPostDialogOpen] = useState(false);
@@ -71,17 +63,49 @@ export function CurationPage() {
     load();
   }, []);
 
+  function parseTarget(input: string): CurationTargetRef | null {
+    const raw = String(input ?? "").trim();
+    if (!raw) return null;
+
+    const runRef = "r_[0-9a-f]{16}";
+    const artifact = new RegExp(`/runs/(${runRef})/artifacts/(\\d+)`, "i").exec(raw);
+    if (artifact) {
+      const rr = artifact[1];
+      const v = Number(artifact[2]);
+      if (!Number.isFinite(v) || v <= 0) return null;
+      return { kind: "run_artifact", run_ref: rr, artifact_version: v };
+    }
+
+    const run = new RegExp(`/runs/(${runRef})`, "i").exec(raw);
+    if (run) {
+      return { kind: "run", run_ref: run[1] };
+    }
+
+    const bare = new RegExp(`^${runRef}$`, "i").exec(raw);
+    if (bare) {
+      return { kind: "run", run_ref: bare[0] };
+    }
+
+    return null;
+  }
+
   async function post() {
+    const target = parseTarget(targetInput);
     const text = reason.trim();
     setPostError("");
+    if (!target) {
+      setPostError("请填写要策展的目标（作品链接或 Run ID）");
+      return;
+    }
     if (!text) {
       setPostError("请输入策展理由");
       return;
     }
     setPosting(true);
     try {
-      await apiFetchJson("/v1/curations", { method: "POST", apiKey: userApiKey, body: { reason: text } });
+      await apiFetchJson("/v1/curations", { method: "POST", apiKey: userApiKey, body: { target, reason: text } });
       toast({ title: "已提交（待审核）" });
+      setTargetInput("");
       setReason("");
       setPostDialogOpen(false);
     } catch (e: any) {
@@ -114,17 +138,19 @@ export function CurationPage() {
                   发布策展
                 </Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>发布策展（需审核）</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">一句话说清楚你为什么推荐</div>
-                  <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
-                  {postError ? <div className="text-sm text-destructive">{postError}</div> : null}
-                </div>
-                <DialogFooter>
-                  <Button onClick={post} disabled={posting}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>发布策展（需审核）</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">要策展的目标（作品链接或 Run ID）</div>
+                    <Input value={targetInput} onChange={(e) => setTargetInput(e.target.value)} placeholder="例如：/runs/xxxx 或 /runs/xxxx/artifacts/1" />
+                    <div className="text-xs text-muted-foreground">一句话说清楚你为什么推荐</div>
+                    <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
+                    {postError ? <div className="text-sm text-destructive">{postError}</div> : null}
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={post} disabled={posting}>
                     {posting ? "提交中…" : "提交"}
                   </Button>
                 </DialogFooter>
@@ -157,10 +183,16 @@ export function CurationPage() {
             <Card key={it.curation_id}>
               <CardContent className="pt-4 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="secondary">{fmtReviewStatus(it.review_status)}</Badge>
                   <span>{fmtTime(it.created_at)}</span>
                 </div>
                 <div className="text-sm leading-relaxed">{it.reason}</div>
+                {it.target?.kind === "run" || it.target?.kind === "run_artifact" ? (
+                  <div>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(it.target.run_ref)}`)}>
+                      查看作品
+                    </Button>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))

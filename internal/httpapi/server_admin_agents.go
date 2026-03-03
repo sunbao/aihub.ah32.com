@@ -6,12 +6,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type adminAgentDTO struct {
-	AgentID        string `json:"agent_id"`
+	AgentRef       string `json:"agent_ref"`
 	Name           string `json:"name"`
 	Status         string `json:"status"`
 	AdmittedStatus string `json:"admitted_status"`
@@ -25,7 +23,7 @@ type adminListAgentsResponse struct {
 }
 
 type adminAgentGatewayHealthDTO struct {
-	AgentID        string `json:"agent_id"`
+	AgentRef       string `json:"agent_ref"`
 	Name           string `json:"name"`
 	Status         string `json:"status"`
 	AdmittedStatus string `json:"admitted_status"`
@@ -70,7 +68,7 @@ func (s server) handleAdminListAgents(w http.ResponseWriter, r *http.Request) {
 		pat := "%" + t + "%"
 		parts := []string{
 			"a.name ilike $" + strconv.Itoa(argN),
-			"a.id::text ilike $" + strconv.Itoa(argN),
+			"a.public_ref ilike $" + strconv.Itoa(argN),
 		}
 		where = append(where, "("+strings.Join(parts, " or ")+")")
 		args = append(args, pat)
@@ -78,7 +76,7 @@ func (s server) handleAdminListAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sql := `
-		select a.id, a.name, a.status, a.admitted_status, a.updated_at
+		select a.public_ref, a.name, a.status, a.admitted_status, a.updated_at
 		from agents a
 	`
 	if len(where) > 0 {
@@ -98,19 +96,19 @@ func (s server) handleAdminListAgents(w http.ResponseWriter, r *http.Request) {
 	out := make([]adminAgentDTO, 0, limit)
 	for rows.Next() {
 		var (
-			agentID        uuid.UUID
+			agentRef       string
 			name           string
 			status         string
 			admittedStatus string
 			updatedAt      time.Time
 		)
-		if err := rows.Scan(&agentID, &name, &status, &admittedStatus, &updatedAt); err != nil {
+		if err := rows.Scan(&agentRef, &name, &status, &admittedStatus, &updatedAt); err != nil {
 			logError(ctx, "admin list agents scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		out = append(out, adminAgentDTO{
-			AgentID:        agentID.String(),
+			AgentRef:       strings.TrimSpace(agentRef),
 			Name:           strings.TrimSpace(name),
 			Status:         strings.TrimSpace(status),
 			AdmittedStatus: strings.TrimSpace(admittedStatus),
@@ -145,10 +143,10 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	terms := splitSearchTerms(q)
 
-	idsRaw := strings.TrimSpace(r.URL.Query().Get("agent_ids"))
-	idParts := []string{}
-	if idsRaw != "" {
-		idParts = splitSearchTerms(strings.ReplaceAll(idsRaw, ",", " "))
+	refsRaw := strings.TrimSpace(r.URL.Query().Get("agent_refs"))
+	refParts := []string{}
+	if refsRaw != "" {
+		refParts = splitSearchTerms(strings.ReplaceAll(refsRaw, ",", " "))
 	}
 
 	limit := 50
@@ -171,28 +169,28 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 	where := make([]string, 0, 16)
 	argN := 1
 
-	if len(idParts) > 0 {
-		if len(idParts) > 50 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many agent ids"})
+	if len(refParts) > 0 {
+		if len(refParts) > 50 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many agent refs"})
 			return
 		}
-		ids := make([]uuid.UUID, 0, len(idParts))
-		seen := map[uuid.UUID]bool{}
-		for _, p := range idParts {
-			id, err := uuid.Parse(strings.TrimSpace(p))
+		refs := make([]string, 0, len(refParts))
+		seen := map[string]bool{}
+		for _, p := range refParts {
+			ref, err := parseAgentRef(p)
 			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_ref"})
 				return
 			}
-			if seen[id] {
+			if seen[ref] {
 				continue
 			}
-			seen[id] = true
-			ids = append(ids, id)
+			seen[ref] = true
+			refs = append(refs, ref)
 		}
-		if len(ids) > 0 {
-			where = append(where, "a.id = any($"+strconv.Itoa(argN)+")")
-			args = append(args, ids)
+		if len(refs) > 0 {
+			where = append(where, "a.public_ref = any($"+strconv.Itoa(argN)+")")
+			args = append(args, refs)
 			argN++
 		}
 	}
@@ -201,7 +199,7 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 		pat := "%" + t + "%"
 		parts := []string{
 			"a.name ilike $" + strconv.Itoa(argN),
-			"a.id::text ilike $" + strconv.Itoa(argN),
+			"a.public_ref ilike $" + strconv.Itoa(argN),
 		}
 		where = append(where, "("+strings.Join(parts, " or ")+")")
 		args = append(args, pat)
@@ -210,7 +208,7 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 
 	sql := `
 		select
-			a.id,
+			a.public_ref,
 			coalesce(a.name, ''),
 			coalesce(a.status, ''),
 			coalesce(a.admitted_status, ''),
@@ -270,7 +268,7 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 	out := make([]adminAgentGatewayHealthDTO, 0, limit)
 	for rows.Next() {
 		var (
-			agentID        uuid.UUID
+			agentRef       string
 			name           string
 			status         string
 			admittedStatus string
@@ -280,13 +278,13 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 			lastClaimAt    *time.Time
 			lastCompleteAt *time.Time
 		)
-		if err := rows.Scan(&agentID, &name, &status, &admittedStatus, &pendingOffers, &activeClaims, &lastPollAt, &lastClaimAt, &lastCompleteAt); err != nil {
+		if err := rows.Scan(&agentRef, &name, &status, &admittedStatus, &pendingOffers, &activeClaims, &lastPollAt, &lastClaimAt, &lastCompleteAt); err != nil {
 			logError(ctx, "admin list agent gateway health scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		dto := adminAgentGatewayHealthDTO{
-			AgentID:        agentID.String(),
+			AgentRef:       strings.TrimSpace(agentRef),
 			Name:           strings.TrimSpace(name),
 			Status:         strings.TrimSpace(status),
 			AdmittedStatus: strings.TrimSpace(admittedStatus),

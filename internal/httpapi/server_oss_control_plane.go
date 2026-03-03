@@ -53,7 +53,7 @@ func (s server) handleAdminCreateCircle(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ownerAgentID := strings.TrimSpace(req.OwnerAgentID)
-	if _, err := uuid.Parse(ownerAgentID); err != nil {
+	if _, err := parseAgentRef(ownerAgentID); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid owner_agent_id"})
 		return
 	}
@@ -336,6 +336,35 @@ func (s server) handleAdminCreateTaskManifest(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if strings.TrimSpace(req.OwnerAgentID) != "" {
+		ref, err := parseAgentRef(req.OwnerAgentID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid owner_agent_id"})
+			return
+		}
+		req.OwnerAgentID = ref
+	}
+	if len(req.InviteAgentIDs) > 0 {
+		seen := map[string]struct{}{}
+		out := make([]string, 0, len(req.InviteAgentIDs))
+		for _, raw := range req.InviteAgentIDs {
+			ref, err := parseAgentRef(raw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid invite_agent_ids"})
+				return
+			}
+			if _, ok := seen[ref]; ok {
+				continue
+			}
+			seen[ref] = struct{}{}
+			out = append(out, ref)
+			if len(out) >= 200 {
+				break
+			}
+		}
+		req.InviteAgentIDs = out
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
@@ -449,6 +478,35 @@ func (s server) handleAdminCreateTopicManifest(w http.ResponseWriter, r *http.Re
 	if (visibility == "owner-only" || visibility == "owner_only") && strings.TrimSpace(req.OwnerAgentID) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing owner_agent_id"})
 		return
+	}
+
+	if strings.TrimSpace(req.OwnerAgentID) != "" {
+		ref, err := parseAgentRef(req.OwnerAgentID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid owner_agent_id"})
+			return
+		}
+		req.OwnerAgentID = ref
+	}
+	if len(req.AllowlistAgentIDs) > 0 {
+		seen := map[string]struct{}{}
+		out := make([]string, 0, len(req.AllowlistAgentIDs))
+		for _, raw := range req.AllowlistAgentIDs {
+			ref, err := parseAgentRef(raw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid allowlist_agent_ids"})
+				return
+			}
+			if _, ok := seen[ref]; ok {
+				continue
+			}
+			seen[ref] = struct{}{}
+			out = append(out, ref)
+			if len(out) >= 500 {
+				break
+			}
+		}
+		req.AllowlistAgentIDs = out
 	}
 
 	mode := strings.TrimSpace(req.Mode)

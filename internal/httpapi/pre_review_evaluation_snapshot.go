@@ -15,7 +15,7 @@ func isUUIDLike(s string) bool {
 }
 
 type topicMessageRef struct {
-	AgentID   string `json:"agent_id"`
+	AgentRef  string `json:"agent_ref"`
 	MessageID string `json:"message_id"`
 }
 
@@ -24,21 +24,21 @@ func parseTopicMessageRef(v any) *topicMessageRef {
 	if !ok {
 		return nil
 	}
-	agentID, _ := m["agent_id"].(string)
+	agentRef, _ := m["agent_ref"].(string)
 	messageID, _ := m["message_id"].(string)
-	agentID = strings.TrimSpace(agentID)
+	agentRef = strings.TrimSpace(agentRef)
 	messageID = strings.TrimSpace(messageID)
-	if agentID == "" || messageID == "" {
+	if agentRef == "" || messageID == "" {
 		return nil
 	}
-	return &topicMessageRef{AgentID: agentID, MessageID: messageID}
+	return &topicMessageRef{AgentRef: agentRef, MessageID: messageID}
 }
 
 func topicMessageRefsEqual(a *topicMessageRef, b *topicMessageRef) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return strings.TrimSpace(a.AgentID) == strings.TrimSpace(b.AgentID) && strings.TrimSpace(a.MessageID) == strings.TrimSpace(b.MessageID)
+	return strings.TrimSpace(a.AgentRef) == strings.TrimSpace(b.AgentRef) && strings.TrimSpace(a.MessageID) == strings.TrimSpace(b.MessageID)
 }
 
 // For threaded topics, derive a human-readable relationship label from payload meta

@@ -45,7 +45,7 @@ type MeResponse = {
 };
 
 type AgentListItem = {
-  id: string;
+  agent_ref: string;
   name: string;
   description: string;
   status: string;
@@ -57,7 +57,7 @@ type ListAgentsResponse = {
 };
 
 type CreateAgentResponse = {
-  agent_id: string;
+  agent_ref: string;
   api_key: string;
 };
 
@@ -67,6 +67,75 @@ function buildNpxCmd(opts: { baseUrl: string; apiKey: string; profileName: strin
   const profileName = String(opts.profileName ?? "").trim();
   const pArg = profileName ? ` --name \"${profileName.replaceAll("\"", "\\\"")}\"` : "";
   return `npx --yes github:sunbao/aihub.ah32.com aihub-openclaw --apiKey ${apiKey} --baseUrl ${baseUrl}${pArg}`;
+}
+
+function slugifyAsciiId(s: string): string {
+  const t = String(s ?? "").trim().toLowerCase();
+  if (!t) return "";
+  return t
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+    .slice(0, 32);
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const v = String(s ?? "");
+  if (!v) return "";
+  const subtle = (globalThis as any)?.crypto?.subtle;
+  if (!subtle) return "";
+  const data = new TextEncoder().encode(v);
+  const digest = await subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function openclawProfileId(profileName: string): Promise<string> {
+  const raw = String(profileName ?? "").trim();
+  if (!raw) return "";
+  const slug = slugifyAsciiId(raw);
+  if (slug) return slug;
+  const hex = await sha256Hex(raw);
+  if (!hex) return "";
+  return "p" + hex.slice(0, 8);
+}
+
+function buildOpenclawCronJobsJson(opts: { cronExpr: string; profileName: string; profileId: string; skillKey: string }): string {
+  const cronExpr = String(opts.cronExpr ?? "").trim() || "*/5 * * * *";
+  const profileName = String(opts.profileName ?? "").trim();
+  const pid = String(opts.profileId ?? "").trim();
+  const skillKey = String(opts.skillKey ?? "").trim() || "aihub-connector";
+
+  const jobName = profileName ? `AIHub 拉取任务（${profileName}）` : "AIHub 拉取任务";
+  const id = pid ? `aihub-poll-${pid}` : "aihub-poll";
+  const message =
+    `检查 AIHub 任务并执行（使用技能：${skillKey}）。必须按顺序执行：` +
+    `1）优先使用 claim-next 一步领取（有任务就立刻领取，不要问用户“要不要领”）；` +
+    `2）按返回的任务说明与上下文执行；` +
+    `3）发送事件（进度/总结）；` +
+    `4）提交产物（如需）；` +
+    `5）完成任务项。` +
+    `输出/日志要求：只用中文；不要输出任何 UUID/内部 ID（例如 work_item_id 等），如必须提及请统一写成“<id>”；` +
+    `不要把 poll/claim 的原始 JSON 整段贴出来，只做结论性摘要；任何错误必须明确写日志，不允许静默失败。`;
+
+  const nowMs = 0;
+  const job = {
+    id,
+    createdAtMs: nowMs,
+    updatedAtMs: nowMs,
+    name: jobName,
+    enabled: true,
+    wakeMode: "now",
+    schedule: { kind: "cron", expr: cronExpr },
+    sessionTarget: "isolated",
+    payload: { kind: "agentTurn", message },
+    delivery: { mode: "announce" },
+    deleteAfterRun: false,
+    state: {},
+  };
+
+  return JSON.stringify({ version: 1, jobs: [job] }, null, 2);
 }
 
 export function MePage() {
@@ -97,6 +166,57 @@ export function MePage() {
   const [createAgentDialogOpen, setCreateAgentDialogOpen] = useState(false);
   const [agentKeyInputs, setAgentKeyInputs] = useState<Record<string, string>>({});
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
+  const [cronExprInputs, setCronExprInputs] = useState<Record<string, string>>({});
+  const [openclawProfileIds, setOpenclawProfileIds] = useState<Record<string, string>>({});
+  const [openclawSkillKeys, setOpenclawSkillKeys] = useState<Record<string, string>>({});
+  const [admissionChallenges, setAdmissionChallenges] = useState<Record<string, { challenge: string; expires_at: string }>>({});
+  const [admissionStarting, setAdmissionStarting] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    async function compute() {
+      const nextPids: Record<string, string> = {};
+      const nextSkillKeys: Record<string, string> = {};
+      for (const a of agents ?? []) {
+        const agentRef = String((a as any)?.agent_ref ?? "").trim();
+        if (!agentRef) continue;
+        const profileName = String(profileNames?.[agentRef] ?? "").trim();
+        const pid = await openclawProfileId(profileName);
+        nextPids[agentRef] = pid;
+        nextSkillKeys[agentRef] = pid ? `aihub-connector-${pid}` : "aihub-connector";
+      }
+      if (cancelled) return;
+      setOpenclawProfileIds(nextPids);
+      setOpenclawSkillKeys(nextSkillKeys);
+    }
+    void compute();
+    return () => {
+      cancelled = true;
+    };
+  }, [agents, profileNames]);
+
+  async function startAdmission(agentRef: string) {
+    const agentRefV = String(agentRef ?? "").trim();
+    if (!userApiKey) {
+      toast({ title: "未登录", description: "请先登录后再发起入驻。", variant: "destructive" });
+      return;
+    }
+    if (!agentRefV) return;
+    setAdmissionStarting((prev) => ({ ...(prev ?? {}), [agentRefV]: true }));
+    try {
+      const res = await apiFetchJson<{ challenge: string; expires_at: string }>(`/v1/agents/${encodeURIComponent(agentRefV)}/admission/start`, {
+        method: "POST",
+        apiKey: userApiKey,
+      });
+      setAdmissionChallenges((prev) => ({ ...(prev ?? {}), [agentRefV]: res }));
+      toast({ title: "已发起入驻挑战", description: "请在 OpenClaw 机器完成签名并提交。" });
+    } catch (e: any) {
+      console.warn("[AIHub] start admission failed", { agentRef: agentRefV, error: e });
+      toast({ title: "发起入驻失败", description: String(e?.message ?? ""), variant: "destructive" });
+    } finally {
+      setAdmissionStarting((prev) => ({ ...(prev ?? {}), [agentRefV]: false }));
+    }
+  }
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -132,18 +252,18 @@ export function MePage() {
       setAgentKeyInputs((prev) => {
         const next = { ...(prev ?? {}) };
         for (const a of list) {
-          const id = String(a?.id ?? "").trim();
-          if (!id) continue;
-          if (next[id] === undefined) next[id] = getAgentApiKey(id);
+          const agentRef = String(a?.agent_ref ?? "").trim();
+          if (!agentRef) continue;
+          if (next[agentRef] === undefined) next[agentRef] = getAgentApiKey(agentRef);
         }
         return next;
       });
       setProfileNames((prev) => {
         const next = { ...(prev ?? {}) };
         for (const a of list) {
-          const id = String(a?.id ?? "").trim();
-          if (!id) continue;
-          if (next[id] === undefined) next[id] = getOpenclawProfileName(id);
+          const agentRef = String(a?.agent_ref ?? "").trim();
+          if (!agentRef) continue;
+          if (next[agentRef] === undefined) next[agentRef] = getOpenclawProfileName(agentRef);
         }
         return next;
       });
@@ -156,8 +276,8 @@ export function MePage() {
   }
 
   async function disableAgent(agent: AgentListItem) {
-    const agentId = String(agent?.id ?? "").trim();
-    if (!agentId) return;
+    const agentRef = String(agent?.agent_ref ?? "").trim();
+    if (!agentRef) return;
     setConfirmDialog({
       open: true,
       title: "确认停用智能体",
@@ -165,14 +285,14 @@ export function MePage() {
       variant: "default",
       onConfirm: async () => {
         try {
-          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/disable`, {
+          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}/disable`, {
             method: "POST",
             apiKey: userApiKey,
           });
           toast({ title: "已停用" });
           loadAgents();
         } catch (e: any) {
-          console.warn("[AIHub] MePage disableAgent failed", { agentId, error: e });
+          console.warn("[AIHub] MePage disableAgent failed", { agentRef, error: e });
           toast({ title: "停用失败", description: String(e?.message ?? ""), variant: "destructive" });
         }
       },
@@ -180,8 +300,8 @@ export function MePage() {
   }
 
   async function rotateAgentKey(agent: AgentListItem) {
-    const agentId = String(agent?.id ?? "").trim();
-    if (!agentId) return;
+    const agentRef = String(agent?.agent_ref ?? "").trim();
+    if (!agentRef) return;
     setConfirmDialog({
       open: true,
       title: "确认轮换密钥",
@@ -189,19 +309,19 @@ export function MePage() {
       variant: "default",
       onConfirm: async () => {
         try {
-          const res = await apiFetchJson<{ api_key?: string }>(`/v1/agents/${encodeURIComponent(agentId)}/keys/rotate`, {
+          const res = await apiFetchJson<{ api_key?: string }>(`/v1/agents/${encodeURIComponent(agentRef)}/keys/rotate`, {
             method: "POST",
             apiKey: userApiKey,
           });
           const apiKey = String(res?.api_key ?? "").trim();
           if (!apiKey) throw new Error("轮换成功但未返回新密钥");
 
-          setAgentApiKey(agentId, apiKey);
-          setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentId]: apiKey }));
+          setAgentApiKey(agentRef, apiKey);
+          setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentRef]: apiKey }));
           toast({ title: "已轮换并保存新密钥", description: "新密钥只返回一次，建议你也单独备份。" });
           loadAgents();
         } catch (e: any) {
-          console.warn("[AIHub] MePage rotateAgentKey failed", { agentId, error: e });
+          console.warn("[AIHub] MePage rotateAgentKey failed", { agentRef, error: e });
           toast({ title: "轮换失败", description: String(e?.message ?? ""), variant: "destructive" });
         }
       },
@@ -209,8 +329,8 @@ export function MePage() {
   }
 
   async function deleteAgent(agent: AgentListItem) {
-    const agentId = String(agent?.id ?? "").trim();
-    if (!agentId) return;
+    const agentRef = String(agent?.agent_ref ?? "").trim();
+    if (!agentRef) return;
 
     const name = String(agent?.name ?? "").trim();
     const tags = Array.isArray(agent?.tags) ? agent.tags.filter(Boolean) : [];
@@ -221,25 +341,25 @@ export function MePage() {
       variant: "destructive",
       onConfirm: async () => {
         try {
-          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}`, { method: "DELETE", apiKey: userApiKey });
+          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}`, { method: "DELETE", apiKey: userApiKey });
 
-          deleteAgentApiKey(agentId);
-          deleteOpenclawProfileName(agentId);
+          deleteAgentApiKey(agentRef);
+          deleteOpenclawProfileName(agentRef);
           setAgentKeyInputs((prev) => {
             const next = { ...(prev ?? {}) };
-            delete next[agentId];
+            delete next[agentRef];
             return next;
           });
           setProfileNames((prev) => {
             const next = { ...(prev ?? {}) };
-            delete next[agentId];
+            delete next[agentRef];
             return next;
           });
 
           toast({ title: "已删除" });
           loadAgents();
         } catch (e: any) {
-          console.warn("[AIHub] MePage deleteAgent failed", { agentId, error: e });
+          console.warn("[AIHub] MePage deleteAgent failed", { agentRef, error: e });
           toast({ title: "删除失败", description: String(e?.message ?? ""), variant: "destructive" });
         }
       },
@@ -329,11 +449,11 @@ export function MePage() {
           {agents.length ? (
             <div className="space-y-2">
               {agents.slice(0, 50).map((a) => {
-                const agentId = String(a?.id ?? "").trim();
-                if (!agentId) return null;
+                const agentRef = String(a?.agent_ref ?? "").trim();
+                if (!agentRef) return null;
 
-                const agentKey = String(agentKeyInputs[agentId] ?? getAgentApiKey(agentId) ?? "");
-                const profileName = String(profileNames[agentId] ?? getOpenclawProfileName(agentId) ?? "");
+                const agentKey = String(agentKeyInputs[agentRef] ?? getAgentApiKey(agentRef) ?? "");
+                const profileName = String(profileNames[agentRef] ?? getOpenclawProfileName(agentRef) ?? "");
                 const npxCmd = agentKey.trim()
                   ? buildNpxCmd({
                       baseUrl: baseUrl.trim(),
@@ -342,7 +462,7 @@ export function MePage() {
                     })
                   : "";
                 return (
-                <div key={agentId} className="rounded-md border bg-background px-3 py-2">
+                <div key={agentRef} className="rounded-md border bg-background px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold">{a.name || "未命名"}</div>
@@ -365,14 +485,14 @@ export function MePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => nav(`/agents/${encodeURIComponent(agentId)}`)}
+                      onClick={() => nav(`/agents/${encodeURIComponent(agentRef)}`)}
                     >
                       查看资料
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/card/edit`)}
+                      onClick={() => nav(`/agents/${encodeURIComponent(agentRef)}/card/edit`)}
                     >
                       编辑智能体卡片
                     </Button>
@@ -381,13 +501,13 @@ export function MePage() {
                       variant="outline"
                       onClick={async () => {
                         try {
-                          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentId)}/sync-to-oss`, {
+                          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}/sync-to-oss`, {
                             method: "POST",
                             apiKey: userApiKey,
                           });
                           toast({ title: "已同步到 OSS" });
                         } catch (e: any) {
-                          console.warn("[AIHub] MePage sync-to-oss failed", { agentId, error: e });
+                          console.warn("[AIHub] MePage sync-to-oss failed", { agentRef, error: e });
                           toast({
                             title: "同步失败",
                             description: String(e?.message ?? ""),
@@ -398,13 +518,13 @@ export function MePage() {
                     >
                       同步到 OSS
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/timeline`)}>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentRef)}/timeline`)}>
                       时间线
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/uniqueness`)}>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentRef)}/uniqueness`)}>
                       测试独特性
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentId)}/weekly-report`)}>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentRef)}/weekly-report`)}>
                       园丁周报
                     </Button>
                     <Button
@@ -425,86 +545,180 @@ export function MePage() {
 
                   <details className="mt-3 rounded-md border bg-muted/20 px-3 py-2">
                     <summary className="cursor-pointer select-none text-sm font-medium">
-                      一键接入（OpenClaw）
+                      OpenClaw 接入（两步）
                     </summary>
                     <div className="mt-2 space-y-2">
-                      <div className="text-xs text-muted-foreground">
-                        复制命令到部署 OpenClaw 的机器执行，即可让该智能体参与平台任务。
-                      </div>
+                      {(() => {
+                        const cronExpr = String(cronExprInputs[agentRef] ?? "").trim() || "*/5 * * * *";
+                        const pid = String(openclawProfileIds[agentRef] ?? "").trim();
+                        const skillKey = String(openclawSkillKeys[agentRef] ?? "aihub-connector").trim() || "aihub-connector";
+                        const jobsJson = buildOpenclawCronJobsJson({
+                          cronExpr,
+                          profileName: String(profileName ?? "").trim(),
+                          profileId: pid,
+                          skillKey,
+                        });
+                        const admission = admissionChallenges[agentRef];
+                        const starting = Boolean(admissionStarting[agentRef]);
+                        const cmdBaseUrl = baseUrl.trim() || window.location.origin;
+                        const curlChallenge = `curl -sS -H \"Authorization: Bearer $AIHUB_AGENT_API_KEY\" \"${cmdBaseUrl}/v1/agents/${agentRef}/admission/challenge\"`;
+                        const curlComplete = `curl -sS -X POST -H \"Authorization: Bearer $AIHUB_AGENT_API_KEY\" -H \"Content-Type: application/json\" --data '{\"signature\":\"<base64>\"}' \"${cmdBaseUrl}/v1/agents/${agentRef}/admission/complete\"`;
 
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">智能体 API 密钥</div>
-                        <Input
-                          value={agentKey}
-                          onChange={(e) =>
-                            setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentId]: e.target.value }))
-                          }
-                          placeholder="粘贴后可保存"
-                          type="password"
-                        />
-                      </div>
+                        return (
+                          <>
+                            <div className="rounded-md border bg-background px-3 py-2">
+                              <div className="text-sm font-medium">步骤 1：入驻（PoP）</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                先在卡片里设置好该智能体的 <span className="font-mono">agent_public_key</span>，再发起入驻挑战并在 OpenClaw 机器完成签名提交。
+                              </div>
+                              <div className="mt-2 flex gap-2">
+                                <Button size="sm" variant="secondary" disabled={starting} onClick={() => startAdmission(agentRef)}>
+                                  {starting ? "发起中…" : "发起入驻挑战"}
+                                </Button>
+                                {admission?.challenge ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={async () => {
+                                      const ok = await copyText(String(admission.challenge ?? "").trim());
+                                      toast({ title: ok ? "已复制 challenge" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
+                                    }}
+                                  >
+                                    复制 challenge
+                                  </Button>
+                                ) : null}
+                              </div>
 
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">接入名称（可选，多套配置不覆盖）</div>
-                        <Input
-                          value={profileName}
-                          onChange={(e) =>
-                            setProfileNames((prev) => ({ ...(prev ?? {}), [agentId]: e.target.value }))
-                          }
-                          placeholder="例如：agent-1"
-                        />
-                      </div>
+                              {admission?.challenge ? (
+                                <div className="mt-2 space-y-2">
+                                  <div className="text-xs text-muted-foreground">
+                                    challenge 有效期至：{String(admission.expires_at ?? "").trim() || "-"}
+                                  </div>
+                                  <div className="space-y-2">
+                                    <div className="text-xs text-muted-foreground">Agent 侧获取 challenge（可选）</div>
+                                    <Textarea value={curlChallenge} readOnly className="min-h-[56px] font-mono text-xs" />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <div className="text-xs text-muted-foreground">Agent 侧提交签名完成入驻</div>
+                                    <Textarea value={curlComplete} readOnly className="min-h-[56px] font-mono text-xs" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-2 text-xs text-muted-foreground">尚未发起 challenge。</div>
+                              )}
+                            </div>
 
-                      <div className="flex gap-2 pt-1">
-                        <Button
-                          variant="secondary"
-                          className="flex-1"
-                          onClick={() => {
-                            if (!agentKey.trim()) {
-                              toast({ title: "密钥为空", variant: "destructive" });
-                              return;
-                            }
-                            setAgentApiKey(agentId, agentKey.trim());
-                            setOpenclawProfileName(agentId, profileName);
-                            toast({ title: "已保存密钥到本地存储" });
-                          }}
-                        >
-                          保存密钥
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="flex-1"
-                          onClick={async () => {
-                            if (!agentKey.trim()) {
-                              toast({ title: "没有可复制的密钥", variant: "destructive" });
-                              return;
-                            }
-                            const ok = await copyText(agentKey.trim());
-                            toast({ title: ok ? "已复制密钥" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
-                          }}
-                        >
-                          复制密钥
-                        </Button>
-                      </div>
+                            <div className="rounded-md border bg-background px-3 py-2">
+                              <div className="text-sm font-medium">步骤 2：定时任务（你自己定时间）</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                AIHub 不会替你写入定时配置；这里提供可复制模板，你自行决定 cron 表达式与部署方式。
+                              </div>
 
-                      <div className="space-y-2 pt-2">
-                        <div className="text-xs text-muted-foreground">npx 命令</div>
-                        <Textarea value={npxCmd} readOnly className="min-h-[84px] font-mono text-xs" />
-                        <Button
-                          className="w-full"
-                          disabled={!npxCmd}
-                          onClick={async () => {
-                            if (!npxCmd) {
-                              toast({ title: "请先补齐接入参数", variant: "destructive" });
-                              return;
-                            }
-                            const ok = await copyText(npxCmd);
-                            toast({ title: ok ? "已复制命令" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
-                          }}
-                        >
-                          复制命令
-                        </Button>
-                      </div>
+                              <div className="mt-2 space-y-2">
+                                <div className="text-xs text-muted-foreground">智能体 API 密钥</div>
+                                <Input
+                                  value={agentKey}
+                                  onChange={(e) =>
+                                    setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentRef]: e.target.value }))
+                                  }
+                                  placeholder="粘贴后可保存"
+                                  type="password"
+                                />
+                              </div>
+
+                              <div className="mt-2 space-y-2">
+                                <div className="text-xs text-muted-foreground">接入名称（可选，多套配置不覆盖）</div>
+                                <Input
+                                  value={profileName}
+                                  onChange={(e) =>
+                                    setProfileNames((prev) => ({ ...(prev ?? {}), [agentRef]: e.target.value }))
+                                  }
+                                  placeholder="例如：agent-1"
+                                />
+                              </div>
+
+                              <div className="flex gap-2 pt-2">
+                                <Button
+                                  variant="secondary"
+                                  className="flex-1"
+                                  onClick={() => {
+                                    if (!agentKey.trim()) {
+                                      toast({ title: "密钥为空", variant: "destructive" });
+                                      return;
+                                    }
+                                    setAgentApiKey(agentRef, agentKey.trim());
+                                    setOpenclawProfileName(agentRef, profileName);
+                                    toast({ title: "已保存密钥到本地存储" });
+                                  }}
+                                >
+                                  保存密钥
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  className="flex-1"
+                                  onClick={async () => {
+                                    if (!agentKey.trim()) {
+                                      toast({ title: "没有可复制的密钥", variant: "destructive" });
+                                      return;
+                                    }
+                                    const ok = await copyText(agentKey.trim());
+                                    toast({ title: ok ? "已复制密钥" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
+                                  }}
+                                >
+                                  复制密钥
+                                </Button>
+                              </div>
+
+                              <div className="space-y-2 pt-2">
+                                <div className="text-xs text-muted-foreground">安装/配置（只需执行一次）</div>
+                                <Textarea value={npxCmd} readOnly className="min-h-[84px] font-mono text-xs" />
+                                <Button
+                                  className="w-full"
+                                  disabled={!npxCmd}
+                                  onClick={async () => {
+                                    if (!npxCmd) {
+                                      toast({ title: "请先补齐接入参数", variant: "destructive" });
+                                      return;
+                                    }
+                                    const ok = await copyText(npxCmd);
+                                    toast({ title: ok ? "已复制命令" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
+                                  }}
+                                >
+                                  复制命令
+                                </Button>
+                              </div>
+
+                              <div className="space-y-2 pt-2">
+                                <div className="text-xs text-muted-foreground">cron 表达式（自行设定）</div>
+                                <Input
+                                  value={cronExpr}
+                                  onChange={(e) =>
+                                    setCronExprInputs((prev) => ({ ...(prev ?? {}), [agentRef]: e.target.value }))
+                                  }
+                                  placeholder="例如：*/5 * * * *"
+                                />
+                              </div>
+
+                              <div className="space-y-2 pt-2">
+                                <div className="text-xs text-muted-foreground">OpenClaw 定时任务模板（~/.openclaw/cron/jobs.json）</div>
+                                <Textarea value={jobsJson} readOnly className="min-h-[120px] font-mono text-xs" />
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="secondary"
+                                    className="flex-1"
+                                    onClick={async () => {
+                                      const ok = await copyText(jobsJson);
+                                      toast({ title: ok ? "已复制模板" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
+                                    }}
+                                  >
+                                    复制模板
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </details>
                 </div>
@@ -523,9 +737,9 @@ export function MePage() {
                 <Button className="flex-1">创建智能体</Button>
               </DialogTrigger>
               <CreateAgentDialog
-                onCreated={(agentId, apiKey) => {
-                  setAgentApiKey(agentId, apiKey);
-                  setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentId]: apiKey }));
+                onCreated={(agentRef, apiKey) => {
+                  setAgentApiKey(agentRef, apiKey);
+                  setAgentKeyInputs((prev) => ({ ...(prev ?? {}), [agentRef]: apiKey }));
                   toast({ title: "创建成功", description: "已把接入密钥保存在本地存储中。" });
                   loadAgents();
                 }}
@@ -591,7 +805,7 @@ function CreateAgentDialog({
   onCreated,
   onClose,
 }: {
-  onCreated: (agentId: string, apiKey: string, name: string) => void;
+  onCreated: (agentRef: string, apiKey: string, name: string) => void;
   onClose?: () => void;
 }) {
   const userApiKey = getUserApiKey();
@@ -620,7 +834,7 @@ function CreateAgentDialog({
         apiKey: userApiKey,
         body: { name, description, tags: tagList },
       });
-      onCreated(res.agent_id, res.api_key, name.trim() || "智能体");
+      onCreated(res.agent_ref, res.api_key, name.trim() || "智能体");
       setName("");
       setDescription("");
       setTags("");

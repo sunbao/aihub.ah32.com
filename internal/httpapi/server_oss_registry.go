@@ -173,14 +173,23 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var admittedStatus string
-	if err := s.db.QueryRow(ctx, `select admitted_status from agents where id=$1`, agentID).Scan(&admittedStatus); err != nil {
+	var (
+		agentRef       string
+		admittedStatus string
+	)
+	if err := s.db.QueryRow(ctx, `select public_ref, admitted_status from agents where id=$1`, agentID).Scan(&agentRef, &admittedStatus); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
 		logError(ctx, "query admitted_status failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	agentRef = strings.ToLower(strings.TrimSpace(agentRef))
+	if _, err := parseAgentRef(agentRef); err != nil {
+		logError(ctx, "invalid agent public_ref in db", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid agent_ref"})
 		return
 	}
 	if admittedStatus != "admitted" {
@@ -198,8 +207,8 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 	basePrefix := strings.Trim(strings.TrimSpace(s.ossBasePrefix), "/")
 
 	var (
-		allowList []string
-		allowRead []string
+		allowList  []string
+		allowRead  []string
 		allowWrite []string
 	)
 
@@ -214,11 +223,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 	)
 
 	// Agent private config read: only itself.
-	allowList = append(allowList, agenthome.JoinKey(basePrefix, "agents/prompts/"+agentID.String()+"/"))
-	allowRead = append(allowRead, agenthome.JoinKey(basePrefix, "agents/prompts/"+agentID.String()+"/"))
+	allowList = append(allowList, agenthome.JoinKey(basePrefix, "agents/prompts/"+agentRef+"/"))
+	allowRead = append(allowRead, agenthome.JoinKey(basePrefix, "agents/prompts/"+agentRef+"/"))
 
 	if kind == "registry_write" {
-		hbKey := "agents/heartbeats/" + heartbeatShard(agentID.String()) + "/" + agentID.String() + ".last"
+		hbKey := "agents/heartbeats/" + heartbeatShard(agentRef) + "/" + agentRef + ".last"
 		allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, hbKey))
 	}
 
@@ -236,11 +245,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 			return
 		}
 		var mf struct {
-			Visibility string   `json:"visibility"`
-			CircleID   string   `json:"circle_id,omitempty"`
+			Visibility     string   `json:"visibility"`
+			CircleID       string   `json:"circle_id,omitempty"`
 			InviteAgentIDs []string `json:"invite_agent_ids,omitempty"`
-			OwnerAgentID string `json:"owner_agent_id,omitempty"`
-			OwnerID     string `json:"owner_id,omitempty"`
+			OwnerAgentID   string   `json:"owner_agent_id,omitempty"`
+			OwnerID        string   `json:"owner_id,omitempty"`
 		}
 		if err := json.Unmarshal(manifestRaw, &mf); err != nil {
 			logError(ctx, "unmarshal task manifest failed", err)
@@ -253,13 +262,13 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 			allowed = true
 		case "owner-only", "owner_only":
 			if strings.TrimSpace(mf.OwnerAgentID) != "" {
-				allowed = strings.TrimSpace(mf.OwnerAgentID) == agentID.String()
+				allowed = strings.TrimSpace(mf.OwnerAgentID) == agentRef
 			} else if strings.TrimSpace(mf.OwnerID) != "" {
-				allowed = strings.TrimSpace(mf.OwnerID) == agentID.String()
+				allowed = strings.TrimSpace(mf.OwnerID) == agentRef
 			}
 		case "invite":
 			for _, id := range mf.InviteAgentIDs {
-				if strings.TrimSpace(id) == agentID.String() {
+				if strings.TrimSpace(id) == agentRef {
 					allowed = true
 					break
 				}
@@ -267,7 +276,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 		case "circle":
 			cid := strings.TrimSpace(mf.CircleID)
 			if cid != "" {
-				ok, err := store.Exists(ctx, "circles/"+cid+"/members/"+agentID.String()+".json")
+				ok, err := store.Exists(ctx, "circles/"+cid+"/members/"+agentRef+".json")
 				if err != nil {
 					logError(ctx, "check circle member failed", err)
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "membership check failed"})
@@ -287,7 +296,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 		allowList = append(allowList, agenthome.JoinKey(basePrefix, taskPrefix))
 		allowRead = append(allowRead, agenthome.JoinKey(basePrefix, taskPrefix))
 		if kind == "task_write" {
-			allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, "tasks/"+taskID+"/agents/"+agentID.String()+"/"))
+			allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, "tasks/"+taskID+"/agents/"+agentRef+"/"))
 		}
 	}
 
@@ -298,7 +307,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 			return
 		}
 		// Any admitted agent may request to join; write is scoped to its own single request object.
-		reqKey := "circles/" + circleID + "/join_requests/" + agentID.String() + ".json"
+		reqKey := "circles/" + circleID + "/join_requests/" + agentRef + ".json"
 		allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 		allowRead = append(allowRead, agenthome.JoinKey(basePrefix, "circles/"+circleID+"/manifest.json"))
 	}
@@ -335,11 +344,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 		if owner == "" {
 			owner = strings.TrimSpace(mf.OwnerID)
 		}
-		if owner == "" || owner != agentID.String() {
+		if owner == "" || owner != agentRef {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "not circle owner"})
 			return
 		}
-		approvalKey := "circles/" + circleID + "/join_approvals/" + requestAgentID + "/" + agentID.String() + ".json"
+		approvalKey := "circles/" + circleID + "/join_approvals/" + requestAgentID + "/" + agentRef + ".json"
 		allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, approvalKey))
 		allowList = append(allowList, agenthome.JoinKey(basePrefix, "circles/"+circleID+"/join_requests/"))
 		allowRead = append(allowRead, agenthome.JoinKey(basePrefix, "circles/"+circleID+"/join_requests/"))
@@ -360,11 +369,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 			return
 		}
 		var mf struct {
-			Visibility        string   `json:"visibility"`
-			CircleID          string   `json:"circle_id,omitempty"`
-			AllowlistAgentIDs []string `json:"allowlist_agent_ids,omitempty"`
-			OwnerAgentID      string   `json:"owner_agent_id,omitempty"`
-			Mode              string   `json:"mode"`
+			Visibility        string         `json:"visibility"`
+			CircleID          string         `json:"circle_id,omitempty"`
+			AllowlistAgentIDs []string       `json:"allowlist_agent_ids,omitempty"`
+			OwnerAgentID      string         `json:"owner_agent_id,omitempty"`
+			Mode              string         `json:"mode"`
 			Rules             map[string]any `json:"rules,omitempty"`
 		}
 		if err := json.Unmarshal(manifestRaw, &mf); err != nil {
@@ -378,10 +387,10 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 		case "public":
 			allowed = true
 		case "owner-only", "owner_only":
-			allowed = strings.TrimSpace(mf.OwnerAgentID) != "" && strings.TrimSpace(mf.OwnerAgentID) == agentID.String()
+			allowed = strings.TrimSpace(mf.OwnerAgentID) != "" && strings.TrimSpace(mf.OwnerAgentID) == agentRef
 		case "invite":
 			for _, id := range mf.AllowlistAgentIDs {
-				if strings.TrimSpace(id) == agentID.String() {
+				if strings.TrimSpace(id) == agentRef {
 					allowed = true
 					break
 				}
@@ -389,7 +398,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 		case "circle":
 			cid := strings.TrimSpace(mf.CircleID)
 			if cid != "" {
-				ok, err := store.Exists(ctx, "circles/"+cid+"/members/"+agentID.String()+".json")
+				ok, err := store.Exists(ctx, "circles/"+cid+"/members/"+agentRef+".json")
 				if err != nil {
 					logError(ctx, "check circle member failed", err)
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "membership check failed"})
@@ -419,7 +428,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 			switch mode {
 			case "intro_once":
 				if !ruleBool(mf.Rules, "allow_reintro_on_card_version_increase", true) {
-					prefix := "topics/" + topicID + "/messages/" + agentID.String() + "/intro_card_v"
+					prefix := "topics/" + topicID + "/messages/" + agentRef + "/intro_card_v"
 					existing, err := store.ListObjects(ctx, prefix, 1)
 					if err != nil {
 						logError(ctx, "list intro_once messages failed", err)
@@ -438,7 +447,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 					return
 				}
-				msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/intro_card_v" + strconv.Itoa(cardVersion) + ".json"
+				msgKey := "topics/" + topicID + "/messages/" + agentRef + "/intro_card_v" + strconv.Itoa(cardVersion) + ".json"
 				exists, err := store.Exists(ctx, msgKey)
 				if err != nil {
 					logError(ctx, "check intro_once message exists failed", err)
@@ -461,7 +470,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					loc = time.UTC
 				}
 				dateKey := time.Now().UTC().In(loc).Format("20060102")
-				msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/" + dateKey + ".json"
+				msgKey := "topics/" + topicID + "/messages/" + agentRef + "/" + dateKey + ".json"
 				exists, err := store.Exists(ctx, msgKey)
 				if err != nil {
 					logError(ctx, "check daily_checkin message exists failed", err)
@@ -489,7 +498,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					return
 				}
 				speaker, _ := st.State["speaker_agent_id"].(string)
-				if strings.TrimSpace(speaker) != agentID.String() {
+				if strings.TrimSpace(speaker) != agentRef {
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "not current speaker"})
 					return
 				}
@@ -499,7 +508,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "missing turn_id"})
 					return
 				}
-				msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/" + turnID + "_0001.json"
+				msgKey := "topics/" + topicID + "/messages/" + agentRef + "/" + turnID + "_0001.json"
 				exists, err := store.Exists(ctx, msgKey)
 				if err != nil {
 					logError(ctx, "check turn_queue message exists failed", err)
@@ -534,7 +543,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						continue
 					}
 					a, _ := m["agent_id"].(string)
-					if strings.TrimSpace(a) != agentID.String() {
+					if strings.TrimSpace(a) != agentRef {
 						continue
 					}
 					sid, _ := m["slot_id"].(string)
@@ -547,7 +556,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "no slot"})
 					return
 				}
-				msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/" + slotID + ".json"
+				msgKey := "topics/" + topicID + "/messages/" + agentRef + "/" + slotID + ".json"
 				exists, err := store.Exists(ctx, msgKey)
 				if err != nil {
 					logError(ctx, "check limited_slots message exists failed", err)
@@ -575,7 +584,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					return
 				}
 				holder, _ := st.State["holder_agent_id"].(string)
-				if strings.TrimSpace(holder) != agentID.String() {
+				if strings.TrimSpace(holder) != agentRef {
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "not current holder"})
 					return
 				}
@@ -585,7 +594,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "missing beat_id"})
 					return
 				}
-				msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/" + beatID + "_0001.json"
+				msgKey := "topics/" + topicID + "/messages/" + agentRef + "/" + beatID + "_0001.json"
 				exists, err := store.Exists(ctx, msgKey)
 				if err != nil {
 					logError(ctx, "check drum_pass message exists failed", err)
@@ -625,10 +634,10 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						continue
 					}
 					assigned, _ := m["agent_id"].(string)
-					if strings.TrimSpace(assigned) != agentID.String() {
+					if strings.TrimSpace(assigned) != agentRef {
 						continue
 					}
-					msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/role_" + roleID + "_0001.json"
+					msgKey := "topics/" + topicID + "/messages/" + agentRef + "/role_" + roleID + "_0001.json"
 					exists, err := store.Exists(ctx, msgKey)
 					if err != nil {
 						logError(ctx, "check collab_roles message exists failed", err)
@@ -683,7 +692,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						return
 					}
 				}
-				msgKey := "topics/" + topicID + "/messages/" + agentID.String() + "/" + roundID + ".json"
+				msgKey := "topics/" + topicID + "/messages/" + agentRef + "/" + roundID + ".json"
 				exists, err := store.Exists(ctx, msgKey)
 				if err != nil {
 					logError(ctx, "check poetry_duel submission exists failed", err)
@@ -696,7 +705,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				}
 				allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, msgKey))
 			case "freeform", "threaded":
-				allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, "topics/"+topicID+"/messages/"+agentID.String()+"/"))
+				allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, "topics/"+topicID+"/messages/"+agentRef+"/"))
 			default:
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported topic mode"})
 				return
@@ -744,7 +753,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				if tzErr != nil {
 					logError(ctx, "load day_boundary_timezone failed; fallback to UTC", tzErr)
 				}
-				prefix := "topics/" + topicID + "/requests/" + agentID.String() + "/req_" + reqType + "_" + dateKey + "_"
+				prefix := "topics/" + topicID + "/requests/" + agentRef + "/req_" + reqType + "_" + dateKey + "_"
 				existing, err := store.ListObjects(ctx, prefix, quota+1)
 				if err != nil {
 					logError(ctx, "list proposal requests failed", err)
@@ -757,7 +766,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				}
 				idx := len(existing) + 1
 				requestID := fmt.Sprintf("req_%s_%s_%02d", reqType, dateKey, idx)
-				reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/" + requestID + ".json"
+				reqKey := "topics/" + topicID + "/requests/" + agentRef + "/" + requestID + ".json"
 				allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 			case "turn_queue":
 				st, err := readTopicState(ctx, store, topicID)
@@ -774,11 +783,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				}
 				switch reqType {
 				case "queue_join":
-					if strings.TrimSpace(speaker) == agentID.String() {
+					if strings.TrimSpace(speaker) == agentRef {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "already speaker"})
 						return
 					}
-					existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentID.String()+"/req_join_", 1)
+					existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentRef+"/req_join_", 1)
 					if err != nil {
 						logError(ctx, "list queue_join requests failed", err)
 						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss list failed"})
@@ -788,15 +797,15 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "already requested"})
 						return
 					}
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_join_0001.json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_join_0001.json"
 					allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 				case "turn_done":
-					if strings.TrimSpace(speaker) != agentID.String() {
+					if strings.TrimSpace(speaker) != agentRef {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "not current speaker"})
 						return
 					}
 					suffix := trimPrefixOrSelf(turnID, "turn_")
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_done_" + suffix + ".json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_done_" + suffix + ".json"
 					exists, err := store.Exists(ctx, reqKey)
 					if err != nil {
 						logError(ctx, "check turn_done request exists failed", err)
@@ -823,7 +832,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "missing topic state"})
 					return
 				}
-				if _, ok := findSlotForAgent(st, agentID.String()); ok {
+				if _, ok := findSlotForAgent(st, agentRef); ok {
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "already has slot"})
 					return
 				}
@@ -844,7 +853,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						return
 					}
 				}
-				existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentID.String()+"/req_claim_", 1)
+				existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentRef+"/req_claim_", 1)
 				if err != nil {
 					logError(ctx, "list slot_claim requests failed", err)
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss list failed"})
@@ -854,7 +863,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "already requested"})
 					return
 				}
-				reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_claim_0001.json"
+				reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_claim_0001.json"
 				allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 			case "debate":
 				st, err := readTopicState(ctx, store, topicID)
@@ -865,11 +874,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				}
 				switch reqType {
 				case "queue_join":
-					if agentInDebateSides(st, agentID.String()) {
+					if agentInDebateSides(st, agentRef) {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "already joined"})
 						return
 					}
-					existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentID.String()+"/req_join_", 1)
+					existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentRef+"/req_join_", 1)
 					if err != nil {
 						logError(ctx, "list queue_join requests failed", err)
 						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss list failed"})
@@ -879,12 +888,12 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "already requested"})
 						return
 					}
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_join_0001.json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_join_0001.json"
 					allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 				case "turn_done":
 					speaker := ruleString(st, "speaker_agent_id", "")
 					turnID := ruleString(st, "turn_id", "")
-					if strings.TrimSpace(speaker) != agentID.String() {
+					if strings.TrimSpace(speaker) != agentRef {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "not current speaker"})
 						return
 					}
@@ -893,7 +902,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						return
 					}
 					suffix := trimPrefixOrSelf(turnID, "turn_")
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_done_" + suffix + ".json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_done_" + suffix + ".json"
 					exists, err := store.Exists(ctx, reqKey)
 					if err != nil {
 						logError(ctx, "check turn_done request exists failed", err)
@@ -927,7 +936,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "role not open"})
 						return
 					}
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_claim_" + roleID + "_0001.json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_claim_" + roleID + "_0001.json"
 					exists, err := store.Exists(ctx, reqKey)
 					if err != nil {
 						logError(ctx, "check role_claim request exists failed", err)
@@ -940,11 +949,11 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					}
 					allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 				case "role_done":
-					if !roleAssignedTo(st, roleID, agentID.String()) {
+					if !roleAssignedTo(st, roleID, agentRef) {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "not role owner"})
 						return
 					}
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_done_" + roleID + "_0001.json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_done_" + roleID + "_0001.json"
 					exists, err := store.Exists(ctx, reqKey)
 					if err != nil {
 						logError(ctx, "check role_done request exists failed", err)
@@ -970,7 +979,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				switch reqType {
 				case "queue_join":
 					castMax := ruleInt(mf.Rules, "cast_max", 4)
-					if agentInCast(st, agentID.String()) {
+					if agentInCast(st, agentRef) {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "already joined"})
 						return
 					}
@@ -978,7 +987,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "cast full"})
 						return
 					}
-					existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentID.String()+"/req_join_", 1)
+					existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentRef+"/req_join_", 1)
 					if err != nil {
 						logError(ctx, "list queue_join requests failed", err)
 						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss list failed"})
@@ -988,12 +997,12 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "already requested"})
 						return
 					}
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_join_0001.json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_join_0001.json"
 					allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 				case "turn_done":
 					speaker := ruleString(st, "speaker_agent_id", "")
 					turnID := ruleString(st, "turn_id", "")
-					if strings.TrimSpace(speaker) != agentID.String() {
+					if strings.TrimSpace(speaker) != agentRef {
 						writeJSON(w, http.StatusForbidden, map[string]string{"error": "not current speaker"})
 						return
 					}
@@ -1002,7 +1011,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 						return
 					}
 					suffix := trimPrefixOrSelf(turnID, "turn_")
-					reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_done_" + suffix + ".json"
+					reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_done_" + suffix + ".json"
 					exists, err := store.Exists(ctx, reqKey)
 					if err != nil {
 						logError(ctx, "check turn_done request exists failed", err)
@@ -1031,7 +1040,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 				}
 				holder := ruleString(st, "holder_agent_id", "")
 				beatID := ruleString(st, "beat_id", "")
-				if strings.TrimSpace(holder) != agentID.String() {
+				if strings.TrimSpace(holder) != agentRef {
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "not current holder"})
 					return
 				}
@@ -1040,7 +1049,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					return
 				}
 				suffix := trimPrefixOrSelf(beatID, "beat_")
-				reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/req_pass_" + suffix + ".json"
+				reqKey := "topics/" + topicID + "/requests/" + agentRef + "/req_pass_" + suffix + ".json"
 				exists, err := store.Exists(ctx, reqKey)
 				if err != nil {
 					logError(ctx, "check pass_to request exists failed", err)
@@ -1062,7 +1071,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "voting not enabled"})
 					return
 				}
-				existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentID.String()+"/vote_", 1)
+				existing, err := store.ListObjects(ctx, "topics/"+topicID+"/requests/"+agentRef+"/vote_", 1)
 				if err != nil {
 					logError(ctx, "list vote requests failed", err)
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss list failed"})
@@ -1072,7 +1081,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "already voted"})
 					return
 				}
-				reqKey := "topics/" + topicID + "/requests/" + agentID.String() + "/vote_0001.json"
+				reqKey := "topics/" + topicID + "/requests/" + agentRef + "/vote_0001.json"
 				allowWrite = append(allowWrite, agenthome.JoinKey(basePrefix, reqKey))
 			default:
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported topic mode"})
@@ -1095,7 +1104,7 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	creds, err := stsAssumer.AssumeRole(ctx, "aihub_agent_"+agentID.String(), policy, s.ossSTSDurationSeconds)
+	creds, err := stsAssumer.AssumeRole(ctx, "aihub_agent_"+agentRef, policy, s.ossSTSDurationSeconds)
 	if err != nil {
 		logError(ctx, "sts assume role failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "sts failed"})
@@ -1109,9 +1118,9 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 	creds.Prefixes = append(append([]string{}, allowRead...), allowWrite...)
 
 	scopeJSON, err := marshalJSONB(map[string]any{
-		"kind":         kind,
-		"list_prefixes": allowList,
-		"read_prefixes": allowRead,
+		"kind":           kind,
+		"list_prefixes":  allowList,
+		"read_prefixes":  allowRead,
 		"write_prefixes": allowWrite,
 	})
 	if err != nil {
@@ -1140,9 +1149,9 @@ func (s server) handleIssueOSSCredentials(w http.ResponseWriter, r *http.Request
 }
 
 type pollOSSEventsResponse struct {
-	Items      []map[string]any `json:"items"`
-	LastEventID int64           `json:"last_event_id"`
-	NextCursor int64            `json:"next_cursor"`
+	Items       []map[string]any `json:"items"`
+	LastEventID int64            `json:"last_event_id"`
+	NextCursor  int64            `json:"next_cursor"`
 }
 
 func (s server) handlePollOSSEvents(w http.ResponseWriter, r *http.Request) {
@@ -1152,7 +1161,16 @@ func (s server) handlePollOSSEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 200
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse oss registry limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 200)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -1183,19 +1201,35 @@ func (s server) handlePollOSSEvents(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	basePrefix := strings.Trim(strings.TrimSpace(s.ossBasePrefix), "/")
+	var agentRef string
+	if err := s.db.QueryRow(ctx, `select public_ref from agents where id=$1`, agentID).Scan(&agentRef); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		logError(ctx, "query agent public_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	agentRef = strings.ToLower(strings.TrimSpace(agentRef))
+	if _, err := parseAgentRef(agentRef); err != nil {
+		logError(ctx, "invalid agent public_ref in db", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid agent_ref"})
+		return
+	}
 	allowedPrefixes := []string{
 		agenthome.JoinKey(basePrefix, "agents/all/"),
 		agenthome.JoinKey(basePrefix, "agents/heartbeats/"),
-		agenthome.JoinKey(basePrefix, "agents/prompts/"+agentID.String()+"/"),
+		agenthome.JoinKey(basePrefix, "agents/prompts/"+agentRef+"/"),
 	}
 
 	var items []map[string]any
 	nextCursor := lastEventID
 	for rows.Next() {
 		var (
-			id        int64
-			objectKey string
-			eventType string
+			id         int64
+			objectKey  string
+			eventType  string
 			occurredAt time.Time
 			payloadRaw []byte
 		)

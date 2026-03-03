@@ -10,8 +10,6 @@ function parseArgs(argv) {
     baseUrl: "",
     name: "",
     skillsDir: "",
-    cron: "*/5 * * * *",  // default: every 5 minutes
-    cronEnabled: true
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -19,8 +17,6 @@ function parseArgs(argv) {
     else if (a === "--baseUrl" || a === "--base-url") out.baseUrl = argv[++i] || out.baseUrl;
     else if (a === "--name" || a === "--profile") out.name = argv[++i] || "";
     else if (a === "--skillsDir" || a === "--skills-dir") out.skillsDir = argv[++i] || "";
-    else if (a === "--cron" || a === "--cron-expr") out.cron = argv[++i] || out.cron;
-    else if (a === "--no-cron") out.cronEnabled = false;
     else if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
@@ -194,13 +190,11 @@ function main() {
         "  --baseUrl <url>          (optional) default: https://ah32.com (or env AIHUB_BASE_URL)",
         "  --name <profile>         (optional) profile name (multi-config, no overwrite)",
         "  --skillsDir <dir>        (optional) override OpenClaw skills directory",
-        "  --cron <expr>            (optional) cron expression, default: */5 * * * * (every 5 min)",
-        "  --no-cron                 (optional) disable automatic cron job setup",
         "",
         "What it does:",
         "  - Installs skill to your OpenClaw workspace skills directory (auto-detected)",
         "  - Writes config to: %USERPROFILE%\\.openclaw\\openclaw.json",
-        "  - Creates a cron job to automatically poll AIHub for new tasks",
+        "  - Does NOT set up scheduling; you control timing in AIHub (/app)",
         ""
       ].join("\n")
     );
@@ -299,91 +293,7 @@ function main() {
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
   const gatewayCmdPath = ensureOpenclawGatewayCmd(home);
 
-  // Setup cron job for automatic polling
-  if (args.cronEnabled) {
-    const cronDir = path.join(home, ".openclaw", "cron");
-    const cronJobsFile = path.join(cronDir, "jobs.json");
-
-    let jobs = [];
-    if (fs.existsSync(cronJobsFile)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(cronJobsFile, "utf8"));
-        // Handle both formats: array or {version: 1, jobs: [...]}
-        jobs = Array.isArray(data) ? data : (data.jobs || []);
-      } catch (e) {
-        process.stderr.write(
-          "WARN: OpenClaw cron jobs 文件解析失败，将重建 jobs.json（不影响 AIHub 平台数据）。错误：" +
-            (e && e.message ? e.message : String(e)) +
-            "\n"
-        );
-      }
-    }
-
-    // Normalize legacy schedule format: {kind:"cron", cron:"*/5 * * * *"} -> {kind:"cron", expr:"*/5 * * * *"}
-    for (const job of jobs) {
-      if (!job || typeof job !== "object") continue;
-      const schedule = job.schedule;
-      if (!schedule || typeof schedule !== "object") continue;
-      if (schedule.kind !== "cron") continue;
-      if (typeof schedule.expr !== "string" && typeof schedule.cron === "string") schedule.expr = schedule.cron;
-      if ("cron" in schedule) delete schedule.cron;
-    }
-
-    const jobName = profileName ? `AIHub 拉取任务（${profileName}）` : "AIHub 拉取任务";
-    // Check if AIHub cron job already exists (support legacy names)
-    const legacyNames = profileName
-      ? [jobName, `AIHub Poll - ${profileName}`]
-      : [jobName, "AIHub Poll", "AIHub定时拉取任务", "AIHub定时拉取任务"];
-    const existingIndex = jobs.findIndex(j => legacyNames.includes(j.name));
-    const nowMs = Date.now();
-    const existingJob = existingIndex >= 0 ? jobs[existingIndex] : null;
-    const existingId =
-      existingJob && typeof existingJob.id === "string"
-        ? existingJob.id
-        : (existingJob && typeof existingJob.jobId === "string" ? existingJob.jobId : "");
-    const id = existingId || (profileName ? `aihub-poll-${profileId(profileName)}` : "aihub-poll");
-    const createdAtMs =
-      existingJob && typeof existingJob.createdAtMs === "number" ? existingJob.createdAtMs : nowMs;
-    const newJob = {
-      id,
-      createdAtMs,
-      updatedAtMs: nowMs,
-      name: jobName,
-      enabled: true,
-      wakeMode: "now",
-      schedule: {
-        kind: "cron",
-        expr: args.cron
-      },
-      sessionTarget: "isolated",
-      payload: {
-        kind: "agentTurn",
-        message:
-          `检查 AIHub 任务并执行（使用技能：${skillKey}）。必须按顺序执行：` +
-          `1）优先使用 claim-next 一步领取（有任务就立刻领取，不要问用户“要不要领”）；` +
-          `2）按返回的任务说明与上下文执行；` +
-          `3）发送事件（进度/总结）；` +
-          `4）提交产物（如需）；` +
-          `5）完成任务项。` +
-          `输出/日志要求：只用中文；不要输出任何 UUID/内部 ID（包括 agent_id/work_item_id/run_id 等），如必须提及请统一写成“<id>”；不要把 poll/claim 的原始 JSON 整段贴出来，只做结论性摘要；任何错误必须明确写日志，不允许静默失败。`
-      },
-      delivery: {
-        mode: "announce"
-      },
-      deleteAfterRun: false,
-      state: {}
-    };
-
-    if (existingIndex >= 0) {
-      jobs[existingIndex] = newJob;
-    } else {
-      jobs.push(newJob);
-    }
-
-    fs.mkdirSync(cronDir, { recursive: true });
-    // Preserve the {version: 1, jobs: [...]} format
-    fs.writeFileSync(cronJobsFile, JSON.stringify({ version: 1, jobs }, null, 2) + "\n", "utf8");
-  }
+  // Scheduling is user-owned. AIHub (/app) provides copyable commands/snippets so users choose timing.
 
   process.stdout.write(
     [
@@ -394,8 +304,7 @@ function main() {
       "GatewayCmd: " + gatewayCmdPath,
       "BaseUrl: " + baseUrl,
       profileName ? ("Profile: " + profileName) : "Profile: default",
-      args.cronEnabled ? ("Cron: " + args.cron + "（已启用定时拉取）") : "Cron: disabled",
-      "Next: 重启 OpenClaw / 重新加载技能。"
+      "Next: 重启 OpenClaw / 重新加载技能；定时任务请到 AIHub /app 生成。"
     ].join("\n") + "\n"
   );
 }

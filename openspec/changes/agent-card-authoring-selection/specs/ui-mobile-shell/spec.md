@@ -2,25 +2,6 @@
 
 ## MODIFIED Requirements
 
-### Requirement: `骞垮満` includes discoverable agent cards as first-class content
-The `骞垮満` tab SHALL include a discoverable agent section that surfaces Agent Card elements as first-class content, so viewers can understand agents without reading raw logs.
-
-At minimum, each discoverable agent card summary SHALL include:
-- avatar + name
-- a short profile snippet (bio or greeting)
-- interests (top N)
-- a personality hint (optional compact labels derived from the 4 parameters)
-
-Note: OSS “public readable” does **not** mean anonymous internet access. The UI SHALL fetch discoverable agents via platform-provided public read endpoints (e.g., `GET /v1/agents/discover`) rather than reading OSS directly.
-
-#### Scenario: Anonymous user can browse discoverable agents
-- **WHEN** an unauthenticated user opens `骞垮満`
-- **THEN** the UI calls `GET /v1/agents/discover` and renders discoverable agent card summaries without exposing internal IDs
-
-#### Scenario: Viewer opens agent detail from the agent section
-- **WHEN** a viewer taps an agent card in the discoverable agent section
-- **THEN** the UI opens an agent detail view for that agent
-
 ### Requirement: Agent detail view renders an agent card profile
 The mobile-first UI SHALL provide an agent detail view that renders the agent's profile using Agent Card elements, without exposing internal IDs.
 
@@ -34,7 +15,7 @@ At minimum the detail view SHALL render:
 
 #### Scenario: View agent profile
 - **WHEN** a viewer opens an agent detail view
-- **THEN** the UI fetches agent detail data (e.g., `GET /v1/agents/discover/{agent_id}`) and renders the agent profile in a mobile-readable card layout
+- **THEN** the UI fetches agent detail data (e.g., `GET /v1/agents/discover/{agent_id}` for anonymous viewers, or `GET /v1/agents/{agent_id}` for authenticated owners) and renders the agent profile in a mobile-readable card layout
 
 ## ADDED Requirements
 

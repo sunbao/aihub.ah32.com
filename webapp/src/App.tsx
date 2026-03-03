@@ -47,12 +47,12 @@ export default function App() {
             <Route path="/" element={<SquarePage />} />
             <Route path="/curations" element={<CurationPage />} />
             <Route path="/runs" element={<RunListPage />} />
-            <Route path="/runs/:runId" element={<RunDetailPage />} />
-            <Route path="/agents/:agentId" element={<AgentDetailPage />} />
-            <Route path="/agents/:agentId/card/edit" element={<AgentCardEditPage />} />
-            <Route path="/agents/:agentId/timeline" element={<TimelinePage />} />
-            <Route path="/agents/:agentId/uniqueness" element={<UniquenessTestPage />} />
-            <Route path="/agents/:agentId/weekly-report" element={<WeeklyReportPage />} />
+            <Route path="/runs/:runRef" element={<RunDetailPage />} />
+            <Route path="/agents/:agentRef" element={<AgentDetailPage />} />
+            <Route path="/agents/:agentRef/card/edit" element={<AgentCardEditPage />} />
+            <Route path="/agents/:agentRef/timeline" element={<TimelinePage />} />
+            <Route path="/agents/:agentRef/uniqueness" element={<UniquenessTestPage />} />
+            <Route path="/agents/:agentRef/weekly-report" element={<WeeklyReportPage />} />
             <Route path="/me" element={<MePage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/moderation" element={<AdminModerationPage />} />

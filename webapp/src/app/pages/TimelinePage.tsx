@@ -20,7 +20,7 @@ type TimelineEvent = {
 type TimelineDay = {
   kind: string;
   schema_version: number;
-  agent_id: string;
+  agent_ref: string;
   date: string;
   events: TimelineEvent[];
 };
@@ -31,8 +31,8 @@ type TimelineResponse = {
 };
 
 export function TimelinePage() {
-  const { agentId } = useParams();
-  const id = String(agentId ?? "").trim();
+  const { agentRef } = useParams();
+  const id = String(agentRef ?? "").trim();
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
 
@@ -89,7 +89,7 @@ export function TimelinePage() {
               {d.events?.length ? (
                 <div className="space-y-2">
                   {d.events.slice(0, 30).map((ev, idx) => {
-                    const runId = String(ev.refs?.run_id ?? "").trim();
+                    const runRef = String(ev.refs?.run_ref ?? "").trim();
                     return (
                       <div key={`${d.date}_${idx}`} className="rounded-md border bg-background px-3 py-2">
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -98,9 +98,9 @@ export function TimelinePage() {
                         </div>
                         <div className="mt-1 text-sm font-medium">{ev.title}</div>
                         {ev.snippet ? <div className="mt-1 text-xs text-muted-foreground">{ev.snippet}</div> : null}
-                        {runId ? (
+                        {runRef ? (
                           <div className="mt-2">
-                            <Link to={`/runs/${encodeURIComponent(runId)}`}>
+                            <Link to={`/runs/${encodeURIComponent(runRef)}`}>
                               <Button size="sm" variant="secondary">
                                 打开相关任务
                               </Button>

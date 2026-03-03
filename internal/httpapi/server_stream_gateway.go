@@ -18,9 +18,8 @@ import (
 )
 
 func (s server) handleRunStreamSSE(w http.ResponseWriter, r *http.Request) {
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runID, runRef, ok := s.requireRunFromURLRef(w, r, "runRef")
+	if !ok {
 		return
 	}
 	if !s.requireRunPublicOrOwner(w, r, runID) {
@@ -57,7 +56,7 @@ func (s server) handleRunStreamSSE(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Backfill.
-	events, err := s.fetchEvents(ctx, runID, afterSeq, 500)
+	events, err := s.fetchEvents(ctx, runID, runRef, afterSeq, 500)
 	if err != nil {
 		logError(ctx, "sse backfill fetch failed", err)
 		if err := writeSSE(bw, "error", map[string]string{"error": "backfill failed"}); err != nil {
@@ -121,9 +120,8 @@ func (s server) handleRunStreamSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s server) handleRunReplay(w http.ResponseWriter, r *http.Request) {
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runID, runRef, ok := s.requireRunFromURLRef(w, r, "runRef")
+	if !ok {
 		return
 	}
 	if !s.requireRunPublicOrOwner(w, r, runID) {
@@ -141,8 +139,9 @@ func (s server) handleRunReplay(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := clampInt(int64Query(r, "limit", 200), 1, 500)
 
-	events, err := s.fetchEvents(r.Context(), runID, afterSeq, limit)
+	events, err := s.fetchEvents(r.Context(), runID, runRef, afterSeq, limit)
 	if err != nil {
+		logError(r.Context(), "run replay fetch failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -153,7 +152,7 @@ func (s server) handleRunReplay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"run_id":    runID.String(),
+		"run_ref":   runRef,
 		"events":    events,
 		"key_nodes": keyNodes,
 		"after_seq": afterSeq,
@@ -193,7 +192,7 @@ func writeSSE(w *bufio.Writer, eventName string, data any) error {
 	return nil
 }
 
-func (s server) fetchEvents(ctx context.Context, runID uuid.UUID, afterSeq int64, limit int) ([]eventDTO, error) {
+func (s server) fetchEvents(ctx context.Context, runID uuid.UUID, runRef string, afterSeq int64, limit int) ([]eventDTO, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -232,7 +231,7 @@ func (s server) fetchEvents(ctx context.Context, runID uuid.UUID, afterSeq int64
 			payload = map[string]any{"text": "该内容已被管理员审核后屏蔽", "_redacted": true}
 		}
 		out = append(out, eventDTO{
-			RunID:     runID.String(),
+			RunRef:    runRef,
 			Seq:       seq,
 			Kind:      kind,
 			Persona:   persona,
@@ -250,9 +249,8 @@ func (s server) handleReplaceAgentTags(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
@@ -267,22 +265,25 @@ func (s server) handleReplaceAgentTags(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
+		logError(ctx, "replace tags: db begin failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
 		return
 	}
 	defer tx.Rollback(ctx)
 
-	var exists bool
-	if err := tx.QueryRow(ctx, `select true from agents where id=$1 and owner_id=$2`, agentID, userID).Scan(&exists); err != nil {
+	var agentID uuid.UUID
+	if err := tx.QueryRow(ctx, `select id from agents where public_ref=$1 and owner_id=$2`, agentRef, userID).Scan(&agentID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
+		logError(ctx, "replace tags: query agent failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
 
 	if _, err := tx.Exec(ctx, `delete from agent_tags where agent_id=$1`, agentID); err != nil {
+		logError(ctx, "replace tags: delete tags failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete tags failed"})
 		return
 	}
@@ -291,12 +292,14 @@ func (s server) handleReplaceAgentTags(w http.ResponseWriter, r *http.Request) {
 			insert into agent_tags (agent_id, tag) values ($1, $2)
 			on conflict do nothing
 		`, agentID, t); err != nil {
+			logError(ctx, "replace tags: insert tags failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert tags failed"})
 			return
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "replace tags: commit failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
@@ -324,9 +327,10 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := s.db.Query(ctx, `
-		select wi.id, wi.run_id, wi.stage, wi.kind, wi.status, wi.context, wi.available_skills, wi.review_context
+		select wi.id, wi.run_id, r.public_ref, r.goal, r.constraints, wi.stage, wi.kind, wi.status, wi.context, wi.available_skills, wi.review_context
 		from work_item_offers o
 		join work_items wi on wi.id = o.work_item_id
+		join runs r on r.id = wi.run_id
 		left join work_item_leases l on l.work_item_id = wi.id
 		where o.agent_id = $1
 		  and (
@@ -337,6 +341,7 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 		limit 50
 	`, agentID)
 	if err != nil {
+		logError(ctx, "gateway poll: query offers failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -344,7 +349,7 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 
 	type offerDTO struct {
 		WorkItemID      string         `json:"work_item_id"`
-		RunID           string         `json:"run_id"`
+		RunRef          string         `json:"run_ref"`
 		Stage           string         `json:"stage"`
 		Kind            string         `json:"kind"`
 		Status          string         `json:"status"`
@@ -360,6 +365,9 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 		var (
 			workItemID      uuid.UUID
 			runID           uuid.UUID
+			runRef          string
+			goal            string
+			constraints     string
 			stage           string
 			kind            string
 			status          string
@@ -367,14 +375,9 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 			availableSkills []byte
 			reviewContext   []byte
 		)
-		if err := rows.Scan(&workItemID, &runID, &stage, &kind, &status, &context, &availableSkills, &reviewContext); err != nil {
+		if err := rows.Scan(&workItemID, &runID, &runRef, &goal, &constraints, &stage, &kind, &status, &context, &availableSkills, &reviewContext); err != nil {
+			logError(ctx, "gateway poll: scan offer failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
-			return
-		}
-
-		var goal, constraints string
-		if err := s.db.QueryRow(ctx, `select goal, constraints from runs where id=$1`, runID).Scan(&goal, &constraints); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "run lookup failed"})
 			return
 		}
 
@@ -400,7 +403,7 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 
 		refs, ok := artifactRefsCache[runID]
 		if !ok {
-			refs, err = s.listArtifactRefs(ctx, runID)
+			refs, err = s.listArtifactRefs(ctx, runID, runRef)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "artifact refs lookup failed"})
 				return
@@ -418,22 +421,22 @@ func (s server) handleGatewayPoll(w http.ResponseWriter, r *http.Request) {
 
 		offers = append(offers, offerDTO{
 			WorkItemID:      workItemID.String(),
-			RunID:           runID.String(),
+			RunRef:          strings.TrimSpace(runRef),
 			Stage:           stage,
 			Kind:            kind,
 			Status:          status,
-			Goal:            goal,
-			Constraints:     constraints,
+			Goal:            strings.TrimSpace(goal),
+			Constraints:     strings.TrimSpace(constraints),
 			StageContext:    stageContext,
 			AvailableSkills: skills,
 			ReviewContext:   revCtx,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"agent_id": agentID.String(), "offers": offers})
+	writeJSON(w, http.StatusOK, map[string]any{"offers": offers})
 }
 
 type gatewayTaskDTO struct {
-	RunID      string   `json:"run_id"`
+	RunRef     string   `json:"run_ref"`
 	WorkItemID string   `json:"work_item_id"`
 	Goal       string   `json:"goal"`
 	Tags       []string `json:"tags,omitempty"`
@@ -447,7 +450,16 @@ func (s server) handleGatewayTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 50
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse gateway tasks limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 200)
 
 	tags := normalizeTags(strings.Split(strings.TrimSpace(r.URL.Query().Get("tags")), ","))
@@ -466,7 +478,7 @@ func (s server) handleGatewayTasks(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.db.Query(ctx, `
 		select
-			wi.run_id,
+			r.public_ref,
 			wi.id,
 			r.goal,
 			coalesce(array_agg(distinct t.tag) filter (where t.tag is not null), '{}'::text[]) as tags
@@ -477,7 +489,7 @@ func (s server) handleGatewayTasks(w http.ResponseWriter, r *http.Request) {
 		where o.agent_id = $1
 		  and wi.status = 'offered'
 		  `+where+`
-		group by wi.run_id, wi.id, r.goal
+		group by r.public_ref, wi.run_id, wi.id, r.goal
 		order by wi.created_at asc
 		limit $2
 	`, args...)
@@ -491,18 +503,18 @@ func (s server) handleGatewayTasks(w http.ResponseWriter, r *http.Request) {
 	out := make([]gatewayTaskDTO, 0)
 	for rows.Next() {
 		var (
-			runID      uuid.UUID
+			runRef     string
 			workItemID uuid.UUID
 			goal       string
 			taskTags   []string
 		)
-		if err := rows.Scan(&runID, &workItemID, &goal, &taskTags); err != nil {
+		if err := rows.Scan(&runRef, &workItemID, &goal, &taskTags); err != nil {
 			logError(ctx, "scan gateway tasks failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		out = append(out, gatewayTaskDTO{
-			RunID:      runID.String(),
+			RunRef:     strings.TrimSpace(runRef),
 			WorkItemID: workItemID.String(),
 			Goal:       strings.TrimSpace(goal),
 			Tags:       taskTags,
@@ -520,7 +532,7 @@ func (s server) handleGatewayTasks(w http.ResponseWriter, r *http.Request) {
 
 type workItemDetailDTO struct {
 	WorkItemID      string         `json:"work_item_id"`
-	RunID           string         `json:"run_id"`
+	RunRef          string         `json:"run_ref"`
 	Stage           string         `json:"stage"`
 	Kind            string         `json:"kind"`
 	Status          string         `json:"status"`
@@ -562,6 +574,7 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 
 	var (
 		runID           uuid.UUID
+		runRef          string
 		stage           string
 		kind            string
 		status          string
@@ -575,16 +588,17 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 		scheduledAt     *time.Time
 	)
 	err = s.db.QueryRow(ctx, `
-		select wi.run_id, wi.stage, wi.kind, wi.status, wi.created_at, wi.updated_at, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context, wi.scheduled_at
+		select wi.run_id, r.public_ref, wi.stage, wi.kind, wi.status, wi.created_at, wi.updated_at, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context, wi.scheduled_at
 		from work_items wi
 		join runs r on r.id = wi.run_id
 		where wi.id = $1
-	`, workItemID).Scan(&runID, &stage, &kind, &status, &createdAt, &updatedAt, &goal, &constraints, &context, &availableSkills, &reviewContext, &scheduledAt)
+	`, workItemID).Scan(&runID, &runRef, &stage, &kind, &status, &createdAt, &updatedAt, &goal, &constraints, &context, &availableSkills, &reviewContext, &scheduledAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	if err != nil {
+		logError(ctx, "gateway get work item: query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -609,8 +623,9 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	refs, err := s.listArtifactRefs(ctx, runID)
+	refs, err := s.listArtifactRefs(ctx, runID, runRef)
 	if err != nil {
+		logError(ctx, "gateway get work item: artifact refs lookup failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "artifact refs lookup failed"})
 		return
 	}
@@ -629,7 +644,7 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 	s.audit(ctx, "agent", agentID, "work_item_read", map[string]any{"work_item_id": workItemID.String(), "run_id": runID.String()})
 	writeJSON(w, http.StatusOK, workItemDetailDTO{
 		WorkItemID:      workItemID.String(),
-		RunID:           runID.String(),
+		RunRef:          strings.TrimSpace(runRef),
 		Stage:           stage,
 		Kind:            kind,
 		Status:          status,
@@ -646,7 +661,7 @@ func (s server) handleGatewayGetWorkItem(w http.ResponseWriter, r *http.Request)
 
 type workItemSkillsResponse struct {
 	WorkItemID string     `json:"work_item_id"`
-	RunID      string     `json:"run_id"`
+	RunRef     string     `json:"run_ref"`
 	Skills     []skillDTO `json:"skills"`
 }
 
@@ -684,13 +699,20 @@ func (s server) handleGatewayWorkItemSkills(w http.ResponseWriter, r *http.Reque
 
 	var (
 		runID           uuid.UUID
+		runRef          string
 		availableSkills []byte
 	)
-	if err := s.db.QueryRow(ctx, `select run_id, available_skills from work_items where id=$1`, workItemID).Scan(&runID, &availableSkills); err != nil {
+	if err := s.db.QueryRow(ctx, `
+		select wi.run_id, r.public_ref, wi.available_skills
+		from work_items wi
+		join runs r on r.id = wi.run_id
+		where wi.id = $1
+	`, workItemID).Scan(&runID, &runRef, &availableSkills); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
+		logError(ctx, "gateway work item skills: query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -716,7 +738,7 @@ func (s server) handleGatewayWorkItemSkills(w http.ResponseWriter, r *http.Reque
 
 	writeJSON(w, http.StatusOK, workItemSkillsResponse{
 		WorkItemID: workItemID.String(),
-		RunID:      runID.String(),
+		RunRef:     strings.TrimSpace(runRef),
 		Skills:     out,
 	})
 }
@@ -728,7 +750,7 @@ type artifactRefDTO struct {
 	CreatedAt string `json:"created_at"`
 }
 
-func (s server) listArtifactRefs(ctx context.Context, runID uuid.UUID) ([]artifactRefDTO, error) {
+func (s server) listArtifactRefs(ctx context.Context, runID uuid.UUID, runRef string) ([]artifactRefDTO, error) {
 	rows, err := s.db.Query(ctx, `
 		select version, kind, created_at
 		from artifacts
@@ -753,7 +775,7 @@ func (s server) listArtifactRefs(ctx context.Context, runID uuid.UUID) ([]artifa
 		out = append(out, artifactRefDTO{
 			Version:   version,
 			Kind:      kind,
-			URL:       "/v1/runs/" + runID.String() + "/artifacts/" + strconv.Itoa(version),
+			URL:       "/v1/runs/" + strings.TrimSpace(runRef) + "/artifacts/" + strconv.Itoa(version),
 			CreatedAt: createdAt.UTC().Format(time.RFC3339),
 		})
 	}
@@ -762,7 +784,7 @@ func (s server) listArtifactRefs(ctx context.Context, runID uuid.UUID) ([]artifa
 
 type claimResponse struct {
 	WorkItemID      string         `json:"work_item_id"`
-	RunID           string         `json:"run_id"`
+	RunRef          string         `json:"run_ref"`
 	Stage           string         `json:"stage"`
 	Kind            string         `json:"kind"`
 	Status          string         `json:"status"`
@@ -774,11 +796,11 @@ type claimResponse struct {
 	LeaseExpiresAt  string         `json:"lease_expires_at"`
 }
 
-func (s server) enrichStageContextForOffer(ctx context.Context, runID uuid.UUID, stageContext map[string]any, skills []string) (map[string]any, error) {
+func (s server) enrichStageContextForOffer(ctx context.Context, runID uuid.UUID, runRef string, stageContext map[string]any, skills []string) (map[string]any, error) {
 	if stageContext == nil {
 		stageContext = map[string]any{}
 	}
-	refs, err := s.listArtifactRefs(ctx, runID)
+	refs, err := s.listArtifactRefs(ctx, runID, runRef)
 	if err != nil {
 		return nil, err
 	}
@@ -793,15 +815,16 @@ func (s server) attachSelfPromptContext(ctx context.Context, agentID uuid.UUID, 
 	}
 
 	var (
+		agentRef   string
 		name       string
 		promptView string
 		personaRaw []byte
 	)
 	if err := s.db.QueryRow(ctx, `
-		select name, prompt_view, persona
+		select public_ref, name, prompt_view, persona
 		from agents
 		where id = $1
-	`, agentID).Scan(&name, &promptView, &personaRaw); err != nil {
+	`, agentID).Scan(&agentRef, &name, &promptView, &personaRaw); err != nil {
 		return nil, err
 	}
 
@@ -816,16 +839,18 @@ func (s server) attachSelfPromptContext(ctx context.Context, agentID uuid.UUID, 
 
 	name = strings.TrimSpace(name)
 	promptView = strings.TrimSpace(promptView)
+	stageContext["self_agent_ref"] = strings.TrimSpace(agentRef)
 	stageContext["self_agent_name"] = name
 	stageContext["self_prompt_view"] = promptView
 	stageContext["self_base_prompt"] = buildBasePrompt(name, persona)
-	stageContext["self_prompt_bundle"] = buildPromptBundle(agentID.String(), name, persona, promptView)
+	stageContext["self_prompt_bundle"] = buildPromptBundle(strings.TrimSpace(agentRef), name, persona, promptView)
 	return stageContext, nil
 }
 
 func (s server) buildClaimResponse(ctx context.Context, agentID uuid.UUID, workItemID uuid.UUID, leaseExpiresAt time.Time) (claimResponse, error) {
 	var (
 		runID           uuid.UUID
+		runRef          string
 		stage           string
 		kind            string
 		goal            string
@@ -835,11 +860,11 @@ func (s server) buildClaimResponse(ctx context.Context, agentID uuid.UUID, workI
 		reviewContextB  []byte
 	)
 	if err := s.db.QueryRow(ctx, `
-		select wi.run_id, wi.stage, wi.kind, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context
+		select wi.run_id, r.public_ref, wi.stage, wi.kind, r.goal, r.constraints, wi.context, wi.available_skills, wi.review_context
 		from work_items wi
 		join runs r on r.id = wi.run_id
 		where wi.id = $1
-	`, workItemID).Scan(&runID, &stage, &kind, &goal, &constraints, &contextB, &availableSkills, &reviewContextB); err != nil {
+	`, workItemID).Scan(&runID, &runRef, &stage, &kind, &goal, &constraints, &contextB, &availableSkills, &reviewContextB); err != nil {
 		return claimResponse{}, err
 	}
 
@@ -855,7 +880,7 @@ func (s server) buildClaimResponse(ctx context.Context, agentID uuid.UUID, workI
 	if err := unmarshalJSONNullable(reviewContextB, &revCtx); err != nil {
 		return claimResponse{}, err
 	}
-	stageContext, err := s.enrichStageContextForOffer(ctx, runID, stageContext, skills)
+	stageContext, err := s.enrichStageContextForOffer(ctx, runID, runRef, stageContext, skills)
 	if err != nil {
 		return claimResponse{}, err
 	}
@@ -866,7 +891,7 @@ func (s server) buildClaimResponse(ctx context.Context, agentID uuid.UUID, workI
 
 	return claimResponse{
 		WorkItemID:      workItemID.String(),
-		RunID:           runID.String(),
+		RunRef:          strings.TrimSpace(runRef),
 		Stage:           strings.TrimSpace(stage),
 		Kind:            strings.TrimSpace(kind),
 		Status:          "claimed",
@@ -1131,9 +1156,8 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runID, runRef, ok := s.requireRunFromURLRef(w, r, "runRef")
+	if !ok {
 		return
 	}
 
@@ -1152,6 +1176,7 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 	// Basic payload size guardrail.
 	payloadJSON, err := json.Marshal(req.Payload)
 	if err != nil {
+		logError(r.Context(), "gateway emit event: payload marshal failed", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
@@ -1177,18 +1202,21 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logError(ctx, "gateway emit event: participant check failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "participant check failed"})
 		return
 	}
 
 	persona, err := s.personaForAgentInRun(ctx, runID, agentID)
 	if err != nil {
+		logError(ctx, "gateway emit event: persona lookup failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "persona lookup failed"})
 		return
 	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
+		logError(ctx, "gateway emit event: db begin failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
 		return
 	}
@@ -1196,12 +1224,14 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 
 	// Lock run row to serialize seq allocation per run.
 	if _, err := tx.Exec(ctx, `select 1 from runs where id=$1 for update`, runID); err != nil {
+		logError(ctx, "gateway emit event: run lock failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "run lock failed"})
 		return
 	}
 
 	var nextSeq int64
 	if err := tx.QueryRow(ctx, `select coalesce(max(seq), 0) + 1 from events where run_id=$1`, runID).Scan(&nextSeq); err != nil {
+		logError(ctx, "gateway emit event: seq allocation failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "seq allocation failed"})
 		return
 	}
@@ -1212,11 +1242,13 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 		insert into events (run_id, seq, kind, persona, payload, is_key_node, created_at)
 		values ($1, $2, $3, $4, $5, $6, $7)
 	`, runID, nextSeq, req.Kind, persona, payloadJSON, isKey, createdAt); err != nil {
+		logError(ctx, "gateway emit event: insert failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert failed"})
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		logError(ctx, "gateway emit event: commit failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
@@ -1227,7 +1259,7 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 		payloadMap = map[string]any{"_decode_error": true}
 	}
 	ev := eventDTO{
-		RunID:     runID.String(),
+		RunRef:    runRef,
 		Seq:       nextSeq,
 		Kind:      req.Kind,
 		Persona:   persona,
@@ -1288,8 +1320,8 @@ func (s server) personaForAgentInRun(ctx context.Context, runID uuid.UUID, agent
 }
 
 type invokeToolRequest struct {
-	RunID string         `json:"run_id"`
-	Tool  string         `json:"tool"`
+	RunRef string        `json:"run_ref"`
+	Tool   string        `json:"tool"`
 	Input map[string]any `json:"input"`
 }
 
@@ -1309,17 +1341,30 @@ func (s server) handleGatewayInvokeTool(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tool"})
 		return
 	}
-	runID, err := uuid.Parse(strings.TrimSpace(req.RunID))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run_id"})
-		return
-	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	runRef, err := parseRunRef(req.RunRef)
+	if err != nil {
+		logError(ctx, "gateway invoke tool: parse run_ref failed", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run_ref"})
+		return
+	}
+	runID, err := s.lookupRunIDByRef(ctx, runRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "gateway invoke tool: lookup run by run_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
 	allowed, err := s.isToolAllowed(ctx, agentID, runID, req.Tool)
 	if err != nil {
+		logError(ctx, "gateway invoke tool: policy check failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "policy check failed"})
 		return
 	}

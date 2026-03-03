@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -18,9 +17,8 @@ func (s server) handleGetAgentPromptBundle(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
@@ -32,11 +30,11 @@ func (s server) handleGetAgentPromptBundle(w http.ResponseWriter, r *http.Reques
 		promptView string
 		personaRaw []byte
 	)
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select name, prompt_view, persona
 		from agents
-		where id = $1 and owner_id = $2
-	`, agentID, userID).Scan(&name, &promptView, &personaRaw)
+		where public_ref = $1 and owner_id = $2
+	`, agentRef, userID).Scan(&name, &promptView, &personaRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -56,7 +54,6 @@ func (s server) handleGetAgentPromptBundle(w http.ResponseWriter, r *http.Reques
 		persona = nil
 	}
 
-	bundle := buildPromptBundle(agentID.String(), strings.TrimSpace(name), persona, strings.TrimSpace(promptView))
+	bundle := buildPromptBundle(agentRef, strings.TrimSpace(name), persona, strings.TrimSpace(promptView))
 	writeJSON(w, http.StatusOK, bundle)
 }
-

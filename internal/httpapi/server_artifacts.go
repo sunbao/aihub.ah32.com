@@ -15,7 +15,7 @@ import (
 )
 
 type runOutputDTO struct {
-	RunID     string `json:"run_id"`
+	RunRef    string `json:"run_ref"`
 	Version   int    `json:"version"`
 	Kind      string `json:"kind"`
 	Author    string `json:"author"`
@@ -30,7 +30,7 @@ type submitArtifactRequest struct {
 }
 
 type submitArtifactResponse struct {
-	RunID      string `json:"run_id"`
+	RunRef     string `json:"run_ref"`
 	Version    int    `json:"version"`
 	Kind       string `json:"kind"`
 	ArtifactID string `json:"artifact_id,omitempty"`
@@ -42,9 +42,8 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runID, runRef, ok := s.requireRunFromURLRef(w, r, "runRef")
+	if !ok {
 		return
 	}
 
@@ -161,7 +160,7 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.audit(ctx, "agent", agentID, "artifact_submitted", map[string]any{"run_id": runID.String(), "version": nextVersion, "kind": req.Kind, "artifact_id": artifactID.String()})
-	writeJSON(w, http.StatusCreated, submitArtifactResponse{RunID: runID.String(), Version: nextVersion, Kind: req.Kind, ArtifactID: artifactID.String()})
+	writeJSON(w, http.StatusCreated, submitArtifactResponse{RunRef: runRef, Version: nextVersion, Kind: req.Kind, ArtifactID: artifactID.String()})
 }
 
 func (s server) maybeCreateReviewWorkItem(ctx context.Context, runID uuid.UUID, artifactID uuid.UUID, authorAgentID uuid.UUID) error {
@@ -210,14 +209,10 @@ func (s server) maybeCreateReviewWorkItem(ctx context.Context, runID uuid.UUID, 
 	}
 	if len(candidates) == 0 {
 		// Cold-start friendly fallback: if this run currently has no other offered participants
-		// (e.g. matchingParticipantCount=1), pick any other enabled agent that matches the run's
-		// required tags.
+		// (e.g. matchingParticipantCount=1), pick any other enabled agent.
+		// Prefer agents that best match the run's required tags, but do not hard-exclude
+		// agents that don't match (early-stage matching should be permissive).
 		rows, err := s.db.Query(ctx, `
-			with req as (
-				select count(*)::int as req_count
-				from run_required_tags
-				where run_id = $1
-			)
 			select a.id
 			from agents a
 			left join run_required_tags rt on rt.run_id = $1
@@ -225,9 +220,7 @@ func (s server) maybeCreateReviewWorkItem(ctx context.Context, runID uuid.UUID, 
 			where a.status = 'enabled'
 			  and a.id <> $2
 			group by a.id
-			having (select req_count from req) = 0
-			   or count(distinct at.tag) = (select req_count from req)
-			order by random()
+			order by count(distinct at.tag) desc, random()
 			limit 50
 		`, runID, authorAgentID)
 		if err != nil {
@@ -371,9 +364,8 @@ func (s server) ownerForAgent(ctx context.Context, agentID uuid.UUID) (uuid.UUID
 }
 
 func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request) {
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runID, runRef, ok := s.requireRunFromURLRef(w, r, "runRef")
+	if !ok {
 		return
 	}
 	if !s.requireRunPublicOrOwner(w, r, runID) {
@@ -432,7 +424,7 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, runOutputDTO{
-		RunID:     runID.String(),
+		RunRef:    runRef,
 		Version:   version,
 		Kind:      kind,
 		Author:    author,
@@ -442,9 +434,8 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 }
 
 func (s server) handleGetRunArtifactPublic(w http.ResponseWriter, r *http.Request) {
-	runID, err := uuid.Parse(chi.URLParam(r, "runID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
+	runID, runRef, ok := s.requireRunFromURLRef(w, r, "runRef")
+	if !ok {
 		return
 	}
 	if !s.requireRunPublicOrOwner(w, r, runID) {
@@ -507,14 +498,14 @@ func (s server) handleGetRunArtifactPublic(w http.ResponseWriter, r *http.Reques
 
 	// Provide jump info for key nodes: if linked_event_seq is present, clients can start replay near it.
 	resp := map[string]any{
-		"run_id":     runID.String(),
+		"run_ref":    runRef,
 		"version":    version,
 		"kind":       kind,
 		"author":     author,
 		"content":    content,
 		"created_at": createdAt.UTC().Format(time.RFC3339),
 		"linked_seq": linkedEventSeq,
-		"replay_url": "/v1/runs/" + runID.String() + "/replay",
+		"replay_url": "/v1/runs/" + runRef + "/replay",
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

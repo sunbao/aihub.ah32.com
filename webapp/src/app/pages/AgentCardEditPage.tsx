@@ -7,8 +7,8 @@ import { getUserApiKey } from "@/lib/storage";
 import { AgentCardWizard } from "@/app/components/AgentCardWizard";
 
 export function AgentCardEditPage() {
-  const { agentId } = useParams();
-  const id = String(agentId ?? "").trim();
+  const { agentRef } = useParams();
+  const id = String(agentRef ?? "").trim();
   const nav = useNavigate();
   const { t } = useI18n();
 
@@ -52,7 +52,7 @@ export function AgentCardEditPage() {
         </Button>
       </div>
 
-      <AgentCardWizard agentId={id} userApiKey={userApiKey} />
+      <AgentCardWizard agentRef={id} userApiKey={userApiKey} />
     </div>
   );
 }

@@ -2,9 +2,9 @@ const isBrowser = typeof window !== "undefined";
 
 export const STORAGE_KEYS = {
   userApiKey: "aihub_user_api_key",
-  agentApiKeys: "aihub_agent_api_keys", // JSON map: { [agent_id]: api_key }
+  agentApiKeys: "aihub_agent_api_keys", // JSON map: { [agent_ref]: api_key }
   baseUrl: "aihub_base_url",
-  openclawProfileNames: "aihub_openclaw_profile_names", // JSON map: { [agent_id]: profile_name }
+  openclawProfileNames: "aihub_openclaw_profile_names", // JSON map: { [agent_ref]: profile_name }
   agentCardCatalogsVersion: "aihub_agent_card_catalogs_version",
   agentCardCatalogsEtag: "aihub_agent_card_catalogs_etag",
   agentCardCatalogsJson: "aihub_agent_card_catalogs_json",
@@ -63,53 +63,53 @@ function setJsonMap(key: string, map: Record<string, string>): void {
   setStored(key, JSON.stringify(map ?? {}));
 }
 
-export function getAgentApiKey(agentId: string): string {
-  const id = String(agentId ?? "").trim();
-  if (!id) return "";
+export function getAgentApiKey(agentRef: string): string {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) return "";
   const map = getJsonMap(STORAGE_KEYS.agentApiKeys);
-  return String(map[id] ?? "").trim();
+  return String(map[ref] ?? "").trim();
 }
 
-export function setAgentApiKey(agentId: string, apiKey: string): void {
-  const id = String(agentId ?? "").trim();
+export function setAgentApiKey(agentRef: string, apiKey: string): void {
+  const ref = String(agentRef ?? "").trim();
   const k = String(apiKey ?? "").trim();
-  if (!id || !k) return;
+  if (!ref || !k) return;
   const map = getJsonMap(STORAGE_KEYS.agentApiKeys);
-  map[id] = k;
+  map[ref] = k;
   setJsonMap(STORAGE_KEYS.agentApiKeys, map);
 }
 
-export function deleteAgentApiKey(agentId: string): void {
-  const id = String(agentId ?? "").trim();
-  if (!id) return;
+export function deleteAgentApiKey(agentRef: string): void {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) return;
   const map = getJsonMap(STORAGE_KEYS.agentApiKeys);
-  if (!(id in map)) return;
-  delete map[id];
+  if (!(ref in map)) return;
+  delete map[ref];
   setJsonMap(STORAGE_KEYS.agentApiKeys, map);
 }
 
-export function getOpenclawProfileName(agentId: string): string {
-  const id = String(agentId ?? "").trim();
-  if (!id) return "";
+export function getOpenclawProfileName(agentRef: string): string {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) return "";
   const map = getJsonMap(STORAGE_KEYS.openclawProfileNames);
-  return String(map[id] ?? "").trim();
+  return String(map[ref] ?? "").trim();
 }
 
-export function setOpenclawProfileName(agentId: string, profileName: string): void {
-  const id = String(agentId ?? "").trim();
-  if (!id) return;
+export function setOpenclawProfileName(agentRef: string, profileName: string): void {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) return;
   const map = getJsonMap(STORAGE_KEYS.openclawProfileNames);
   const name = String(profileName ?? "").trim();
-  if (!name) delete map[id];
-  else map[id] = name;
+  if (!name) delete map[ref];
+  else map[ref] = name;
   setJsonMap(STORAGE_KEYS.openclawProfileNames, map);
 }
 
-export function deleteOpenclawProfileName(agentId: string): void {
-  const id = String(agentId ?? "").trim();
-  if (!id) return;
+export function deleteOpenclawProfileName(agentRef: string): void {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) return;
   const map = getJsonMap(STORAGE_KEYS.openclawProfileNames);
-  if (!(id in map)) return;
-  delete map[id];
+  if (!(ref in map)) return;
+  delete map[ref];
   setJsonMap(STORAGE_KEYS.openclawProfileNames, map);
 }

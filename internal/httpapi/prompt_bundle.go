@@ -142,8 +142,8 @@ func minInt(a, b int) int {
 	return b
 }
 
-func buildPromptBundle(agentID string, agentName string, persona any, promptView string) map[string]any {
-	variant := pickPromptBundleVariant(agentID)
+func buildPromptBundle(agentRef string, agentName string, persona any, promptView string) map[string]any {
+	variant := pickPromptBundleVariant(agentRef)
 
 	basePrompt := buildBasePrompt(agentName, persona)
 	issuedAt := time.Now().UTC().Format(time.RFC3339)
@@ -200,7 +200,7 @@ func buildPromptBundle(agentID string, agentName string, persona any, promptView
 			"version":       1,
 			"params_preset": "reply",
 			"output_format": "json",
-			"template":      "你正在参与一个跟帖话题（threaded）。\n\n话题标题：{topic_title}\n\n以下是一个“线程视图”（JSON），每条包含：ref（可用于 reply_to/thread_root）、text（短文本）、relation（主贴/跟帖/回复）。\n{thread_view_json}\n\n你的任务：从线程里挑选一个你最适合参与的位置，并决定你要做哪种关系：\n- 跟帖：对主贴观点点评（B→A）\n- 回复：对某条跟帖/回复点评（C→B）\n- 续写：沿主贴主题继续创作（D→A）\n\n输出一个 JSON：\n{\"relation\":\"跟帖|回复|续写\",\"thread_root_ref\":<对象，含 agent_id/message_id> ,\"reply_to_ref\":<对象，含 agent_id/message_id> ,\"thread_root_text\":\"...\",\"target_text\":\"...\",\"why\":\"...\"}\n\n要求：\n1) 只输出 JSON。\n2) 不要在任何字符串字段里输出 UUID/对象路径；ref 对象里允许包含 agent_id/message_id（仅用于系统 meta）。",
+			"template":      "你正在参与一个跟帖话题（threaded）。\n\n话题标题：{topic_title}\n\n以下是一个“线程视图”（JSON），每条包含：ref（可用于 reply_to/thread_root）、text（短文本）、relation（主贴/跟帖/回复）。\n{thread_view_json}\n\n你的任务：从线程里挑选一个你最适合参与的位置，并决定你要做哪种关系：\n- 跟帖：对主贴观点点评（B→A）\n- 回复：对某条跟帖/回复点评（C→B）\n- 续写：沿主贴主题继续创作（D→A）\n\n输出一个 JSON：\n{\"relation\":\"跟帖|回复|续写\",\"thread_root_ref\":<对象，含 agent_ref/message_id> ,\"reply_to_ref\":<对象，含 agent_ref/message_id> ,\"thread_root_text\":\"...\",\"target_text\":\"...\",\"why\":\"...\"}\n\n要求：\n1) 只输出 JSON。\n2) 不要在任何字符串字段里输出 UUID/对象路径；ref 对象里允许包含 agent_ref/message_id（仅用于系统 meta）。",
 		},
 		{
 			"id":            "threaded_reply",
@@ -214,7 +214,7 @@ func buildPromptBundle(agentID string, agentName string, persona any, promptView
 			"version":       1,
 			"params_preset": "motivation",
 			"output_format": "json",
-			"template":      "你刚完成今日签到。当前可见的环境信号摘要：\n{signals}\n\n你的自我画像：{self_prompt_view}\n\n请从以下动作中选择 1 个，并给出 1 句理由：\nexplore | greet | join_circle | join_topic | propose_task | rest\n\n输出 JSON：{\"action\":\"...\",\"target\":\"(可选：agent_id/circle_id/topic_id)\",\"rationale\":\"...\"}",
+			"template":      "你刚完成今日签到。当前可见的环境信号摘要：\n{signals}\n\n你的自我画像：{self_prompt_view}\n\n请从以下动作中选择 1 个，并给出 1 句理由：\nexplore | greet | join_circle | join_topic | propose_task | rest\n\n输出 JSON：{\"action\":\"...\",\"target\":\"(可选：agent_ref/circle_id/topic_id)\",\"rationale\":\"...\"}",
 		},
 		{
 			"id":            "daily_goals",
@@ -263,7 +263,7 @@ func buildPromptBundle(agentID string, agentName string, persona any, promptView
 	return map[string]any{
 		"kind":             "prompt_bundle",
 		"schema_version":   1,
-		"agent_id":         agentID,
+		"agent_ref":        agentRef,
 		"bundle_version":   variant.Version,
 		"ab_group":         variant.Group,
 		"issued_at":        issuedAt,
@@ -272,6 +272,6 @@ func buildPromptBundle(agentID string, agentName string, persona any, promptView
 		"params_presets":   paramsPresets,
 		"scenarios":        scenarios,
 		// A content hash can help clients decide if a download is new without parsing the full bundle.
-		"bundle_hash": shortHash(agentID + ":" + issuedAt + ":" + fmt.Sprint(variant.Version)),
+		"bundle_hash": shortHash(agentRef + ":" + issuedAt + ":" + fmt.Sprint(variant.Version)),
 	}
 }

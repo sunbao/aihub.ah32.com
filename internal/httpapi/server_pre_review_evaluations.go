@@ -21,7 +21,7 @@ const (
 )
 
 type adminEvaluationJudgeDTO struct {
-	AgentID        string `json:"agent_id"`
+	AgentRef       string `json:"agent_ref"`
 	Name           string `json:"name"`
 	Enabled        bool   `json:"enabled"`
 	Status         string `json:"status"`
@@ -33,7 +33,7 @@ func (s server) handleAdminListEvaluationJudges(w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	rows, err := s.db.Query(ctx, `
-		select j.agent_id, a.name, j.enabled, a.status, a.admitted_status
+		select a.public_ref, a.name, j.enabled, a.status, a.admitted_status
 		from evaluation_judge_agents j
 		join agents a on a.id = j.agent_id
 		order by j.enabled desc, a.updated_at desc
@@ -48,19 +48,19 @@ func (s server) handleAdminListEvaluationJudges(w http.ResponseWriter, r *http.R
 	out := make([]adminEvaluationJudgeDTO, 0)
 	for rows.Next() {
 		var (
-			agentID        uuid.UUID
+			agentRef       string
 			name           string
 			enabled        bool
 			status         string
 			admittedStatus string
 		)
-		if err := rows.Scan(&agentID, &name, &enabled, &status, &admittedStatus); err != nil {
+		if err := rows.Scan(&agentRef, &name, &enabled, &status, &admittedStatus); err != nil {
 			logError(ctx, "admin list evaluation judges: scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		out = append(out, adminEvaluationJudgeDTO{
-			AgentID:        agentID.String(),
+			AgentRef:       strings.ToLower(strings.TrimSpace(agentRef)),
 			Name:           strings.TrimSpace(name),
 			Enabled:        enabled,
 			Status:         strings.TrimSpace(status),
@@ -76,7 +76,7 @@ func (s server) handleAdminListEvaluationJudges(w http.ResponseWriter, r *http.R
 }
 
 type adminSetEvaluationJudgesRequest struct {
-	AgentIDs []string `json:"agent_ids"`
+	AgentRefs []string `json:"agent_refs"`
 }
 
 func (s server) handleAdminSetEvaluationJudges(w http.ResponseWriter, r *http.Request) {
@@ -91,32 +91,46 @@ func (s server) handleAdminSetEvaluationJudges(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if len(req.AgentIDs) > 50 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many agent ids"})
+	if len(req.AgentRefs) > 50 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many agent refs"})
 		return
-	}
-
-	seen := map[uuid.UUID]bool{}
-	agentIDs := make([]uuid.UUID, 0, len(req.AgentIDs))
-	for _, raw := range req.AgentIDs {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		id, err := uuid.Parse(raw)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
-			return
-		}
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		agentIDs = append(agentIDs, id)
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+
+	seen := map[string]bool{}
+	agentRefs := make([]string, 0, len(req.AgentRefs))
+	agentIDs := make([]uuid.UUID, 0, len(req.AgentRefs))
+	for _, raw := range req.AgentRefs {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		agentRef, err := parseAgentRef(raw)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_ref"})
+			return
+		}
+		if seen[agentRef] {
+			continue
+		}
+		seen[agentRef] = true
+
+		agentID, err := s.lookupAgentIDByRef(ctx, agentRef)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent not found"})
+			return
+		}
+		if err != nil {
+			logError(ctx, "admin set evaluation judges: lookup agent by agent_ref failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+
+		agentRefs = append(agentRefs, agentRef)
+		agentIDs = append(agentIDs, agentID)
+	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -125,20 +139,6 @@ func (s server) handleAdminSetEvaluationJudges(w http.ResponseWriter, r *http.Re
 		return
 	}
 	defer tx.Rollback(ctx)
-
-	// Validate agent existence up-front.
-	for _, id := range agentIDs {
-		var ok bool
-		if err := tx.QueryRow(ctx, `select true from agents where id=$1`, id).Scan(&ok); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent not found"})
-				return
-			}
-			logError(ctx, "admin set evaluation judges: agent lookup failed", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
-			return
-		}
-	}
 
 	// Replace-set semantics:
 	// - ensure provided ids are enabled (upsert)
@@ -174,23 +174,23 @@ func (s server) handleAdminSetEvaluationJudges(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	s.audit(ctx, "admin", userID, "evaluation_judges_set", map[string]any{"agent_ids": req.AgentIDs})
+	s.audit(ctx, "admin", userID, "evaluation_judges_set", map[string]any{"agent_refs": agentRefs})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
 type createPreReviewEvaluationRequest struct {
-	Topic       string `json:"topic"`
-	SourceRunID string `json:"source_run_id,omitempty"`
-	TopicID     string `json:"topic_id,omitempty"`
-	WorkItemID  string `json:"work_item_id,omitempty"`
+	Topic        string `json:"topic"`
+	SourceRunRef string `json:"source_run_ref,omitempty"`
+	TopicID      string `json:"topic_id,omitempty"`
+	WorkItemID   string `json:"work_item_id,omitempty"`
 }
 
 type preReviewEvaluationDTO struct {
 	EvaluationID string                        `json:"evaluation_id"`
-	AgentID      string                        `json:"agent_id"`
-	RunID        string                        `json:"run_id"`
+	AgentRef     string                        `json:"agent_ref"`
+	RunRef       string                        `json:"run_ref"`
 	Topic        string                        `json:"topic"`
-	SourceRunID  string                        `json:"source_run_id,omitempty"`
+	SourceRunRef string                        `json:"source_run_ref,omitempty"`
 	TopicID      string                        `json:"topic_id,omitempty"`
 	WorkItemID   string                        `json:"work_item_id,omitempty"`
 	Source       *preReviewEvaluationSourceDTO `json:"source,omitempty"`
@@ -237,9 +237,8 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	var req createPreReviewEvaluationRequest
@@ -254,19 +253,20 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	if req.Topic == "" {
 		req.Topic = "随机话题"
 	}
-	req.SourceRunID = strings.TrimSpace(req.SourceRunID)
+	req.SourceRunRef = strings.TrimSpace(req.SourceRunRef)
 	req.TopicID = strings.TrimSpace(req.TopicID)
 	req.WorkItemID = strings.TrimSpace(req.WorkItemID)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	if err := s.requireOwnerAgent(ctx, userID, agentID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-			return
-		}
-		logError(ctx, "create pre-review evaluation: owner check failed", err)
+	agentID, err := s.lookupOwnerAgentIDByRef(ctx, userID, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "create pre-review evaluation: lookup agent by agent_ref failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -302,7 +302,7 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	}
 
 	sourceKinds := 0
-	if req.SourceRunID != "" {
+	if req.SourceRunRef != "" {
 		sourceKinds++
 	}
 	if req.TopicID != "" {
@@ -312,15 +312,16 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		sourceKinds++
 	}
 	if sourceKinds == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing topic_id/work_item_id/source_run_id"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing topic_id/work_item_id/source_run_ref"})
 		return
 	}
 	if sourceKinds > 1 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose only one: topic_id or work_item_id or source_run_id"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose only one: topic_id or work_item_id or source_run_ref"})
 		return
 	}
 
 	var (
+		sourceRunRef    string
 		sourceRunID     uuid.UUID
 		hasSourceRun    bool
 		sourceRunGoal   string
@@ -350,22 +351,22 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		sourceWorkItemRunStatus string
 		sourceWorkItemEvents    []map[string]any
 	)
-	if req.SourceRunID != "" {
-		id, err := uuid.Parse(req.SourceRunID)
+	if req.SourceRunRef != "" {
+		ref, err := parseRunRef(req.SourceRunRef)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source_run_id"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source_run_ref"})
 			return
 		}
-		sourceRunID = id
+		sourceRunRef = ref
 		hasSourceRun = true
 
 		// A "real scenario" is a public run OR the owner's own run.
 		if err := s.db.QueryRow(ctx, `
-			select goal, status
+			select id, goal, status
 			from runs
-			where id = $1
+			where public_ref = $1
 			  and (is_public = true or publisher_user_id = $2)
-		`, sourceRunID, userID).Scan(&sourceRunGoal, &sourceRunStatus); err != nil {
+		`, sourceRunRef, userID).Scan(&sourceRunID, &sourceRunGoal, &sourceRunStatus); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "source run not found"})
 				return
@@ -751,7 +752,7 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 4) 输出用中文，避免无意义的 UUID/英文噪音。
 5) 输出格式：Markdown，包含两个标题：## 候选智能体回复、## 测评与建议
 
-如果提供了 topic_id/work_item_id/source_run_id（真实话题/真实任务/真实场景），请把它当作“真实上下文快照”：先理解标题/开场/摘要/最近动态，再产出候选智能体的回复与测评建议（不要在真实话题里发言）。
+如果提供了 topic_id/work_item_id/source_run_ref（真实话题/真实任务/真实场景），请把它当作“真实上下文快照”：先理解标题/开场/摘要/最近动态，再产出候选智能体的回复与测评建议（不要在真实话题里发言）。
 
 如果 source_snapshot.kind = topic 且 topic.mode = threaded（跟帖模式），请明确区分三种关系（不要输出任何内部 ID/路径，只引用对方内容的短句即可）：
 - 跟帖：对主贴（A）的内容进行点评（B→A）
@@ -771,12 +772,31 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	defer tx.Rollback(ctx)
 
 	var runID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-		insert into runs (publisher_user_id, goal, constraints, status, review_status, is_public)
-		values ($1, $2, $3, 'created', 'pending', false)
-		returning id
-	`, userID, runGoal, runConstraints).Scan(&runID); err != nil {
+	for attempt := 0; attempt < 5; attempt++ {
+		runRef, err := randomPublicRef(runRefPrefix)
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: generate run_ref failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
+			return
+		}
+		err = tx.QueryRow(ctx, `
+			insert into runs (public_ref, publisher_user_id, goal, constraints, status, review_status, is_public)
+			values ($1, $2, $3, $4, 'created', 'pending', false)
+			returning id
+		`, runRef, userID, runGoal, runConstraints).Scan(&runID)
+		if err == nil {
+			break
+		}
+		if isUniqueViolation(err) {
+			logError(ctx, "create pre-review evaluation: run_ref collision on insert", err)
+			continue
+		}
 		logError(ctx, "create pre-review evaluation: create run failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
+		return
+	}
+	if runID == uuid.Nil {
+		logError(ctx, "create pre-review evaluation: create run failed after retries", errors.New("run_ref collision"))
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
 		return
 	}
@@ -945,7 +965,7 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"evaluation_id": evaluationID.String(),
-		"run_id":        runID.String(),
+		"run_ref":       runRef,
 		"expires_at":    expiresAt.Format(time.RFC3339),
 	})
 }
@@ -956,9 +976,8 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
@@ -967,20 +986,22 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	if err := s.requireOwnerAgent(ctx, userID, agentID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-			return
-		}
-		logError(ctx, "list pre-review evaluations: owner check failed", err)
+	agentID, err := s.lookupOwnerAgentIDByRef(ctx, userID, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "list pre-review evaluations: lookup agent by agent_ref failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
 
 	rows, err := s.db.Query(ctx, `
-		select e.id, e.run_id, e.topic, e.source_run_id, e.source_topic_id, e.source_work_item_id, e.source_snapshot, r.status, e.created_at, e.expires_at
+		select e.id, r.public_ref, e.topic, coalesce(sr.public_ref, '') as source_run_ref, e.source_topic_id, e.source_work_item_id, e.source_snapshot, r.status, e.created_at, e.expires_at
 		from agent_pre_review_evaluations e
 		join runs r on r.id = e.run_id
+		left join runs sr on sr.id = e.source_run_id
 		where e.owner_id = $1 and e.agent_id = $2
 		order by e.created_at desc
 		limit $3
@@ -996,9 +1017,9 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 	for rows.Next() {
 		var (
 			evalID          uuid.UUID
-			runID           uuid.UUID
+			runRef          string
 			topic           string
-			sourceRun       *uuid.UUID
+			sourceRunRef    string
 			sourceTopic     *string
 			sourceWorkItem  *uuid.UUID
 			sourceSnapshotB []byte
@@ -1006,22 +1027,22 @@ func (s server) handleOwnerListPreReviewEvaluations(w http.ResponseWriter, r *ht
 			createdAt       time.Time
 			expiresAt       time.Time
 		)
-		if err := rows.Scan(&evalID, &runID, &topic, &sourceRun, &sourceTopic, &sourceWorkItem, &sourceSnapshotB, &status, &createdAt, &expiresAt); err != nil {
+		if err := rows.Scan(&evalID, &runRef, &topic, &sourceRunRef, &sourceTopic, &sourceWorkItem, &sourceSnapshotB, &status, &createdAt, &expiresAt); err != nil {
 			logError(ctx, "list pre-review evaluations: scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		dto := preReviewEvaluationDTO{
 			EvaluationID: evalID.String(),
-			AgentID:      agentID.String(),
-			RunID:        runID.String(),
+			AgentRef:     agentRef,
+			RunRef:       strings.TrimSpace(runRef),
 			Topic:        strings.TrimSpace(topic),
 			Status:       strings.TrimSpace(status),
 			CreatedAt:    createdAt.UTC().Format(time.RFC3339),
 			ExpiresAt:    expiresAt.UTC().Format(time.RFC3339),
 		}
-		if sourceRun != nil {
-			dto.SourceRunID = sourceRun.String()
+		if strings.TrimSpace(sourceRunRef) != "" {
+			dto.SourceRunRef = strings.TrimSpace(sourceRunRef)
 		}
 		if sourceTopic != nil {
 			dto.TopicID = strings.TrimSpace(*sourceTopic)
@@ -1081,9 +1102,8 @@ func (s server) handleOwnerDeletePreReviewEvaluation(w http.ResponseWriter, r *h
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	evaluationID, err := uuid.Parse(chi.URLParam(r, "evaluationID"))
@@ -1095,16 +1115,30 @@ func (s server) handleOwnerDeletePreReviewEvaluation(w http.ResponseWriter, r *h
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var runID uuid.UUID
+	agentID, err := s.lookupOwnerAgentIDByRef(ctx, userID, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "delete pre-review evaluation: lookup agent by agent_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	var (
+		runID  uuid.UUID
+		runRef string
+	)
 	err = s.db.QueryRow(ctx, `
-		select e.run_id
+		select e.run_id, r.public_ref
 		from agent_pre_review_evaluations e
 		join runs r on r.id = e.run_id
 		where e.id = $1
 		  and e.owner_id = $2
 		  and e.agent_id = $3
 		  and r.publisher_user_id = e.owner_id
-	`, evaluationID, userID, agentID).Scan(&runID)
+	`, evaluationID, userID, agentID).Scan(&runID, &runRef)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -1127,9 +1161,9 @@ func (s server) handleOwnerDeletePreReviewEvaluation(w http.ResponseWriter, r *h
 	}
 
 	s.audit(ctx, "user", userID, "pre_review_evaluation_deleted", map[string]any{
-		"agent_id":      agentID.String(),
+		"agent_ref":     agentRef,
 		"evaluation_id": evaluationID.String(),
-		"run_id":        runID.String(),
+		"run_ref":       strings.TrimSpace(runRef),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }

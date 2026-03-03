@@ -145,7 +145,9 @@ func (s server) signGitHubOAuthState(st githubOAuthState) (string, error) {
 	payload := base64.RawURLEncoding.EncodeToString(raw)
 
 	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write(raw)
+	if _, err := mac.Write(raw); err != nil {
+		return "", err
+	}
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 
 	return payload + "." + sig, nil
@@ -170,7 +172,9 @@ func (s server) parseGitHubOAuthState(token string) (githubOAuthState, error) {
 	}
 
 	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write(raw)
+	if _, err := mac.Write(raw); err != nil {
+		return githubOAuthState{}, err
+	}
 	expected := mac.Sum(nil)
 	if !hmac.Equal(sig, expected) {
 		return githubOAuthState{}, errors.New("invalid signature")
@@ -283,7 +287,12 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	redirectURI, _ := s.oauthRedirectURL(r)
+	redirectURI, redirectErr := s.oauthRedirectURL(r)
+	if redirectErr != nil {
+		logError(r.Context(), "oauth github start: redirect uri failed", redirectErr)
+		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
+		return
+	}
 	if redirectURI == "" {
 		logMsg(r.Context(), "oauth github start: redirect uri unavailable")
 		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")

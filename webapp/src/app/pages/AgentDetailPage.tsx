@@ -8,6 +8,7 @@ import { DIMENSIONS, DimensionsRadar, type DimensionKey } from "@/app/components
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { getUserApiKey } from "@/lib/storage";
 
 type Personality = {
   extrovert: number;
@@ -17,7 +18,7 @@ type Personality = {
 };
 
 type AgentDiscoverDetail = {
-  id: string;
+  agent_ref: string;
   name: string;
   description: string;
   avatar_url: string;
@@ -29,17 +30,35 @@ type AgentDiscoverDetail = {
   capabilities?: string[];
   personality?: Personality;
   recent_runs?: Array<{
-    run_id: string;
+    run_ref: string;
     goal: string;
     status: string;
     created_at: string;
   }>;
 };
 
+type AgentOwnerDetail = {
+  agent_ref: string;
+  name: string;
+  description: string;
+  avatar_url: string;
+  bio: string;
+  greeting: string;
+  prompt_view: string;
+  persona?: any;
+  interests?: string[];
+  capabilities?: string[];
+  personality?: Personality;
+  card_version?: number;
+  card_review_status?: string;
+};
+
+type AgentDetail = AgentDiscoverDetail | AgentOwnerDetail;
+
 type AgentDimensions = {
   kind: string;
   schema_version: number;
-  agent_id: string;
+  agent_ref: string;
   computed_at: string;
   scores: Record<string, number>;
   evidence?: Record<string, any>;
@@ -48,7 +67,7 @@ type AgentDimensions = {
 type DailyThought = {
   kind: string;
   schema_version: number;
-  agent_id: string;
+  agent_ref: string;
   date: string;
   text: string;
   valid: boolean;
@@ -57,18 +76,20 @@ type DailyThought = {
 type Highlights = {
   kind: string;
   schema_version: number;
-  agent_id: string;
+  agent_ref: string;
   updated_at: string;
   items: Array<{ type: string; title: string; snippet?: string; occurred_at: string }>;
 };
 
 export function AgentDetailPage() {
-  const { agentId } = useParams();
-  const id = String(agentId ?? "").trim();
+  const { agentRef } = useParams();
+  const id = String(agentRef ?? "").trim();
   const nav = useNavigate();
   const { t, isZh } = useI18n();
+  const userApiKey = getUserApiKey();
+  const isLoggedIn = !!userApiKey;
 
-  const [agent, setAgent] = useState<AgentDiscoverDetail | null>(null);
+  const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -86,19 +107,42 @@ export function AgentDetailPage() {
     const ac = new AbortController();
     setLoading(true);
     setError("");
-    apiFetchJson<AgentDiscoverDetail>(`/v1/agents/discover/${encodeURIComponent(id)}`, { signal: ac.signal })
-      .then((res) => setAgent(res))
-      .catch((e: any) => {
+    (async () => {
+      let lastErr: any = null;
+      try {
+        if (isLoggedIn) {
+          try {
+            const res = await apiFetchJson<AgentOwnerDetail>(`/v1/agents/${encodeURIComponent(id)}`, {
+              apiKey: userApiKey,
+              signal: ac.signal,
+            });
+            setAgent(res);
+            return;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        try {
+          const res = await apiFetchJson<AgentDiscoverDetail>(`/v1/agents/discover/${encodeURIComponent(id)}`, { signal: ac.signal });
+          setAgent(res);
+          return;
+        } catch (e) {
+          lastErr = e;
+        }
+        throw lastErr ?? new Error("加载失败");
+      } catch (e: any) {
         if (e?.name === "AbortError") {
           console.debug("[AIHub] AgentDetailPage load aborted", e);
           return;
         }
-        console.warn("[AIHub] AgentDetailPage load agent failed", { agentId: id, error: e });
+        console.warn("[AIHub] AgentDetailPage load agent failed", { agentRef: id, error: e });
         setError(String(e?.message ?? "加载失败"));
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
     return () => ac.abort();
-  }, [id]);
+  }, [id, isLoggedIn, userApiKey]);
 
   useEffect(() => {
     if (!id) return;
@@ -111,7 +155,7 @@ export function AgentDetailPage() {
           console.debug("[AIHub] AgentDetailPage dimensions load aborted", e);
           return;
         }
-        console.warn("[AIHub] AgentDetailPage dimensions load failed", { agentId: id, error: e });
+        console.warn("[AIHub] AgentDetailPage dimensions load failed", { agentRef: id, error: e });
         setDimsError(String(e?.message ?? "加载失败"));
       });
     return () => ac.abort();
@@ -132,7 +176,7 @@ export function AgentDetailPage() {
           console.debug("[AIHub] AgentDetailPage daily-thought load aborted", e);
           return;
         }
-        console.warn("[AIHub] AgentDetailPage daily-thought load failed", { agentId: id, date, error: e });
+        console.warn("[AIHub] AgentDetailPage daily-thought load failed", { agentRef: id, date, error: e });
         setThoughtError(String(e?.message ?? "暂无哲思"));
       });
     return () => ac.abort();
@@ -149,7 +193,7 @@ export function AgentDetailPage() {
           console.debug("[AIHub] AgentDetailPage highlights load aborted", e);
           return;
         }
-        console.warn("[AIHub] AgentDetailPage highlights load failed", { agentId: id, error: e });
+        console.warn("[AIHub] AgentDetailPage highlights load failed", { agentRef: id, error: e });
         setHighlightsError(String(e?.message ?? "暂无高光"));
       });
     return () => ac.abort();
@@ -353,12 +397,12 @@ export function AgentDetailPage() {
           <CardTitle className="text-base">最近参与</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {agent?.recent_runs?.length ? (
+          {agent && "recent_runs" in agent && agent.recent_runs?.length ? (
             agent.recent_runs.slice(0, 8).map((r) => (
               <div
-                key={r.run_id}
+                key={r.run_ref}
                 className="cursor-pointer rounded-md border bg-background px-3 py-2 transition-all active:scale-[0.98] active:bg-muted/50"
-                onClick={() => nav(`/runs/${encodeURIComponent(r.run_id)}`)}
+                onClick={() => nav(`/runs/${encodeURIComponent(r.run_ref)}`)}
               >
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <Badge variant="secondary">{fmtRunStatus(r.status)}</Badge>

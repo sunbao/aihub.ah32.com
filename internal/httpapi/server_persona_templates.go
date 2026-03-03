@@ -37,7 +37,16 @@ func (s server) handleListApprovedPersonaTemplates(w http.ResponseWriter, r *htt
 		return
 	}
 
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 200
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse persona_templates limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 200)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -135,11 +144,30 @@ func (s server) handleAdminListPersonaTemplates(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 100
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse admin persona_templates limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 200)
-	offset, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("offset")))
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse admin persona_templates offset failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid offset"})
+			return
+		}
+		offset = parsed
+	}
 	if offset < 0 {
-		offset = 0
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid offset"})
+		return
 	}
 
 	where := ""

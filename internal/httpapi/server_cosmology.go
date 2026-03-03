@@ -85,13 +85,13 @@ func truncateRunes(s string, max int) string {
 // --- 2) Five dimensions
 
 type agentDimensionsObject struct {
-	Kind         string         `json:"kind"`
-	SchemaVersion int           `json:"schema_version"`
-	AgentID      string         `json:"agent_id"`
-	ComputedAt   string         `json:"computed_at"`
-	Scores       map[string]int `json:"scores"`
-	Evidence     map[string]any `json:"evidence,omitempty"`
-	History      []agentDimensionsHistoryItem `json:"history,omitempty"`
+	Kind          string                       `json:"kind"`
+	SchemaVersion int                          `json:"schema_version"`
+	AgentRef      string                       `json:"agent_ref"`
+	ComputedAt    string                       `json:"computed_at"`
+	Scores        map[string]int               `json:"scores"`
+	Evidence      map[string]any               `json:"evidence,omitempty"`
+	History       []agentDimensionsHistoryItem `json:"history,omitempty"`
 }
 
 type agentDimensionsHistoryItem struct {
@@ -99,7 +99,7 @@ type agentDimensionsHistoryItem struct {
 	Scores map[string]int `json:"scores"`
 }
 
-func (s server) computeAgentDimensions(ctx context.Context, agentID uuid.UUID) (agentDimensionsObject, error) {
+func (s server) computeAgentDimensions(ctx context.Context, agentID uuid.UUID, agentRef string) (agentDimensionsObject, error) {
 	var (
 		interestsRaw    []byte
 		capabilitiesRaw []byte
@@ -167,7 +167,7 @@ func (s server) computeAgentDimensions(ctx context.Context, agentID uuid.UUID) (
 	obj := agentDimensionsObject{
 		Kind:          "agent_dimensions",
 		SchemaVersion: 1,
-		AgentID:       agentID.String(),
+		AgentRef:      agentRef,
 		ComputedAt:    time.Now().UTC().Format(time.RFC3339),
 		Scores: map[string]int{
 			"perspective": perspective,
@@ -182,24 +182,44 @@ func (s server) computeAgentDimensions(ctx context.Context, agentID uuid.UUID) (
 			"events_emitted":      eventsEmitted,
 			"runs_participated":   runsParticipated,
 			"active_days":         activeDays,
-			"first_activity_at":   func() string { if firstAt == nil { return "" }; return firstAt.UTC().Format(time.RFC3339) }(),
-			"last_activity_at":    func() string { if lastAt == nil { return "" }; return lastAt.UTC().Format(time.RFC3339) }(),
+			"first_activity_at": func() string {
+				if firstAt == nil {
+					return ""
+				}
+				return firstAt.UTC().Format(time.RFC3339)
+			}(),
+			"last_activity_at": func() string {
+				if lastAt == nil {
+					return ""
+				}
+				return lastAt.UTC().Format(time.RFC3339)
+			}(),
 		},
 	}
 	return obj, nil
 }
 
 func (s server) handleGetAgentDimensions(w http.ResponseWriter, r *http.Request) {
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	obj, err := s.computeAgentDimensions(ctx, agentID)
+	agentID, err := s.lookupAgentIDByRef(ctx, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "lookup agent by agent_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
+	obj, err := s.computeAgentDimensions(ctx, agentID, agentRef)
 	if err != nil {
 		logError(ctx, "compute dimensions failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
@@ -275,19 +295,18 @@ func (s server) handleGetAgentDimensions(w http.ResponseWriter, r *http.Request)
 // --- 3) Daily thought
 
 type dailyThoughtObject struct {
-	Kind         string `json:"kind"`
-	SchemaVersion int   `json:"schema_version"`
-	AgentID      string `json:"agent_id"`
-	Date         string `json:"date"`
-	Text         string `json:"text"`
-	CreatedAt    string `json:"created_at,omitempty"`
-	Valid        bool   `json:"valid"`
+	Kind          string `json:"kind"`
+	SchemaVersion int    `json:"schema_version"`
+	AgentRef      string `json:"agent_ref"`
+	Date          string `json:"date"`
+	Text          string `json:"text"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	Valid         bool   `json:"valid"`
 }
 
 func (s server) handleGetAgentDailyThought(w http.ResponseWriter, r *http.Request) {
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
@@ -307,6 +326,17 @@ func (s server) handleGetAgentDailyThought(w http.ResponseWriter, r *http.Reques
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+
+	agentID, err := s.lookupAgentIDByRef(ctx, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "lookup agent by agent_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
 
 	key := fmt.Sprintf("agents/thoughts/%s/%s.json", agentID.String(), date)
 	raw, err := store.GetObject(ctx, key)
@@ -330,7 +360,7 @@ func (s server) handleGetAgentDailyThought(w http.ResponseWriter, r *http.Reques
 	txt := strings.TrimSpace(obj.Text)
 	n := len([]rune(txt))
 	obj.Valid = n >= 20 && n <= 80
-	obj.AgentID = agentID.String()
+	obj.AgentRef = agentRef
 	obj.Date = date
 	obj.Text = txt
 	if strings.TrimSpace(obj.Kind) == "" {
@@ -354,9 +384,8 @@ func (s server) handleOwnerUpsertDailyThought(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	var req upsertDailyThoughtRequest
@@ -386,12 +415,13 @@ func (s server) handleOwnerUpsertDailyThought(w http.ResponseWriter, r *http.Req
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	if err := s.requireOwnerAgent(ctx, userID, agentID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-			return
-		}
-		logError(ctx, "check agent owner failed", err)
+	agentID, err := s.lookupOwnerAgentIDByRef(ctx, userID, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "lookup agent by agent_ref (owner) failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -399,7 +429,7 @@ func (s server) handleOwnerUpsertDailyThought(w http.ResponseWriter, r *http.Req
 	obj := dailyThoughtObject{
 		Kind:          "daily_thought",
 		SchemaVersion: 1,
-		AgentID:       agentID.String(),
+		AgentRef:      agentRef,
 		Date:          date,
 		Text:          text,
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
@@ -423,12 +453,12 @@ func (s server) handleOwnerUpsertDailyThought(w http.ResponseWriter, r *http.Req
 // --- 4) Swap test (owner)
 
 type swapTestObject struct {
-	Kind         string `json:"kind"`
-	SchemaVersion int   `json:"schema_version"`
-	AgentID      string `json:"agent_id"`
-	SwapTestID   string `json:"swap_test_id"`
-	CreatedAt    string `json:"created_at"`
-	Questions    []struct {
+	Kind          string `json:"kind"`
+	SchemaVersion int    `json:"schema_version"`
+	AgentRef      string `json:"agent_ref"`
+	SwapTestID    string `json:"swap_test_id"`
+	CreatedAt     string `json:"created_at"`
+	Questions     []struct {
 		Question string `json:"question"`
 		Answer   string `json:"answer"`
 	} `json:"questions"`
@@ -449,9 +479,8 @@ func (s server) handleOwnerCreateSwapTest(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 
@@ -463,31 +492,37 @@ func (s server) handleOwnerCreateSwapTest(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	if err := s.requireOwnerAgent(ctx, userID, agentID); err != nil {
+	var (
+		agentID    uuid.UUID
+		promptView string
+	)
+	if err := s.db.QueryRow(ctx, `
+		select id, prompt_view
+		from agents
+		where public_ref = $1 and owner_id = $2
+	`, agentRef, userID).Scan(&agentID, &promptView); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 			return
 		}
-		logError(ctx, "check agent owner failed", err)
+		logError(ctx, "query agent prompt_view failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
-
-	var promptView string
-	_ = s.db.QueryRow(ctx, `select prompt_view from agents where id=$1 and owner_id=$2`, agentID, userID).Scan(&promptView)
 	promptView = strings.TrimSpace(promptView)
 
 	dims, err := s.computeAgentDimensions(ctx, agentID)
 	if err != nil {
 		logError(ctx, "compute swap-test dimensions failed", err)
-		dims = agentDimensionsObject{Scores: map[string]int{}}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
+		return
 	}
 
 	swapID := uuid.New().String()
 	obj := swapTestObject{
 		Kind:          "swap_test",
 		SchemaVersion: 1,
-		AgentID:       agentID.String(),
+		AgentRef:      agentRef,
 		SwapTestID:    swapID,
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 		Questions: []struct {
@@ -525,9 +560,8 @@ func (s server) handleOwnerGetSwapTest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	swapID := strings.TrimSpace(chi.URLParam(r, "swapTestID"))
@@ -544,12 +578,13 @@ func (s server) handleOwnerGetSwapTest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	if err := s.requireOwnerAgent(ctx, userID, agentID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-			return
-		}
-		logError(ctx, "check agent owner failed", err)
+	agentID, err := s.lookupOwnerAgentIDByRef(ctx, userID, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "lookup agent by agent_ref (owner) failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -571,20 +606,21 @@ func (s server) handleOwnerGetSwapTest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "decode failed"})
 		return
 	}
+	obj.AgentRef = agentRef
 	writeJSON(w, http.StatusOK, obj)
 }
 
 // --- 5) Weekly report (owner)
 
 type weeklyReportObject struct {
-	Kind           string               `json:"kind"`
-	SchemaVersion  int                  `json:"schema_version"`
-	AgentID        string               `json:"agent_id"`
-	Week           string               `json:"week"`
-	GeneratedAt    string               `json:"generated_at"`
-	Dimensions     map[string]int       `json:"dimensions"`
-	DimensionsDelta map[string]int      `json:"dimensions_delta,omitempty"`
-	Highlights     []timelineEvent      `json:"highlights,omitempty"`
+	Kind            string          `json:"kind"`
+	SchemaVersion   int             `json:"schema_version"`
+	AgentRef        string          `json:"agent_ref"`
+	Week            string          `json:"week"`
+	GeneratedAt     string          `json:"generated_at"`
+	Dimensions      map[string]int  `json:"dimensions"`
+	DimensionsDelta map[string]int  `json:"dimensions_delta,omitempty"`
+	Highlights      []timelineEvent `json:"highlights,omitempty"`
 }
 
 func isoWeekString(t time.Time) string {
@@ -598,9 +634,8 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	week := strings.TrimSpace(r.URL.Query().Get("week"))
@@ -620,12 +655,13 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	if err := s.requireOwnerAgent(ctx, userID, agentID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-			return
-		}
-		logError(ctx, "check agent owner failed", err)
+	agentID, err := s.lookupOwnerAgentIDByRef(ctx, userID, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "lookup agent by agent_ref (owner) failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
@@ -635,6 +671,7 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 	if err == nil {
 		var obj weeklyReportObject
 		if err := json.Unmarshal(raw, &obj); err == nil {
+			obj.AgentRef = agentRef
 			writeJSON(w, http.StatusOK, obj)
 			return
 		}
@@ -648,8 +685,21 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
 		return
 	}
-	_ = s.ensureTimelineMaterialized(ctx, store, agentID)
-	highlights, _ := s.readHighlights(ctx, store, agentID)
+	if err := s.ensureTimelineMaterialized(ctx, store, agentID, agentRef); err != nil {
+		logError(ctx, "materialize timeline for weekly report failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
+		return
+	}
+	highlights, err := s.readHighlights(ctx, store, agentID)
+	if err != nil {
+		if isOSSNotFound(err) {
+			highlights = []timelineEvent{}
+		} else {
+			logError(ctx, "read highlights for weekly report failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss read failed"})
+			return
+		}
+	}
 
 	// Delta vs 7 days ago (if available).
 	delta := map[string]int{}
@@ -667,7 +717,7 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 	obj := weeklyReportObject{
 		Kind:            "weekly_report",
 		SchemaVersion:   1,
-		AgentID:         agentID.String(),
+		AgentRef:        agentRef,
 		Week:            week,
 		GeneratedAt:     time.Now().UTC().Format(time.RFC3339),
 		Dimensions:      dims.Scores,
@@ -683,6 +733,8 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 	}
 	if err := store.PutObject(ctx, key, "application/json", body); err != nil {
 		logError(ctx, "put weekly report failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss write failed"})
+		return
 	}
 	writeJSON(w, http.StatusOK, obj)
 }
@@ -703,19 +755,19 @@ type timelineEvent struct {
 }
 
 type timelineDayObject struct {
-	Kind         string         `json:"kind"`
-	SchemaVersion int           `json:"schema_version"`
-	AgentID      string         `json:"agent_id"`
-	Date         string         `json:"date"`
-	Events       []timelineEvent `json:"events"`
+	Kind          string          `json:"kind"`
+	SchemaVersion int             `json:"schema_version"`
+	AgentRef      string          `json:"agent_ref"`
+	Date          string          `json:"date"`
+	Events        []timelineEvent `json:"events"`
 }
 
 type timelineIndexObject struct {
-	Kind         string `json:"kind"`
-	SchemaVersion int   `json:"schema_version"`
-	AgentID      string `json:"agent_id"`
-	UpdatedAt    string `json:"updated_at"`
-	Days         []timelineIndexDay `json:"days"`
+	Kind          string             `json:"kind"`
+	SchemaVersion int                `json:"schema_version"`
+	AgentRef      string             `json:"agent_ref"`
+	UpdatedAt     string             `json:"updated_at"`
+	Days          []timelineIndexDay `json:"days"`
 }
 
 type timelineIndexDay struct {
@@ -725,14 +777,14 @@ type timelineIndexDay struct {
 }
 
 type timelineHighlightsObject struct {
-	Kind         string         `json:"kind"`
-	SchemaVersion int           `json:"schema_version"`
-	AgentID      string         `json:"agent_id"`
-	UpdatedAt    string         `json:"updated_at"`
-	Items        []timelineEvent `json:"items"`
+	Kind          string          `json:"kind"`
+	SchemaVersion int             `json:"schema_version"`
+	AgentRef      string          `json:"agent_ref"`
+	UpdatedAt     string          `json:"updated_at"`
+	Items         []timelineEvent `json:"items"`
 }
 
-func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.OSSObjectStore, agentID uuid.UUID) error {
+func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.OSSObjectStore, agentID uuid.UUID, agentRef string) error {
 	rows, err := s.db.Query(ctx, `
 		select action, data, created_at
 		from audit_logs
@@ -764,6 +816,7 @@ func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.
 
 	byDate := map[string][]timelineEvent{}
 	all := make([]timelineEvent, 0, len(audits))
+	runRefCache := map[uuid.UUID]string{}
 	for _, a := range audits {
 		var data map[string]any
 		if err := unmarshalJSONNullable(a.dataRaw, &data); err != nil {
@@ -777,9 +830,26 @@ func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.
 			Refs:       map[string]any{},
 			Visibility: "public",
 		}
-		runID := strings.TrimSpace(fmt.Sprintf("%v", data["run_id"]))
-		if runID != "" && runID != "<nil>" {
-			ev.Refs["run_id"] = runID
+		runIDRaw := strings.TrimSpace(fmt.Sprintf("%v", data["run_id"]))
+		if runIDRaw != "" && runIDRaw != "<nil>" {
+			if runID, err := uuid.Parse(runIDRaw); err == nil {
+				if runRef, ok := runRefCache[runID]; ok {
+					if runRef != "" {
+						ev.Refs["run_ref"] = runRef
+					}
+				} else {
+					var runRef string
+					if err := s.db.QueryRow(ctx, `select public_ref from runs where id=$1`, runID).Scan(&runRef); err == nil {
+						runRef = strings.TrimSpace(runRef)
+						runRefCache[runID] = runRef
+						if runRef != "" {
+							ev.Refs["run_ref"] = runRef
+						}
+					} else {
+						runRefCache[runID] = ""
+					}
+				}
+			}
 		}
 
 		switch a.action {
@@ -819,7 +889,7 @@ func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.
 	index := timelineIndexObject{
 		Kind:          "timeline_index",
 		SchemaVersion: 1,
-		AgentID:       agentID.String(),
+		AgentRef:      agentRef,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 		Days:          []timelineIndexDay{},
 	}
@@ -829,7 +899,7 @@ func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.
 		dayObj := timelineDayObject{
 			Kind:          "timeline_day",
 			SchemaVersion: 1,
-			AgentID:       agentID.String(),
+			AgentRef:      agentRef,
 			Date:          d,
 			Events:        evs,
 		}
@@ -849,7 +919,7 @@ func (s server) ensureTimelineMaterialized(ctx context.Context, store agenthome.
 	hl := timelineHighlightsObject{
 		Kind:          "timeline_highlights",
 		SchemaVersion: 1,
-		AgentID:       agentID.String(),
+		AgentRef:      agentRef,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 		Items:         all,
 	}
@@ -888,9 +958,8 @@ func (s server) readHighlights(ctx context.Context, store agenthome.OSSObjectSto
 }
 
 func (s server) handleGetAgentHighlights(w http.ResponseWriter, r *http.Request) {
-	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
+	if !ok {
 		return
 	}
 	store, ok := s.requireOSS(w, r)
@@ -900,6 +969,17 @@ func (s server) handleGetAgentHighlights(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	agentID, err := s.lookupAgentIDByRef(ctx, agentRef)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		logError(ctx, "lookup agent by agent_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+
 	key := fmt.Sprintf("agents/timeline/%s/highlights/current.json", agentID.String())
 	raw, err := store.GetObject(ctx, key)
 	if err != nil {
@@ -908,7 +988,7 @@ func (s server) handleGetAgentHighlights(w http.ResponseWriter, r *http.Request)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss read failed"})
 			return
 		}
-		if err := s.ensureTimelineMaterialized(ctx, store, agentID); err != nil {
+		if err := s.ensureTimelineMaterialized(ctx, store, agentID, agentRef); err != nil {
 			logError(ctx, "materialize timeline failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
 			return
@@ -926,6 +1006,7 @@ func (s server) handleGetAgentHighlights(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "decode failed"})
 		return
 	}
+	obj.AgentRef = agentRef
 	writeJSON(w, http.StatusOK, obj)
 }
 
@@ -941,11 +1022,21 @@ func (s server) handleOwnerGetTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 10
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse timeline limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 200)
 	cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
 	if cursor != "" {
 		if _, err := time.Parse("2006-01-02", cursor); err != nil {
+			logError(r.Context(), "parse timeline cursor failed", err)
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cursor"})
 			return
 		}
@@ -1032,20 +1123,37 @@ func (s server) handleOwnerGetTimeline(w http.ResponseWriter, r *http.Request) {
 // --- 6) Curations (OSS-backed; pending → approved/rejected)
 
 type createCurationRequest struct {
-	Reason string         `json:"reason"`
-	Refs   map[string]any `json:"refs,omitempty"`
+	Reason string            `json:"reason"`
+	Target curationTargetRef `json:"target"`
+}
+
+type curationTargetRef struct {
+	Kind            string `json:"kind"` // run|run_event|run_artifact
+	RunRef          string `json:"run_ref"`
+	EventSeq        int    `json:"event_seq,omitempty"`
+	ArtifactVersion int    `json:"artifact_version,omitempty"`
 }
 
 type curationEntry struct {
-	Kind         string         `json:"kind"`
-	SchemaVersion int           `json:"schema_version"`
-	CurationID   string         `json:"curation_id"`
-	ReviewStatus string         `json:"review_status"`
-	OwnerID      string         `json:"owner_id"`
-	Reason       string         `json:"reason"`
-	Refs         map[string]any `json:"refs,omitempty"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
+	Kind          string            `json:"kind"`
+	SchemaVersion int               `json:"schema_version"`
+	CurationID    string            `json:"curation_id"`
+	ReviewStatus  string            `json:"review_status"`
+	OwnerID       string            `json:"owner_id"`
+	Target        curationTargetRef `json:"target"`
+	Reason        string            `json:"reason"`
+	CreatedAt     string            `json:"created_at"`
+	UpdatedAt     string            `json:"updated_at"`
+}
+
+type curationPublicEntry struct {
+	Kind          string            `json:"kind"`
+	SchemaVersion int               `json:"schema_version"`
+	CurationID    string            `json:"curation_id"`
+	Target        curationTargetRef `json:"target"`
+	Reason        string            `json:"reason"`
+	CreatedAt     string            `json:"created_at"`
+	UpdatedAt     string            `json:"updated_at"`
 }
 
 func (s server) handleCreateCuration(w http.ResponseWriter, r *http.Request) {
@@ -1065,6 +1173,40 @@ func (s server) handleCreateCuration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetKind := strings.TrimSpace(req.Target.Kind)
+	runRef, parseErr := parseRunRef(req.Target.RunRef)
+	if parseErr != nil {
+		logError(r.Context(), "parse curation target run_ref failed", parseErr)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target run_ref"})
+		return
+	}
+	target := curationTargetRef{
+		Kind:  targetKind,
+		RunRef: runRef,
+	}
+	switch targetKind {
+	case "run":
+		if req.Target.EventSeq != 0 || req.Target.ArtifactVersion != 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target"})
+			return
+		}
+	case "run_event":
+		if req.Target.EventSeq <= 0 || req.Target.ArtifactVersion != 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target"})
+			return
+		}
+		target.EventSeq = req.Target.EventSeq
+	case "run_artifact":
+		if req.Target.ArtifactVersion <= 0 || req.Target.EventSeq != 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target"})
+			return
+		}
+		target.ArtifactVersion = req.Target.ArtifactVersion
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target kind"})
+		return
+	}
+
 	store, ok := s.requireOSS(w, r)
 	if !ok {
 		return
@@ -1072,6 +1214,30 @@ func (s server) handleCreateCuration(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+
+	// Curations can only target public content.
+	var (
+		isPublic      bool
+		reviewStatus  string
+		publisherUser uuid.UUID
+	)
+	if err := s.db.QueryRow(ctx, `
+		select is_public, review_status, publisher_user_id
+		from runs
+		where public_ref = $1
+	`, runRef).Scan(&isPublic, &reviewStatus, &publisherUser); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target"})
+			return
+		}
+		logError(ctx, "curation target run lookup failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	if !isPublic || strings.TrimSpace(reviewStatus) != "approved" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid target"})
+		return
+	}
 
 	id := uuid.New().String()
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -1081,8 +1247,8 @@ func (s server) handleCreateCuration(w http.ResponseWriter, r *http.Request) {
 		CurationID:    id,
 		ReviewStatus:  "pending",
 		OwnerID:       userID.String(),
+		Target:        target,
 		Reason:        reason,
-		Refs:          req.Refs,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -1120,24 +1286,23 @@ func (s server) handleAdminSetCurationStatus(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Try to load the pending object (best-effort; if missing, still allow writing status object).
 	pendingKey := "curations/pending/" + id + ".json"
 	raw, err := store.GetObject(ctx, pendingKey)
+	if err != nil {
+		logError(ctx, "get curation pending failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss read failed"})
+		return
+	}
 	entry := curationEntry{}
-	if err == nil {
-		_ = json.Unmarshal(raw, &entry)
+	if err := json.Unmarshal(raw, &entry); err != nil {
+		logError(ctx, "decode curation pending failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "decode failed"})
+		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	if entry.CurationID == "" {
-		entry = curationEntry{
-			Kind:          "curation_entry",
-			SchemaVersion: 1,
-			CurationID:    id,
-			OwnerID:       "",
-			Reason:        "",
-			Refs:          map[string]any{},
-			CreatedAt:     now,
-		}
+	if strings.TrimSpace(entry.CurationID) == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid pending object"})
+		return
 	}
 	entry.ReviewStatus = status
 	entry.UpdatedAt = now
@@ -1166,8 +1331,31 @@ func (s server) handleAdminRejectCuration(w http.ResponseWriter, r *http.Request
 }
 
 func (s server) handleListCurations(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	limit := 30
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse curations limit failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
+	}
 	limit = clampInt(limit, 1, 50)
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			logError(r.Context(), "parse curations offset failed", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid offset"})
+			return
+		}
+		offset = parsed
+	}
+	if offset < 0 || offset > 10000 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid offset"})
+		return
+	}
 
 	store, ok := s.requireOSS(w, r)
 	if !ok {
@@ -1199,7 +1387,8 @@ func (s server) handleListCurations(w http.ResponseWriter, r *http.Request) {
 		outKeys[i], outKeys[j] = outKeys[j], outKeys[i]
 	}
 
-	items := make([]curationEntry, 0, limit)
+	items := make([]curationPublicEntry, 0, limit)
+	skipped := 0
 	for _, key := range outKeys {
 		if len(items) >= limit {
 			break
@@ -1217,7 +1406,23 @@ func (s server) handleListCurations(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(e.ReviewStatus) != "approved" {
 			continue
 		}
-		items = append(items, e)
+		if strings.TrimSpace(e.Target.Kind) == "" || strings.TrimSpace(e.Target.RunRef) == "" {
+			logError(ctx, "curation missing target", errors.New("invalid curation target"))
+			continue
+		}
+		if skipped < offset {
+			skipped++
+			continue
+		}
+		items = append(items, curationPublicEntry{
+			Kind:          e.Kind,
+			SchemaVersion: e.SchemaVersion,
+			CurationID:    e.CurationID,
+			Target:        e.Target,
+			Reason:        e.Reason,
+			CreatedAt:     e.CreatedAt,
+			UpdatedAt:     e.UpdatedAt,
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})

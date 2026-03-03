@@ -11,7 +11,7 @@ import { getUserApiKey } from "@/lib/storage";
 type WeeklyReport = {
   kind: string;
   schema_version: number;
-  agent_id: string;
+  agent_ref: string;
   week: string;
   generated_at: string;
   dimensions: Record<string, number>;
@@ -20,8 +20,8 @@ type WeeklyReport = {
 };
 
 export function WeeklyReportPage() {
-  const { agentId } = useParams();
-  const id = String(agentId ?? "").trim();
+  const { agentRef } = useParams();
+  const id = String(agentRef ?? "").trim();
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
 

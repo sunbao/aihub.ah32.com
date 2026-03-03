@@ -27,11 +27,11 @@ type MeResponse = {
 };
 
 type CreateRunResponse = {
-  run_id: string;
+  run_ref: string;
 };
 
 type EvaluationJudge = {
-  agent_id: string;
+  agent_ref: string;
   name: string;
   enabled: boolean;
   status: string;
@@ -43,7 +43,7 @@ type ListEvaluationJudgesResponse = {
 };
 
 type AdminAgent = {
-  agent_id: string;
+  agent_ref: string;
   name: string;
   status: string;
   admitted_status: string;
@@ -57,7 +57,7 @@ type AdminListAgentsResponse = {
 };
 
 type AdminAgentGatewayHealth = {
-  agent_id: string;
+  agent_ref: string;
   name: string;
   status: string;
   admitted_status: string;
@@ -76,10 +76,9 @@ type AdminListAgentGatewayHealthResponse = {
 
 type AdminPreReviewEvaluation = {
   evaluation_id: string;
-  owner_id: string;
-  agent_id: string;
+  agent_ref: string;
   agent_name: string;
-  run_id: string;
+  run_ref: string;
   topic: string;
   run_status: string;
   created_at: string;
@@ -157,7 +156,7 @@ export function AdminPage() {
       .then((res) => {
         const items = Array.isArray(res.items) ? res.items : [];
         setJudgeItems(items);
-        setJudgeSelectedIds(items.filter((x) => x.enabled).map((x) => x.agent_id).filter(Boolean));
+        setJudgeSelectedIds(items.filter((x) => x.enabled).map((x) => x.agent_ref).filter(Boolean));
       })
       .catch((e: any) => {
         if (e?.name === "AbortError") return;
@@ -179,14 +178,14 @@ export function AdminPage() {
     const ac = new AbortController();
     setJudgesHealthLoading(true);
     setJudgesHealthError("");
-    const ids = judgeItems.map((x) => String(x.agent_id ?? "").trim()).filter(Boolean);
-    const url = `/v1/admin/agents/gateway-health?limit=50&agent_ids=${encodeURIComponent(ids.join(","))}`;
+    const refs = judgeItems.map((x) => String(x.agent_ref ?? "").trim()).filter(Boolean);
+    const url = `/v1/admin/agents/gateway-health?limit=50&agent_refs=${encodeURIComponent(refs.join(","))}`;
     apiFetchJson<AdminListAgentGatewayHealthResponse>(url, { apiKey: userApiKey, signal: ac.signal })
       .then((res) => {
         const items = Array.isArray(res.items) ? res.items : [];
         const next: Record<string, AdminAgentGatewayHealth> = {};
         for (const it of items) {
-          const id = String(it?.agent_id ?? "").trim();
+          const id = String(it?.agent_ref ?? "").trim();
           if (id) next[id] = it;
         }
         setJudgesHealthById(next);
@@ -258,14 +257,14 @@ export function AdminPage() {
 
   async function saveEvaluationJudges() {
     if (!me?.is_admin) return;
-    const ids = Array.from(new Set(judgeSelectedIds.map((x) => String(x ?? "").trim()).filter(Boolean)));
+    const refs = Array.from(new Set(judgeSelectedIds.map((x) => String(x ?? "").trim()).filter(Boolean)));
     setJudgesSaving(true);
     setJudgesError("");
     try {
       await apiFetchJson("/v1/admin/evaluation/judges", {
         method: "PUT",
         apiKey: userApiKey,
-        body: { agent_ids: ids },
+        body: { agent_refs: refs },
       });
       toast({ title: "已保存" });
       setJudgesReloadNonce((n) => n + 1);
@@ -546,7 +545,7 @@ export function AdminPage() {
                     setGoal("");
                     setConstraints("");
                     setRequiredTags("");
-                    nav(`/runs/${encodeURIComponent(res.run_id)}`);
+                    nav(`/runs/${encodeURIComponent(res.run_ref)}`);
                   } catch (e: any) {
                     console.warn("[AIHub] AdminPage publish failed", e);
                     toast({ title: "发布失败", description: String(e?.message ?? ""), variant: "destructive" });
@@ -589,7 +588,7 @@ export function AdminPage() {
                   {agentLoading && !agentItems.length ? <div className="text-xs text-muted-foreground">加载中…</div> : null}
                   {!agentLoading && !agentItems.length ? <div className="text-xs text-muted-foreground">暂无智能体</div> : null}
                   {agentItems.map((a) => {
-                    const id = String(a.agent_id ?? "").trim();
+                    const id = String(a.agent_ref ?? "").trim();
                     const name = String(a.name ?? "").trim() || "（未命名）";
                     const selected = judgeSelectedIds.includes(id);
                     return (
@@ -635,12 +634,12 @@ export function AdminPage() {
               {!judgesLoading && judgeItems.length ? (
                 <div className="space-y-2">
                   {judgeItems.map((j) => (
-                    <div key={j.agent_id} className="rounded-md border bg-background px-3 py-2">
+                    <div key={j.agent_ref} className="rounded-md border bg-background px-3 py-2">
                       <div className="text-sm font-medium">{j.name || "（未命名）"}</div>
                       <div className="mt-0.5 space-y-0.5 text-xs text-muted-foreground">
                         <div>{j.enabled ? "启用" : "停用"} · {j.status || "-"} · {j.admitted_status || "-"}</div>
                         {(() => {
-                          const h = judgesHealthById[String(j.agent_id ?? "").trim()];
+                          const h = judgesHealthById[String(j.agent_ref ?? "").trim()];
                           if (!h) return null;
                           const pending = Number(h.pending_offers ?? 0);
                           const active = Number(h.active_claims ?? 0);
@@ -710,7 +709,7 @@ export function AdminPage() {
                           </div>
                         </div>
                         <div className="flex shrink-0 gap-2">
-                          <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_id)}`)}>
+                          <Button size="sm" variant="secondary" onClick={() => nav(`/runs/${encodeURIComponent(ev.run_ref)}`)}>
                             查看
                           </Button>
                           <Button
