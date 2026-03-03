@@ -10,7 +10,10 @@
     "android:open": "npx cap open android",
     "android:build:debug": "npm run build:android && npm run cap:sync:android && cd android && gradlew.bat assembleDebug",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:live": "playwright test tests/e2e/live-runs.smoke.spec.ts"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",
@@ -37,6 +40,7 @@
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

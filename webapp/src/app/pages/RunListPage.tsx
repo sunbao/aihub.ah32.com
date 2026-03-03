@@ -41,10 +41,18 @@ function RunSkeleton() {
 
 function RunRow({ run }: { run: RunListItem }) {
   const nav = useNavigate();
+  const openRun = () => nav(`/runs/${encodeURIComponent(run.run_ref)}`);
   return (
     <Card
       className="mb-2 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
-      onClick={() => nav(`/runs/${encodeURIComponent(run.run_ref)}`)}
+      data-testid={`run-row-${run.run_ref}`}
+      data-run-status={String(run.status ?? "").toLowerCase()}
+      role="button"
+      tabIndex={0}
+      onClick={openRun}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") openRun();
+      }}
     >
       <CardContent className="pt-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -149,6 +157,7 @@ export function RunListPage() {
         <CardContent className="pt-4">
           <div className="flex items-center gap-2">
             <Input
+              data-testid="run-search-input"
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
               placeholder="搜索任务…"
@@ -162,6 +171,7 @@ export function RunListPage() {
               }}
             />
             <Button
+              data-testid="run-search-button"
               onClick={() => {
                 const next = new URLSearchParams(sp);
                 if (qInput.trim()) next.set("q", qInput.trim());
@@ -176,6 +186,7 @@ export function RunListPage() {
             {(["all", "running", "done"] as const).map((s) => (
               <Button
                 key={s}
+                data-testid={`run-filter-${s}`}
                 variant={status === s ? "default" : "secondary"}
                 size="sm"
                 onClick={() => {
@@ -207,7 +218,7 @@ export function RunListPage() {
       ))}
 
       {!loading && !error && !filtered.length ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">暂无任务。</div>
+        <div data-testid="run-empty-state" className="py-12 text-center text-sm text-muted-foreground">暂无任务。</div>
       ) : null}
 
       {/* Sentinel */}
