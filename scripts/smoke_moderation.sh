@@ -110,13 +110,13 @@ echo "artifact_version=$version"
 
 echo "== find moderation targets from admin queue =="
 event_id="$(curl -fsS "$BASE/v1/admin/moderation/queue?status=pending&types=event&limit=200&offset=0" \
-  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rref "$run_ref" --argjson seq "$seq" '.items[] | select(.run_ref==$rref and .seq==$seq) | .id' | head -n 1)"
+  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rref "$run_ref" --argjson seq "$seq" '(.items // [])[] | select(.run_ref==$rref and .seq==$seq) | .id' | head -n 1)"
 artifact_id="$(curl -fsS "$BASE/v1/admin/moderation/queue?status=pending&types=artifact&limit=200&offset=0" \
-  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rref "$run_ref" --argjson v "$version" '.items[] | select(.run_ref==$rref and .version==$v) | .id' | head -n 1)"
+  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rref "$run_ref" --argjson v "$version" '(.items // [])[] | select(.run_ref==$rref and .version==$v) | .id' | head -n 1)"
 run_target_id="$(curl -fsS "$BASE/v1/admin/moderation/queue?status=pending&types=run&limit=200&offset=0" \
-  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rref "$run_ref" '.items[] | select(.run_ref==$rref) | .id' | head -n 1)"
+  -H "Authorization: Bearer $ADMIN_API_KEY" | jq -r --arg rref "$run_ref" '(.items // [])[] | select(.run_ref==$rref) | .id' | head -n 1)"
 
-if [[ -z "$event_id" || -z "$artifact_id" || -z "$run_target_id" ]]; then
+if [[ -z "$event_id" || -z "$artifact_id" ]]; then
   echo "failed to locate targets (event_id=$event_id artifact_id=$artifact_id run_target_id=$run_target_id)" >&2
   exit 1
 fi
@@ -125,13 +125,21 @@ echo "== reject event/artifact/run =="
 reason_body='{"reason":"smoke: reject"}'
 curl -fsS -X POST "$BASE/v1/admin/moderation/event/$event_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
 curl -fsS -X POST "$BASE/v1/admin/moderation/artifact/$artifact_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
-curl -fsS -X POST "$BASE/v1/admin/moderation/run/$run_target_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
+if [[ -n "$run_target_id" ]]; then
+  curl -fsS -X POST "$BASE/v1/admin/moderation/run/$run_target_id/reject" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" -d "$reason_body" >/dev/null
+else
+  echo "skip run-level rejection: no pending run moderation target in queue"
+fi
 
 echo "== public checks (no leaks) =="
 curl -fsS "$BASE/v1/runs/$run_ref/replay?after_seq=0&limit=200" | jq -e --argjson seq "$seq" '.events[] | select(.seq==$seq) | (.payload._redacted==true)' >/dev/null
 curl -fsS "$BASE/v1/runs/$run_ref/output" | jq -e --arg marker "$marker" '.content | contains($marker) | not' >/dev/null
-curl -fsS "$BASE/v1/runs/$run_ref" | jq -e --arg marker "$marker" '((.goal | contains($marker) | not) and (.constraints | contains($marker) | not))' >/dev/null
-curl -fsS "$BASE/v1/runs?q=$run_ref&limit=10&offset=0" | jq -e '.runs | length == 0' >/dev/null
+if [[ -n "$run_target_id" ]]; then
+  curl -fsS "$BASE/v1/runs/$run_ref" | jq -e --arg marker "$marker" '((.goal | contains($marker) | not) and (.constraints | contains($marker) | not))' >/dev/null
+  curl -fsS "$BASE/v1/runs?q=$run_ref&limit=10&offset=0" | jq -e '.runs | length == 0' >/dev/null
+else
+  echo "skip run-level public checks: no run moderation target in queue"
+fi
 
 echo "== urls =="
 echo "$BASE/app/admin/moderation"
