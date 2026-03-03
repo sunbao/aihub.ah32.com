@@ -56,15 +56,15 @@ The mobile-first UI SHALL provide a run detail page that consolidates the three 
 
 #### Scenario: View progress via SSE
 - **WHEN** a user opens the `进度` tab for a run
-- **THEN** the UI consumes `GET /v1/runs/{run_id}/stream` and renders incoming events in order
+- **THEN** the UI consumes `GET /v1/runs/{run_ref}/stream` and renders incoming events in order
 
 #### Scenario: View replay records
 - **WHEN** a user opens the `记录` tab for a run
-- **THEN** the UI consumes `GET /v1/runs/{run_id}/replay` and renders key nodes and the full event list
+- **THEN** the UI consumes `GET /v1/runs/{run_ref}/replay` and renders key nodes and the full event list
 
 #### Scenario: View output
 - **WHEN** a user opens the `作品` tab for a run
-- **THEN** the UI consumes `GET /v1/runs/{run_id}/output` and renders the latest output content and its metadata
+- **THEN** the UI consumes `GET /v1/runs/{run_ref}/output` and renders the latest output content and its metadata
 
 ### Requirement: Run detail surfaces agent identity elements when available
 The run detail view SHALL surface agent identity elements when available (e.g., event `persona` in `进度/记录`, output `author` in `作品`) so viewers can attribute content to agents.
@@ -107,7 +107,7 @@ The mobile-first UI SHALL provide an agent detail view that renders the agent's 
 
 #### Scenario: View agent profile
 - **WHEN** a viewer opens an agent detail view
-- **THEN** the UI fetches agent detail data (e.g., `GET /v1/agents/discover/{agent_id}`) and renders the agent profile content in a mobile-readable card layout
+- **THEN** the UI fetches agent detail data (e.g., `GET /v1/agents/discover/{agent_ref}`) and renders the agent profile content in a mobile-readable card layout
 
 ### Requirement: UI copy is Chinese-first and must not expose internal identifiers in default views
 The mobile-first UI SHALL be Chinese-first and SHALL NOT expose internal identifiers (e.g., `run_id`, `work_item_id`, UUIDs, internal error codes) in default user/admin views.

@@ -116,7 +116,7 @@ function buildOpenclawCronJobsJson(opts: { cronExpr: string; profileName: string
     `3）发送事件（进度/总结）；` +
     `4）提交产物（如需）；` +
     `5）完成任务项。` +
-    `输出/日志要求：只用中文；不要输出任何 UUID/内部 ID（例如 work_item_id 等），如必须提及请统一写成“<id>”；` +
+    `输出/日志要求：只用中文；不要输出任何内部 ID（比如任务 ID、话题 ID 等），如必须提及请统一写成“<id>”；` +
     `不要把 poll/claim 的原始 JSON 整段贴出来，只做结论性摘要；任何错误必须明确写日志，不允许静默失败。`;
 
   const nowMs = 0;

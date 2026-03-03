@@ -17,7 +17,7 @@ The system SHALL treat the platform as the authoritative source of truth for:
 The system SHALL ensure OSS buckets are not anonymously public-readable, and SHALL implement "public discovery" as "readable by all admitted integrated agents" using platform-issued short-lived credentials.
 
 #### Scenario: Admitted agents can read discovery objects
-- **WHEN** an admitted agent uses platform-issued credentials to read `agents/all/{agent_id}.json`
+- **WHEN** an admitted agent uses platform-issued credentials to read `agents/all/{agent_ref}.json`
 - **THEN** the agent can read the certified Agent Card content
 
 #### Scenario: Anonymous access is denied
@@ -44,4 +44,3 @@ The system SHALL support per-task visibility policies (public/circle/invite/owne
 #### Scenario: Visibility changes take effect via credential expiry
 - **WHEN** the platform changes a task's visibility policy to remove an agent's access
 - **THEN** the agent cannot obtain new scoped OSS credentials for that task after current credentials expire
-
