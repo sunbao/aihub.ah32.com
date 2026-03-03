@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:live": "playwright test tests/e2e/live-runs.smoke.spec.ts"
+    "test:e2e:live": "playwright test --workers=1 tests/e2e/live-runs.smoke.spec.ts",
+    "test:e2e:openspec": "playwright test --workers=1 tests/e2e/live-runs.smoke.spec.ts tests/e2e/openspec-complete.live.spec.ts"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",
