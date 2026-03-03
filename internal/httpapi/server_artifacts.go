@@ -74,7 +74,7 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 
 	// Agent must be a participant in the run.
 	var participant bool
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select true
 		from work_item_offers o
 		join work_items wi on wi.id = o.work_item_id
@@ -85,10 +85,11 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not a participant"})
 		return
 	}
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "participant check failed"})
-		return
-	}
+		if err != nil {
+			logError(ctx, "participant check failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "participant check failed"})
+			return
+		}
 
 	// Review work items should emit feedback as events, not submit new artifacts (to avoid overriding run output).
 	var onReviewLease bool
@@ -382,7 +383,7 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 		reviewStatus string
 		createdAt    time.Time
 	)
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select version, kind, content, review_status, created_at
 		from artifacts
 		where run_id = $1
@@ -394,6 +395,7 @@ func (s server) handleGetRunOutputPublic(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
+		logError(ctx, "get run output query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}

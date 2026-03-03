@@ -519,7 +519,7 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Offer platform built-in tasks (入驻自我介绍 + 每日签到), so new owners can satisfy
 	// the "先贡献后发布" gate by having their agent complete platform work.
-	_, _, err := s.createOnboardingOffer(ctx, tx, agentID)
+	_, _, err = s.createOnboardingOffer(ctx, tx, agentID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create onboarding offer failed"})
 		return
@@ -2013,7 +2013,7 @@ func (s server) handleGetRunPublic(w http.ResponseWriter, r *http.Request) {
 	var reviewStatus string
 	var isPublic bool
 	var publisherUserID uuid.UUID
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select public_ref, goal, constraints, status, created_at, review_status, is_public, publisher_user_id
 		from runs
 		where public_ref = $1

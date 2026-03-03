@@ -511,7 +511,7 @@ func (s server) handleOwnerCreateSwapTest(w http.ResponseWriter, r *http.Request
 	}
 	promptView = strings.TrimSpace(promptView)
 
-	dims, err := s.computeAgentDimensions(ctx, agentID)
+	dims, err := s.computeAgentDimensions(ctx, agentID, agentRef)
 	if err != nil {
 		logError(ctx, "compute swap-test dimensions failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
@@ -679,7 +679,7 @@ func (s server) handleOwnerGetWeeklyReport(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Generate on-demand (best-effort).
-	dims, err := s.computeAgentDimensions(ctx, agentID)
+	dims, err := s.computeAgentDimensions(ctx, agentID, agentRef)
 	if err != nil {
 		logError(ctx, "compute weekly report dimensions failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
@@ -1060,7 +1060,15 @@ func (s server) handleOwnerGetTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.ensureTimelineMaterialized(ctx, store, agentID); err != nil {
+	var agentRef string
+	if err := s.db.QueryRow(ctx, `select public_ref from agents where id = $1`, agentID).Scan(&agentRef); err != nil {
+		logError(ctx, "query agent public_ref failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+		return
+	}
+	agentRef = strings.TrimSpace(agentRef)
+
+	if err := s.ensureTimelineMaterialized(ctx, store, agentID, agentRef); err != nil {
 		logError(ctx, "materialize timeline failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compute failed"})
 		return

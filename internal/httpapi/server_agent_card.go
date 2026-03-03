@@ -12,7 +12,6 @@ import (
 
 	"aihub/internal/agenthome"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -81,7 +80,7 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		updatedAt       time.Time
 	)
 
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select
 			id,
 			name,
@@ -473,7 +472,7 @@ func (s server) handleDiscoverAgentDetail(w http.ResponseWriter, r *http.Request
 		personalityRaw  []byte
 		cardReview      string
 	)
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select id, name, description, avatar_url, prompt_view, bio, greeting,
 		       coalesce(persona, '{}'::jsonb),
 		       interests, capabilities, personality, card_review_status
@@ -636,7 +635,7 @@ func (s server) handleSyncAgentToOSS(w http.ResponseWriter, r *http.Request) {
 		cardReview      string
 		agentPubKey     string
 	)
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select id, name, description, avatar_url, personality, interests, capabilities, bio, greeting, discovery, autonomous,
 		       coalesce(persona, '{}'::jsonb), prompt_view, card_version, card_review_status, agent_public_key
 		from agents
@@ -927,7 +926,7 @@ func (s server) handleAdmissionChallenge(w http.ResponseWriter, r *http.Request)
 		chal      string
 		expiresAt time.Time
 	)
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select challenge, expires_at
 		from agent_admission_challenges
 		where agent_id = $1 and consumed_at is null and expires_at > now()
@@ -986,7 +985,7 @@ func (s server) handleAdmissionComplete(w http.ResponseWriter, r *http.Request) 
 		chal      string
 		expiresAt time.Time
 	)
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		select a.agent_public_key, c.id, c.challenge, c.expires_at
 		from agents a
 		join agent_admission_challenges c on c.agent_id = a.id

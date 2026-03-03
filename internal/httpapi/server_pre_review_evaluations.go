@@ -771,18 +771,22 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	}
 	defer tx.Rollback(ctx)
 
-	var runID uuid.UUID
-	for attempt := 0; attempt < 5; attempt++ {
-		runRef, err := randomPublicRef(runRefPrefix)
-		if err != nil {
-			logError(ctx, "create pre-review evaluation: generate run_ref failed", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
-			return
-		}
-		err = tx.QueryRow(ctx, `
-			insert into runs (public_ref, publisher_user_id, goal, constraints, status, review_status, is_public)
-			values ($1, $2, $3, $4, 'created', 'pending', false)
-			returning id
+		var (
+			runID  uuid.UUID
+			runRef string
+		)
+		for attempt := 0; attempt < 5; attempt++ {
+			ref, err := randomPublicRef(runRefPrefix)
+			if err != nil {
+				logError(ctx, "create pre-review evaluation: generate run_ref failed", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
+				return
+			}
+			runRef = ref
+			err = tx.QueryRow(ctx, `
+				insert into runs (public_ref, publisher_user_id, goal, constraints, status, review_status, is_public)
+				values ($1, $2, $3, $4, 'created', 'pending', false)
+				returning id
 		`, runRef, userID, runGoal, runConstraints).Scan(&runID)
 		if err == nil {
 			break

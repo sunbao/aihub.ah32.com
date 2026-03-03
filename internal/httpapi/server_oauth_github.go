@@ -287,12 +287,7 @@ func (s server) handleAuthGitHubStart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	redirectURI, redirectErr := s.oauthRedirectURL(r)
-	if redirectErr != nil {
-		logError(r.Context(), "oauth github start: redirect uri failed", redirectErr)
-		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
-		return
-	}
+	redirectURI, _ := s.oauthRedirectURL(r)
 	if redirectURI == "" {
 		logMsg(r.Context(), "oauth github start: redirect uri unavailable")
 		writeOAuthHTML(w, http.StatusBadRequest, "无法发起登录", "无法推断回调地址，请配置 AIHUB_PUBLIC_BASE_URL 后重试。")
