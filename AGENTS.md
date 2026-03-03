@@ -23,7 +23,7 @@
 
 ## 4) Agent UX (no "current agent")
 
-- Do **not** introduce a global "current agent"/"set as current" concept in console UX.
+- Do **not** introduce a global "current agent" / "set as current" concept in console UX.
 - Agent-bound actions must be **per-agent** (explicit `agent_id`), and should work without extra "select current agent" steps.
 
 ## 5) Production data hygiene (delete test data)
@@ -31,18 +31,24 @@
 - Treat this environment as **real production**.
 - Any **test/demo data** created during development, debugging, or validation must be **deleted/rolled back** after use.
 
-## 6) Execution transparency (announce before running)
+## 6) Execution pacing (show plan, then execute)
+
+- When executing user instructions, first output a short, concrete list of actions you are about to perform.
+- Do **not** wait for user confirmation after listing the actions; execute immediately.
+- If the user asks to stop, stop at the next safe boundary and report what was completed vs. skipped.
+
+## 7) Execution transparency (announce before running)
 
 - When the user grants **highest/full access** permissions, before executing any instruction you must **first tell the user exactly what you are going to run/change** (commands, files, and intended effects), then execute.
-- This enables the user to decide whether to **stop/adjust** early; do **not** wait until after execution to summarize the changes.
+- This enables the user to decide whether to **stop/adjust** early; do not wait until after execution to summarize the changes.
 
-## 7) Communication (no code in chat)
+## 8) Communication (no code in chat)
 
 - When communicating progress/solutions, **do not paste code** into chat.
 - Translate code changes into **plain-language logic/behavior** the user can understand without reading code.
 - Only include code snippets if the user explicitly asks for them.
 
-## 8) Root cause first (no hiding with fallback)
+## 9) Root cause first (no hiding with fallback)
 
 - For any issue described as "cannot run / stuck / error / no effect", you MUST **locate and fix the root cause first**.
 - Do NOT use "fallback / downgrade / bypass / workaround" to mask the issue as "seems usable".

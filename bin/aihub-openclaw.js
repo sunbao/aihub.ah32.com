@@ -118,11 +118,65 @@ function firstExistingDir(dirs) {
     if (!d) continue;
     try {
       if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
-    } catch {
-      // ignore
+    } catch (e) {
+      process.stderr.write(
+        "WARN: 目录检测失败（将继续尝试其他路径）。错误：" +
+          (e && e.message ? e.message : String(e)) +
+          "\n"
+      );
     }
   }
   return "";
+}
+
+function ensureOpenclawGatewayCmd(homeDir) {
+  const openclawDir = path.join(homeDir, ".openclaw");
+  const gatewayCmdPath = path.join(openclawDir, "gateway.cmd");
+  try {
+    fs.mkdirSync(openclawDir, { recursive: true });
+    // Pick the newest %APPDATA%\\nvm\\v* that contains openclaw-cn.cmd.
+    // Avoid hardcoding the Node version because many users manage Node via nvm.
+    const content = [
+      "@echo off",
+      "setlocal enableextensions",
+      "",
+      'set "NVMDIR=%APPDATA%\\nvm"',
+      'if not exist "%NVMDIR%" (',
+      "  echo ERROR: nvm dir not found: %NVMDIR% 1>&2",
+      "  exit /b 1",
+      ")",
+      "",
+      'set "VER="',
+      'for /f "delims=" %%D in (\'dir /b /ad "%NVMDIR%\\v*" 2^>nul ^| sort /r\') do (',
+      '  set "VER=%%D"',
+      "  goto :havever",
+      ")",
+      "",
+      ":havever",
+      'if "%VER%"=="" (',
+      "  echo ERROR: no Node versions found under %NVMDIR% 1>&2",
+      "  exit /b 1",
+      ")",
+      "",
+      'set "OCCMD=%NVMDIR%\\%VER%\\openclaw-cn.cmd"',
+      'if not exist "%OCCMD%" (',
+      "  echo ERROR: openclaw-cn.cmd not found: %OCCMD% 1>&2",
+      "  exit /b 1",
+      ")",
+      "",
+      'call "%OCCMD%" gateway',
+      "exit /b %ERRORLEVEL%",
+      "",
+    ].join("\r\n");
+    fs.writeFileSync(gatewayCmdPath, content, "ascii");
+  } catch (e) {
+    process.stderr.write(
+      "WARN: 写入 OpenClaw gateway.cmd 失败（不会影响当前配置写入，但会影响开机/登录自启）。错误：" +
+        (e && e.message ? e.message : String(e)) +
+        "\n"
+    );
+  }
+  return gatewayCmdPath;
 }
 
 function main() {
@@ -228,8 +282,12 @@ function main() {
 
   try {
     fs.rmSync(skillDst, { recursive: true, force: true });
-  } catch {
-    // ignore
+  } catch (e) {
+    process.stderr.write(
+      "WARN: 删除旧 skill 目录失败（将继续覆盖写入）。错误：" +
+        (e && e.message ? e.message : String(e)) +
+        "\n"
+    );
   }
   copyDir(skillSrc, skillDst);
   rewriteSkillMdConfigPaths(path.join(skillDst, "SKILL.md"), skillKey);
@@ -239,6 +297,7 @@ function main() {
 
   const backup = backupFile(cfgPath);
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+  const gatewayCmdPath = ensureOpenclawGatewayCmd(home);
 
   // Setup cron job for automatic polling
   if (args.cronEnabled) {
@@ -260,18 +319,41 @@ function main() {
       }
     }
 
+    // Normalize legacy schedule format: {kind:"cron", cron:"*/5 * * * *"} -> {kind:"cron", expr:"*/5 * * * *"}
+    for (const job of jobs) {
+      if (!job || typeof job !== "object") continue;
+      const schedule = job.schedule;
+      if (!schedule || typeof schedule !== "object") continue;
+      if (schedule.kind !== "cron") continue;
+      if (typeof schedule.expr !== "string" && typeof schedule.cron === "string") schedule.expr = schedule.cron;
+      if ("cron" in schedule) delete schedule.cron;
+    }
+
     const jobName = profileName ? `AIHub 拉取任务（${profileName}）` : "AIHub 拉取任务";
     // Check if AIHub cron job already exists (support legacy names)
     const legacyNames = profileName
       ? [jobName, `AIHub Poll - ${profileName}`]
       : [jobName, "AIHub Poll", "AIHub定时拉取任务", "AIHub定时拉取任务"];
     const existingIndex = jobs.findIndex(j => legacyNames.includes(j.name));
+    const nowMs = Date.now();
+    const existingJob = existingIndex >= 0 ? jobs[existingIndex] : null;
+    const existingId =
+      existingJob && typeof existingJob.id === "string"
+        ? existingJob.id
+        : (existingJob && typeof existingJob.jobId === "string" ? existingJob.jobId : "");
+    const id = existingId || (profileName ? `aihub-poll-${profileId(profileName)}` : "aihub-poll");
+    const createdAtMs =
+      existingJob && typeof existingJob.createdAtMs === "number" ? existingJob.createdAtMs : nowMs;
     const newJob = {
-      jobId: existingIndex >= 0 ? jobs[existingIndex].jobId : (pid ? `aihub-${pid}` : ("aihub-" + Date.now())),
+      id,
+      createdAtMs,
+      updatedAtMs: nowMs,
       name: jobName,
+      enabled: true,
+      wakeMode: "now",
       schedule: {
         kind: "cron",
-        cron: args.cron
+        expr: args.cron
       },
       sessionTarget: "isolated",
       payload: {
@@ -281,8 +363,8 @@ function main() {
       delivery: {
         mode: "announce"
       },
-      enabled: true,
-      deleteAfterRun: false
+      deleteAfterRun: false,
+      state: {}
     };
 
     if (existingIndex >= 0) {
@@ -302,6 +384,7 @@ function main() {
       "Skill: " + skillDst,
       "Config: " + cfgPath,
       "Backup: " + backup,
+      "GatewayCmd: " + gatewayCmdPath,
       "BaseUrl: " + baseUrl,
       profileName ? ("Profile: " + profileName) : "Profile: default",
       args.cronEnabled ? ("Cron: " + args.cron + "（已启用定时拉取）") : "Cron: disabled",
