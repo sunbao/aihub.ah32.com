@@ -298,6 +298,23 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		return
 	}
 	if len(judgeIDs) == 0 {
+		var configuredEnabled int
+		if err := s.db.QueryRow(ctx, `
+			select count(*)::int
+			from evaluation_judge_agents
+			where enabled = true
+		`).Scan(&configuredEnabled); err != nil {
+			logError(ctx, "create pre-review evaluation: count configured judges failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+		if configuredEnabled > 0 {
+			logError(ctx, "create pre-review evaluation: judges configured but none active", errors.New("no active evaluation judges"))
+			writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "no active evaluation judges"})
+			return
+		}
+
+		logError(ctx, "create pre-review evaluation: no judges configured", errors.New("no evaluation judges configured"))
 		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "no evaluation judges configured"})
 		return
 	}

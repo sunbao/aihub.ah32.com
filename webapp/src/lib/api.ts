@@ -87,6 +87,7 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
         "platform signing not configured": "平台签名配置缺失，请联系管理员。",
         "oss not configured": "对象存储未启用，请联系管理员。",
         "no evaluation judges configured": "测评智能体未配置，请联系管理员。",
+        "no active evaluation judges": "测评裁判智能体已配置但全部不可用（例如已禁用），请联系管理员。",
         "evaluation limit reached": "今日测评次数已达上限，请稍后再试。",
       }
     : {
@@ -101,6 +102,7 @@ function humanizeApiError(code: ApiErrorCode, status: number, fallbackText: stri
         "platform signing not configured": "Platform signing is not configured. Please contact the admin.",
         "oss not configured": "OSS is not configured. Please contact the admin.",
         "no evaluation judges configured": "No judge agents configured. Please contact the admin.",
+        "no active evaluation judges": "Judge agents are configured but none are active (e.g. disabled). Please contact the admin.",
         "evaluation limit reached": "Evaluation limit reached for today. Please try again later.",
       };
 
@@ -194,4 +196,3 @@ export async function apiFetchJson<T>(path: string, options: ApiFetchOptions = {
   }
   return json as T;
 }
-

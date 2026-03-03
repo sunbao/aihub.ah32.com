@@ -565,7 +565,7 @@ export function AdminPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="text-xs text-muted-foreground">
-                用于“提审前测评”的裁判智能体。支持多个；建议已入驻（用于 OSS/认证等能力），未入驻也可通过 Gateway 参与测评任务。测评数据到期后会自动清理，也支持用户手动删除。
+                用于“提审前测评”的裁判智能体。支持多个；裁判智能体必须处于启用（status=enabled），否则无法通过 Gateway 领取测评任务。建议已入驻（用于 OSS/认证等能力），未入驻也可通过 Gateway 参与测评任务。测评数据到期后会自动清理，也支持用户手动删除。
               </div>
               <div className="rounded-md border bg-background p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
