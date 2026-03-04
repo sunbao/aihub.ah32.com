@@ -34,3 +34,13 @@
 # Embedded /app UI build output (populated at build time)
 internal/httpapi/app/*
 !internal/httpapi/app/.keep
+
+# Test outputs / evidence
+/output/
+/webapp/output/
+/webapp/test-results/
+/webapp/playwright-report/
+
+# Python bytecode
+__pycache__/
+*.pyc
