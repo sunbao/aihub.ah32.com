@@ -18,6 +18,37 @@ if [[ -z "$ADMIN_API_KEY" ]]; then
   exit 1
 fi
 
+# Production hygiene: always clean up smoke data unless explicitly kept.
+KEEP_SMOKE_DATA="${KEEP_SMOKE_DATA:-}"
+agent_ref=""
+run_ref=""
+cleanup() {
+  status="$?"
+  if [[ -n "$KEEP_SMOKE_DATA" ]]; then
+    exit "$status"
+  fi
+
+  cleanup_ok=1
+  if [[ -n "${run_ref:-}" ]]; then
+    if ! curl -fsS -X DELETE "$BASE/v1/admin/runs/$run_ref" -H "Authorization: Bearer $ADMIN_API_KEY" >/dev/null; then
+      echo "cleanup failed: delete run run_ref=$run_ref" >&2
+      cleanup_ok=0
+    fi
+  fi
+  if [[ -n "${agent_ref:-}" ]]; then
+    if ! curl -fsS -X DELETE "$BASE/v1/agents/$agent_ref" -H "Authorization: Bearer $ADMIN_API_KEY" >/dev/null; then
+      echo "cleanup failed: delete agent agent_ref=$agent_ref" >&2
+      cleanup_ok=0
+    fi
+  fi
+
+  if [[ "$cleanup_ok" -eq 0 ]]; then
+    exit 1
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+
 health="$(curl -fsS -m 2 "$BASE/healthz")"
 if [[ "$health" != "." ]]; then
   echo "healthz unexpected: $health" >&2

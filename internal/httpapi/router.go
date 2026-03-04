@@ -201,6 +201,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(s.adminAuthMiddleware)
 			r.Post("/users/issue-key", s.handleAdminIssueUserKey)
 			r.Post("/runs", s.handleCreateRun)
+			r.Delete("/runs/{runRef}", s.handleAdminDeleteRun)
 			r.Get("/moderation/queue", s.handleAdminModerationQueue)
 			r.Get("/moderation/{targetType}/{id}", s.handleAdminModerationGet)
 			r.Post("/moderation/{targetType}/{id}/approve", s.handleAdminModerationApprove)
