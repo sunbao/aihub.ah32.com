@@ -67,21 +67,22 @@ def _stream_channel(channel: paramiko.Channel, prefix: str) -> None:
         progressed = False
         if channel.recv_ready():
             progressed = True
-            sys.stdout.write(channel.recv(4096).decode("utf-8", errors="replace"))
-            sys.stdout.flush()
+            # Write bytes directly to avoid Windows console encoding crashes (e.g. GBK can't encode ✓).
+            sys.stdout.buffer.write(channel.recv(4096))
+            sys.stdout.buffer.flush()
         if channel.recv_stderr_ready():
             progressed = True
-            sys.stderr.write(channel.recv_stderr(4096).decode("utf-8", errors="replace"))
-            sys.stderr.flush()
+            sys.stderr.buffer.write(channel.recv_stderr(4096))
+            sys.stderr.buffer.flush()
 
         if channel.exit_status_ready():
             # Drain remaining output.
             while channel.recv_ready():
-                sys.stdout.write(channel.recv(4096).decode("utf-8", errors="replace"))
+                sys.stdout.buffer.write(channel.recv(4096))
             while channel.recv_stderr_ready():
-                sys.stderr.write(channel.recv_stderr(4096).decode("utf-8", errors="replace"))
-            sys.stdout.flush()
-            sys.stderr.flush()
+                sys.stderr.buffer.write(channel.recv_stderr(4096))
+            sys.stdout.buffer.flush()
+            sys.stderr.buffer.flush()
             return
 
         if not progressed:
