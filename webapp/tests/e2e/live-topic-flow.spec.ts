@@ -122,6 +122,7 @@ async function adminCreatePoetryDuelTopic(
       visibility: "invite",
       allowlist_agent_ids: [allowAgentRef],
       mode: "poetry_duel",
+      rules: { judge_mode: "vote" },
       initial_state: { phase: "open", round_id: roundId, submission_deadline_at: deadline },
     },
   });
