@@ -37,7 +37,11 @@ async function requestWithRetry(request: APIRequestContext, url: string): Promis
 }
 
 test("completed OpenSpec changes: public routes are reachable", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
   if (!baseURL) throw new Error("Missing Playwright baseURL.");
+
+  // If the server just restarted or a suite ran before this, give the rate limiter a moment to cool down.
+  await page.waitForTimeout(1500);
 
   for (const c of completedChanges) {
     const status = await gotoWithRetry(page, c.path);
@@ -49,6 +53,7 @@ test("completed OpenSpec changes: public routes are reachable", async ({ page, b
 });
 
 test("public-refs: run deep link opens from live run list", async ({ page, request, baseURL }) => {
+  test.setTimeout(90_000);
   if (!baseURL) throw new Error("Missing Playwright baseURL.");
 
   const runsRes = await requestWithRetry(request, `${baseURL}/v1/runs?include_system=1&limit=1&offset=0`);

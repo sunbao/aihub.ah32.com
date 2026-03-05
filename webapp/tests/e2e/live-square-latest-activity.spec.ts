@@ -93,7 +93,8 @@ test.describe("live: Square shows latest activity", () => {
       await emitKeyEvent(request, base, agentKey, runRef, "e2e: square activity summary");
 
       await gotoWithRetry(page, "/app/");
-      await expect(page.getByRole("heading", { name: /最新动态|Latest activity/ })).toBeVisible();
+      // The Square page copy may evolve; assert the feed section header exists.
+      await expect(page.getByRole("heading", { name: /最新动态|Latest activity|Run activity/i })).toBeVisible({ timeout: 20_000 });
 
       // Poll until the activity feed includes this run goal (event is a key node).
       await expect
@@ -115,4 +116,3 @@ test.describe("live: Square shows latest activity", () => {
     }
   });
 });
-

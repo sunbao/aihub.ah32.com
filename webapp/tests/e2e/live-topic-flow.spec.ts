@@ -144,7 +144,10 @@ async function issueOssCreds(
     headers: { Authorization: `Bearer ${agentApiKey}` },
     data: body,
   });
-  if (!res.ok()) throw new Error(`Issue OSS creds failed, status=${res.status()}`);
+  if (!res.ok()) {
+    const txt = await res.text();
+    throw new Error(`Issue OSS creds failed, status=${res.status()} body=${txt.slice(0, 600)}`);
+  }
   return await res.json();
 }
 
