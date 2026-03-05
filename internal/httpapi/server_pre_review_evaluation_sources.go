@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"aihub/internal/agenthome"
-
-	"github.com/google/uuid"
 )
 
 type recentTopicForEvaluationDTO struct {
@@ -20,6 +18,7 @@ type recentTopicForEvaluationDTO struct {
 	Summary            string `json:"summary,omitempty"`
 	Mode               string `json:"mode,omitempty"`
 	OpeningQuestion    string `json:"opening_question,omitempty"`
+	Category           string `json:"category,omitempty"`
 	LastMessagePreview string `json:"last_message_preview,omitempty"`
 	LastMessageAt      string `json:"last_message_at,omitempty"`
 }
@@ -133,27 +132,27 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 		return
 	}
 
-	ownedAgentIDs, err := s.listOwnerAgentIDs(ctx, userID, 50)
+	ownedAgentRefs, err := s.listOwnerAgentRefs(ctx, userID, 50)
 	if err != nil {
 		logError(ctx, "recent topics: list owner agents failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
 	}
 
-	var candidateAgentUUID uuid.UUID
+	candidateAgentRef := ""
 	if candidateAgentRefRaw != "" {
-		candidateAgentRef, err := parseAgentRef(candidateAgentRefRaw)
+		ref, err := parseAgentRef(candidateAgentRefRaw)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid candidate_agent_ref"})
 			return
 		}
-		id, err := s.lookupOwnerAgentIDByRef(ctx, userID, candidateAgentRef)
-		if err != nil {
+		// Validate ownership so the UI can't probe arbitrary refs.
+		if _, err := s.lookupOwnerAgentIDByRef(ctx, userID, ref); err != nil {
 			logError(ctx, "recent topics: lookup candidate agent by agent_ref failed", err)
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid candidate_agent_ref"})
 			return
 		}
-		candidateAgentUUID = id
+		candidateAgentRef = ref
 	}
 
 	type evRow struct {
@@ -241,16 +240,20 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 			CircleID:          mf.CircleID,
 			AllowlistAgentIDs: mf.AllowlistAgentIDs,
 			OwnerAgentID:      mf.OwnerAgentID,
-			OwnedAgentIDs:     ownedAgentIDs,
-			CandidateAgentID:  candidateAgentUUID,
+			OwnedAgentRefs:    ownedAgentRefs,
+			CandidateAgentRef: candidateAgentRef,
 		}) {
 			continue
 		}
 
 		opening := ""
+		category := ""
 		if mf.Rules != nil {
 			if v, ok := mf.Rules["opening_question"].(string); ok {
 				opening = strings.TrimSpace(v)
+			}
+			if v, ok := mf.Rules["seed_category"].(string); ok {
+				category = strings.TrimSpace(v)
 			}
 		}
 
@@ -261,6 +264,7 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 			Summary:            strings.TrimSpace(mf.Summary),
 			Mode:               strings.TrimSpace(mf.Mode),
 			OpeningQuestion:    opening,
+			Category:           category,
 			LastMessagePreview: extractEventPreview(row.payloadB),
 			LastMessageAt:      row.occurredAt.UTC().Format(time.RFC3339),
 		})
@@ -347,16 +351,20 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 				CircleID:          mf.CircleID,
 				AllowlistAgentIDs: mf.AllowlistAgentIDs,
 				OwnerAgentID:      mf.OwnerAgentID,
-				OwnedAgentIDs:     ownedAgentIDs,
-				CandidateAgentID:  candidateAgentUUID,
+				OwnedAgentRefs:    ownedAgentRefs,
+				CandidateAgentRef: candidateAgentRef,
 			}) {
 				continue
 			}
 
 			opening := ""
+			category := ""
 			if mf.Rules != nil {
 				if v, ok := mf.Rules["opening_question"].(string); ok {
 					opening = strings.TrimSpace(v)
+				}
+				if v, ok := mf.Rules["seed_category"].(string); ok {
+					category = strings.TrimSpace(v)
 				}
 			}
 
@@ -376,6 +384,7 @@ func (s server) handleOwnerListRecentTopicsForEvaluation(w http.ResponseWriter, 
 					Summary:         strings.TrimSpace(mf.Summary),
 					Mode:            strings.TrimSpace(mf.Mode),
 					OpeningQuestion: opening,
+					Category:        category,
 				},
 			})
 		}
@@ -406,8 +415,8 @@ type topicManifestAllowArgs struct {
 	CircleID          string
 	AllowlistAgentIDs []string
 	OwnerAgentID      string
-	OwnedAgentIDs     []uuid.UUID
-	CandidateAgentID  uuid.UUID
+	OwnedAgentRefs    []string
+	CandidateAgentRef string
 }
 
 func topicManifestAllowsOwner(ctx context.Context, store agenthome.OSSObjectStore, args topicManifestAllowArgs) bool {
@@ -423,8 +432,8 @@ func topicManifestAllowsOwner(ctx context.Context, store agenthome.OSSObjectStor
 		if ownerAgent == "" {
 			return false
 		}
-		for _, id := range args.OwnedAgentIDs {
-			if id.String() == ownerAgent {
+		for _, ref := range args.OwnedAgentRefs {
+			if strings.TrimSpace(ref) == ownerAgent {
 				return true
 			}
 		}
@@ -437,11 +446,11 @@ func topicManifestAllowsOwner(ctx context.Context, store agenthome.OSSObjectStor
 				allow[v] = true
 			}
 		}
-		if args.CandidateAgentID != uuid.Nil && allow[args.CandidateAgentID.String()] {
+		if strings.TrimSpace(args.CandidateAgentRef) != "" && allow[strings.TrimSpace(args.CandidateAgentRef)] {
 			return true
 		}
-		for _, id := range args.OwnedAgentIDs {
-			if allow[id.String()] {
+		for _, ref := range args.OwnedAgentRefs {
+			if allow[strings.TrimSpace(ref)] {
 				return true
 			}
 		}
@@ -451,8 +460,12 @@ func topicManifestAllowsOwner(ctx context.Context, store agenthome.OSSObjectStor
 		if cid == "" {
 			return false
 		}
-		for _, id := range args.OwnedAgentIDs {
-			ok, err := store.Exists(ctx, "circles/"+cid+"/members/"+id.String()+".json")
+		for _, ref := range args.OwnedAgentRefs {
+			ref = strings.TrimSpace(ref)
+			if ref == "" {
+				continue
+			}
+			ok, err := store.Exists(ctx, "circles/"+cid+"/members/"+ref+".json")
 			if err != nil {
 				logError(ctx, "recent topics: check circle member failed", err)
 				continue

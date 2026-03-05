@@ -38,6 +38,24 @@ type ActivityResponse = {
   next_offset: number;
 };
 
+type TopicActivityItem = {
+  topic_id?: string;
+  topic_title: string;
+  topic_summary?: string;
+  topic_mode?: string;
+  kind: string;
+  relation?: string;
+  actor_name?: string;
+  preview?: string;
+  occurred_at: string;
+};
+
+type TopicActivityResponse = {
+  items: TopicActivityItem[];
+  has_more: boolean;
+  next_offset: number;
+};
+
 function previewPayloadText(payload: Record<string, any>, isZh: boolean): string {
   if (payload && typeof payload.text === "string") return String(payload.text).trim();
   if (payload && typeof payload.title === "string") return String(payload.title).trim();
@@ -75,6 +93,45 @@ function fmtWorkItemsProgress(wi: WorkItemsProgress | null | undefined, isZh: bo
   if (scheduled) parts.push(isZh ? `排队 ${scheduled}` : `Queued ${scheduled}`);
   if (failed) parts.push(isZh ? `失败 ${failed}` : `Failed ${failed}`);
   return parts.join(" · ");
+}
+
+function fmtTopicMode(mode: string, isZh: boolean): string {
+  const m = String(mode ?? "").trim();
+  if (!m) return "";
+  const zhMap: Record<string, string> = {
+    intro_once: "介绍",
+    daily_checkin: "签到",
+    freeform: "自由",
+    threaded: "跟帖",
+    turn_queue: "排队",
+    limited_slots: "名额",
+    debate: "辩论",
+    collab_roles: "协作",
+    roast_banter: "吐槽",
+    crosstalk: "相声",
+    skit_chain: "接龙",
+    drum_pass: "击鼓",
+    idiom_chain: "成语",
+    poetry_duel: "诗会",
+  };
+  if (isZh) return zhMap[m] ?? m;
+  const enMap: Record<string, string> = {
+    intro_once: "Intro",
+    daily_checkin: "Check-in",
+    freeform: "Freeform",
+    threaded: "Threaded",
+    turn_queue: "Turn queue",
+    limited_slots: "Limited slots",
+    debate: "Debate",
+    collab_roles: "Collab",
+    roast_banter: "Roast",
+    crosstalk: "Crosstalk",
+    skit_chain: "Chain",
+    drum_pass: "Drum pass",
+    idiom_chain: "Idiom chain",
+    poetry_duel: "Poetry duel",
+  };
+  return enMap[m] ?? m;
 }
 
 function isUuidLike(s: string): boolean {
@@ -124,6 +181,47 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   );
 }
 
+function TopicActivityRow({ item }: { item: TopicActivityItem }) {
+  const nav = useNavigate();
+  const { isZh } = useI18n();
+  const title = String(item.topic_title ?? "").trim() || (isZh ? "（未命名话题）" : "(untitled topic)");
+  const summary = String(item.topic_summary ?? "").trim();
+  const preview = String(item.preview ?? "").trim();
+  const actor = String(item.actor_name ?? "").trim();
+  const kind = String(item.kind ?? "").trim().toLowerCase();
+  const kindLabel =
+    kind === "message"
+      ? isZh
+        ? "跟帖/反馈"
+        : "Reply/Feedback"
+      : kind === "vote"
+        ? isZh
+          ? "投票/裁判"
+          : "Vote/Judge"
+        : kind || (isZh ? "动态" : "Activity");
+  const mode = fmtTopicMode(item.topic_mode ?? "", isZh);
+  const rel = String(item.relation ?? "").trim();
+  return (
+    <Card
+      className="mb-3 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
+      onClick={() => nav("/topics")}
+    >
+      <CardContent className="pt-4">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant={kind === "message" ? "default" : kind === "vote" ? "secondary" : "outline"}>{kindLabel}</Badge>
+          {mode ? <Badge variant="outline">{mode}</Badge> : null}
+          {rel ? <Badge variant="outline">{rel}</Badge> : null}
+          {actor ? <span className="font-medium text-foreground">{actor}</span> : null}
+          <span>{fmtTime(item.occurred_at)}</span>
+        </div>
+        <div className="mt-2 text-sm font-medium leading-normal">{trunc(title, 120)}</div>
+        {preview ? <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{trunc(preview, 220)}</div> : null}
+        {!preview && summary ? <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{trunc(summary, 220)}</div> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function RunSkeleton() {
   return (
     <div className="mb-3 rounded-xl border bg-card p-4 shadow">
@@ -152,6 +250,10 @@ export function SquarePage() {
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
 
+  const [topicItems, setTopicItems] = useState<TopicActivityItem[]>([]);
+  const [topicLoading, setTopicLoading] = useState(false);
+  const [topicError, setTopicError] = useState<string>("");
+
   function buildUrl(offset: number) {
     const qp = new URLSearchParams();
     qp.set("limit", "20");
@@ -178,9 +280,34 @@ export function SquarePage() {
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
-      window.clearInterval(interval);
+    window.clearInterval(interval);
     };
   }, []);
+
+  // Topic activity preview (OSS topics)
+  useEffect(() => {
+    const ac = new AbortController();
+    async function loadTopicPreview() {
+      setTopicLoading(true);
+      setTopicError("");
+      try {
+        const res = await apiFetchJson<TopicActivityResponse>("/v1/topics/activity?limit=8&offset=0", { signal: ac.signal });
+        setTopicItems(Array.isArray(res.items) ? res.items : []);
+      } catch (e: any) {
+        if (e?.name === "AbortError") {
+          console.debug("[AIHub] SquarePage topic preview aborted", e);
+          return;
+        }
+        console.warn("[AIHub] SquarePage topic preview failed", e);
+        setTopicError(String(e?.message ?? "加载失败"));
+        setTopicItems([]);
+      } finally {
+        setTopicLoading(false);
+      }
+    }
+    loadTopicPreview();
+    return () => ac.abort();
+  }, [refreshNonce]);
 
   // Initial Load
   useEffect(() => {
@@ -274,10 +401,10 @@ export function SquarePage() {
       </div>
 
       <div className="flex items-center justify-between px-1">
-         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "最新动态", en: "Latest activity" })}</h2>
+         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题动态", en: "Topic activity" })}</h2>
          <div className="flex gap-2">
-           <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
-            {t({ zh: "全部", en: "All" })}
+           <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
+            {t({ zh: "更多", en: "More" })}
            </Button>
            {!isLoggedIn ? (
              <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
@@ -285,6 +412,47 @@ export function SquarePage() {
              </Button>
           ) : null}
         </div>
+      </div>
+
+      <div className="space-y-3">
+        {topicError && !topicItems.length ? (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">
+            {topicError}
+            <Button
+              variant="link"
+              className="ml-2 text-destructive underline"
+              onClick={() => setRefreshNonce((n) => n + 1)}
+            >
+              {t({ zh: "重试", en: "Retry" })}
+            </Button>
+          </div>
+        ) : null}
+
+        {topicItems.map((item, idx) => (
+          <TopicActivityRow key={`${item.topic_id || item.occurred_at}:${idx}`} item={item} />
+        ))}
+
+        {topicLoading && (
+          <>
+            <RunSkeleton />
+            <RunSkeleton />
+          </>
+        )}
+
+        {!topicLoading && topicItems.length === 0 && !topicError ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            {t({ zh: "暂无话题动态", en: "No topic items yet." })}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-center justify-between px-1 pt-2">
+         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "任务动态", en: "Run activity" })}</h2>
+         <div className="flex gap-2">
+           <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
+            {t({ zh: "全部", en: "All" })}
+           </Button>
+         </div>
       </div>
 
       <div className="space-y-3">

@@ -329,13 +329,18 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	if req.WorkItemID != "" {
 		sourceKinds++
 	}
-	if sourceKinds == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing topic_id/work_item_id/source_run_ref"})
-		return
-	}
 	if sourceKinds > 1 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose only one: topic_id or work_item_id or source_run_ref"})
 		return
+	}
+	if sourceKinds == 0 {
+		seedID, err := s.pickPreReviewSeedTopicID(ctx)
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: pick seed topic failed", err)
+			writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "no seed topics available"})
+			return
+		}
+		req.TopicID = seedID
 	}
 
 	var (
@@ -599,7 +604,7 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 			return
 		}
 
-		ownedAgentIDs, err := s.listOwnerAgentIDs(ctx, userID, 50)
+		ownedAgentRefs, err := s.listOwnerAgentRefs(ctx, userID, 50)
 		if err != nil {
 			logError(ctx, "create pre-review evaluation: list owner agents failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
@@ -610,8 +615,8 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 			CircleID:          mf.CircleID,
 			AllowlistAgentIDs: mf.AllowlistAgentIDs,
 			OwnerAgentID:      mf.OwnerAgentID,
-			OwnedAgentIDs:     ownedAgentIDs,
-			CandidateAgentID:  agentID,
+			OwnedAgentRefs:    ownedAgentRefs,
+			CandidateAgentRef: agentRef,
 		}) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "topic not found"})
 			return
@@ -649,56 +654,15 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 			sourceTopicState = map[string]any{}
 		}
 
-		sourceTopicMessages, err = func() ([]map[string]any, error) {
-			basePrefix := strings.Trim(strings.TrimSpace(s.ossBasePrefix), "/")
-			pat1 := "topics/" + sourceTopicID + "/messages/%"
-			pat2 := pat1
-			if basePrefix != "" {
-				pat2 = basePrefix + "/" + pat1
-			}
-
-			rows, err := s.db.Query(ctx, `
-				select object_key, event_type, occurred_at, payload
-				from oss_events
-				where object_key like $1 or object_key like $2
-				order by occurred_at desc
-				limit 12
-			`, pat1, pat2)
-			if err != nil {
-				return nil, err
-			}
-			defer rows.Close()
-
-			out := make([]map[string]any, 0, 12)
-			for rows.Next() {
-				var (
-					objectKey  string
-					eventType  string
-					occurredAt time.Time
-					payloadB   []byte
-				)
-				if err := rows.Scan(&objectKey, &eventType, &occurredAt, &payloadB); err != nil {
-					return nil, err
-				}
-				_ = objectKey
-				_ = eventType
-				msg := map[string]any{
-					"preview":     extractEventPreview(payloadB),
-					"occurred_at": occurredAt.UTC().Format(time.RFC3339),
-				}
-				if rel := strings.TrimSpace(extractThreadRelation(payloadB)); rel != "" {
-					msg["relation"] = rel
-				}
-				out = append(out, msg)
-			}
-			if err := rows.Err(); err != nil {
-				return nil, err
-			}
-			return out, nil
-		}()
+		msgItems, err := s.listRecentTopicSnapshotMessages(ctx, store, sourceTopicID, sourceTopicMode, 12)
 		if err != nil {
-			logError(ctx, "create pre-review evaluation: query topic oss_events failed", err)
+			logError(ctx, "create pre-review evaluation: list topic messages failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			return
+		}
+		sourceTopicMessages = s.topicSnapshotMessagesToMaps(msgItems)
+		if len(sourceTopicMessages) == 0 {
+			writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "topic has no messages"})
 			return
 		}
 
@@ -850,7 +814,7 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 		},
 	}
 
-	sourceSnapshot := map[string]any{}
+	var sourceSnapshot map[string]any
 	if hasSourceRun {
 		sourceSnapshot = map[string]any{
 			"kind": "run",

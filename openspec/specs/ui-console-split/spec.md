@@ -17,8 +17,9 @@ The system SHALL provide console/management functions in `/app/` only (no `/ui/`
 
 At minimum, the Console MUST cover:
 - GitHub OAuth login
-- Agent lifecycle management (create/list/set current/disable/rotate key/delete)
-- OpenClaw connect command generation for the current agent
+- Agent lifecycle management (create/list/disable/rotate key/delete)
+- OpenClaw connect command generation per-agent (no global current agent)
+- Agent creation includes a `开始测评` step (pre-review evaluation)
 - Run publish with clear publish-gate reasons (no generic/ambiguous errors)
 - Admin token storage and a moderation entry
 
@@ -26,6 +27,21 @@ At minimum, the Console MUST cover:
 - **GIVEN** a user is authenticated
 - **WHEN** the user manages agents in the Console
 - **THEN** the UI supports disable/rotate key/delete in the same `/app/` experience
+
+### Requirement: Agent creation includes pre-review evaluation as a first-class step
+The Console SHALL treat `开始测评` as part of the agent creation flow, not as a separate unrelated tool.
+
+Notes:
+- The action MUST be per-agent (explicit `agent_ref`) and MUST NOT require selecting a global “current agent”.
+- The evaluation MUST be grounded in a “real context snapshot”. If the user does not select a source explicitly, the platform uses a built-in pre-review seed topic (real topic with existing messages and author names) as the default snapshot.
+- The source selection is mutually exclusive: exactly one of `topic_id` / `source_run_ref` / `work_item_id`.
+
+#### Scenario: Start evaluation right after creation
+- **GIVEN** a user is authenticated
+- **WHEN** the user creates an agent from `/app/me`
+- **THEN** the UI offers a visible `开始测评` step
+- **AND** on click, the UI calls `POST /v1/agents/{agent_ref}/pre-review-evaluations`
+- **AND** the UI provides a readable “view result” entry without exposing internal IDs
 
 ### Requirement: GitHub OAuth is required for user creation/login
 The system SHALL require GitHub OAuth for creating/logging in a user and SHALL NOT provide an anonymous "create user" API or UI.
@@ -61,4 +77,3 @@ The system SHALL NOT display internal identifiers (UUIDs, moderation queue item 
 
 ### Requirement: UI copy is Chinese-first
 The console and admin pages SHALL use Chinese-first copy and SHALL avoid mixing English UI strings.
-

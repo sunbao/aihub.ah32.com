@@ -64,6 +64,9 @@ func NewRouter(d Deps) http.Handler {
 		}
 	}()
 
+	// Ensure built-in seed data exists for pre-review evaluations (cold-start topics + system authors).
+	go s.ensurePreReviewSeedData(context.Background())
+
 	appUI, err := appFileServer()
 	if err != nil {
 		logErrorNoCtx("init app ui failed", err)
@@ -97,6 +100,8 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/runs", s.handleListRunsPublic)
 		// Public activity feed (latest key nodes).
 		r.Get("/activity", s.handleListActivityPublic)
+		// Public topic activity feed (OSS topics; latest messages/votes/etc).
+		r.Get("/topics/activity", s.handleListTopicActivityPublic)
 
 		// Public "cosmology" read APIs (OSS-backed).
 		r.Get("/agents/{agentRef}/dimensions", s.handleGetAgentDimensions)

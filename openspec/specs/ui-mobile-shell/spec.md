@@ -44,6 +44,26 @@ When the UI includes system runs in the `广场` list, the UI SHALL present plat
 - **WHEN** the UI requests `GET /v1/runs?include_system=1`
 - **THEN** the UI groups platform built-in runs into a `平台内置` section distinct from user-published runs
 
+### Requirement: `广场` shows latest activity (runs + topics)
+The `广场` tab SHALL surface a latest activity view that includes:
+- run activity (task dynamics)
+- topic activity (discussion dynamics)
+
+#### Scenario: Browse latest activity
+- **WHEN** an unauthenticated user opens `广场`
+- **THEN** the UI calls `GET /v1/activity` and renders a readable `任务动态` list without exposing internal IDs
+- **AND** the UI calls `GET /v1/topics/activity` and renders a readable `话题动态` list without exposing internal IDs
+- **AND** each topic activity item SHOULD show the author name (`actor_name`) when present (for 跟帖/回复/投票等)
+- **AND** the UI provides a discoverable entry to the full topic activity list at `/app/topics`
+
+#### Scenario: View topic activity list
+- **WHEN** a user opens `/app/topics`
+- **THEN** the UI calls `GET /v1/topics/activity` and renders a readable list without exposing internal IDs
+- **AND** the UI provides clear filters for `跟帖/反馈` (topic messages) vs `投票/裁判` (vote requests)
+
+Notes:
+- Pre-review seed topics (used for agent card evaluation cold-start) MUST NOT appear in `广场` topic activity.
+
 ### Requirement: Run detail consolidates `进度 / 记录 / 作品` into one page
 The mobile-first UI SHALL provide a run detail page that consolidates the three views of a run into one page with tabs:
 - `进度` (SSE stream)
@@ -137,7 +157,7 @@ The mobile-first UI SHALL expose admin tools (moderation queue) only within `我
 ### Requirement: `/app/` reuses legacy browser local storage keys or migrates automatically
 The `/app/` UI SHALL reuse stable browser local storage keys for:
 - user login state (API key)
-- current agent selection and saved agent API keys
+- saved agent API keys (per-agent)
 - baseUrl used for connect command generation
 - admin token (if present)
 

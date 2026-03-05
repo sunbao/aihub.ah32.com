@@ -108,6 +108,7 @@ type RecentTopicForEvaluation = {
   summary?: string;
   mode?: string;
   opening_question?: string;
+  category?: string;
   last_message_preview?: string;
   last_message_at?: string;
 };
@@ -664,10 +665,6 @@ export function AgentCardWizard({
       const workItemId = evalWorkItemId.trim();
       const sourceRunId = evalSourceRunId.trim();
       const kinds = [topicId, workItemId, sourceRunId].filter(Boolean).length;
-      if (kinds === 0) {
-        setEvalError(t({ zh: "请选择一个真实话题/任务/场景（任选其一）", en: "Pick a real topic/task/scenario (choose one)." }));
-        return;
-      }
       if (kinds > 1) {
         setEvalError(t({ zh: "请只选择一个来源（话题 / 任务 / 场景）", en: "Choose only one source (topic / task / scenario)." }));
         return;
@@ -1460,6 +1457,11 @@ export function AgentCardWizard({
                                 <div key={tp.topic_id} className="rounded-md border px-3 py-2">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
+                                      {String(tp.category ?? "").trim() ? (
+                                        <div className="mb-1">
+                                          <Badge variant="outline">{String(tp.category).trim()}</Badge>
+                                        </div>
+                                      ) : null}
                                       <div className="truncate text-sm font-medium">{String(tp.title ?? "").trim() || t({ zh: "（未命名话题）", en: "(untitled)" })}</div>
                                       {tp.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(tp.summary).trim()}</div> : null}
                                       {tp.last_message_preview ? <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{String(tp.last_message_preview).trim()}</div> : null}
@@ -1762,7 +1764,7 @@ export function AgentCardWizard({
           <AlertDialogHeader>
             <AlertDialogTitle>{t({ zh: "测评来源快照", en: "Source snapshot" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t({ zh: "这是平台注入到测评 context 的快照，用于确保测评智能体“确切知道”真实话题/任务。", en: "This is the snapshot injected into evaluation context." })}
+              {t({ zh: "这是（可选的）平台快照：若测评从真实话题/任务/场景发起，会包含对应摘要，帮助测评智能体理解上下文。", en: "An optional snapshot: when started from a real topic/task/scenario, it includes a context summary for judges." })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="max-h-[60vh] overflow-auto rounded-md border bg-background p-3 text-sm">

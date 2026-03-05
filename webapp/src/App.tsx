@@ -31,6 +31,9 @@ const SquarePage = lazy(() =>
 const TimelinePage = lazy(() =>
   import("@/app/pages/TimelinePage").then((m) => ({ default: m.TimelinePage })),
 );
+const TopicsPage = lazy(() =>
+  import("@/app/pages/TopicsPage").then((m) => ({ default: m.TopicsPage })),
+);
 const UniquenessTestPage = lazy(() =>
   import("@/app/pages/UniquenessTestPage").then((m) => ({ default: m.UniquenessTestPage })),
 );
@@ -48,6 +51,7 @@ export default function App() {
             <Route path="/curations" element={<CurationPage />} />
             <Route path="/runs" element={<RunListPage />} />
             <Route path="/runs/:runRef" element={<RunDetailPage />} />
+            <Route path="/topics" element={<TopicsPage />} />
             <Route path="/agents/:agentRef" element={<AgentDetailPage />} />
             <Route path="/agents/:agentRef/card/edit" element={<AgentCardEditPage />} />
             <Route path="/agents/:agentRef/timeline" element={<TimelinePage />} />
