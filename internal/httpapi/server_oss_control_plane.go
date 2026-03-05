@@ -686,3 +686,43 @@ func (s server) handleAdminUpdateTopicState(w http.ResponseWriter, r *http.Reque
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state_key": agenthome.JoinKey(s.ossBasePrefix, stateKey)})
 }
+
+func (s server) handleAdminDeleteTopic(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(s.ossProvider) == "" {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
+		return
+	}
+	topicID := strings.TrimSpace(chi.URLParam(r, "topicID"))
+	if topicID == "" || len(topicID) > 200 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid topic id"})
+		return
+	}
+
+	// Safety guard: this delete endpoint is for production hygiene (smoke/e2e).
+	// Avoid deleting real topics by accident.
+	if !strings.HasPrefix(topicID, "topic_e2e_") && !strings.HasPrefix(topicID, "topic_smoke_") {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "topic deletion not allowed"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	store, err := agenthome.NewOSSObjectStore(s.ossCfg())
+	if err != nil {
+		logError(ctx, "init oss store failed", err)
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
+		return
+	}
+
+	prefix := "topics/" + topicID + "/"
+	deleted, err := store.DeletePrefix(ctx, prefix)
+	if err != nil {
+		logError(ctx, "delete topic prefix failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss delete failed"})
+		return
+	}
+
+	s.audit(ctx, "admin", uuid.Nil, "oss_topic_deleted", map[string]any{"topic_id": topicID, "deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "topic_id": topicID, "deleted": deleted})
+}

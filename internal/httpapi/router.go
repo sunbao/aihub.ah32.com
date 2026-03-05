@@ -240,6 +240,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/tasks", s.handleAdminCreateTaskManifest)
 			r.Post("/oss/topics", s.handleAdminCreateTopicManifest)
 			r.Post("/oss/topics/{topicID}/state", s.handleAdminUpdateTopicState)
+			r.Delete("/oss/topics/{topicID}", s.handleAdminDeleteTopic)
 		})
 	})
 

@@ -49,6 +49,9 @@ type OSSObjectStore interface {
 	GetObject(ctx context.Context, key string) ([]byte, error)
 	ListObjects(ctx context.Context, prefix string, limit int) ([]string, error)
 	Exists(ctx context.Context, key string) (bool, error)
+	// DeletePrefix deletes all objects under the given prefix (relative to BasePrefix).
+	// It must reject empty prefixes to avoid accidental bucket wipes.
+	DeletePrefix(ctx context.Context, prefix string) (deleted int, err error)
 }
 
 type STSAssumer interface {
@@ -199,6 +202,53 @@ func (s localStore) Exists(ctx context.Context, key string) (bool, error) {
 	return false, err
 }
 
+func (s localStore) DeletePrefix(ctx context.Context, prefix string) (int, error) {
+	_ = ctx
+	prefix = strings.TrimLeft(strings.TrimSpace(prefix), "/")
+	if prefix == "" {
+		return 0, errors.New("empty prefix")
+	}
+	fullPrefix := JoinKey(s.basePrefix, prefix)
+	rootPath := filepath.Join(s.root, filepath.FromSlash(fullPrefix))
+	walkRoot := filepath.Clean(rootPath)
+
+	info, err := os.Stat(walkRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if !info.IsDir() {
+		// If the prefix points to a file, delete it as a single object.
+		if err := os.Remove(walkRoot); err != nil && !os.IsNotExist(err) {
+			return 0, err
+		}
+		return 1, nil
+	}
+
+	deleted := 0
+	err = filepath.WalkDir(walkRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
+			return rmErr
+		}
+		deleted++
+		return nil
+	})
+	if err != nil {
+		return deleted, err
+	}
+	// Best-effort cleanup of empty dirs.
+	_ = os.RemoveAll(walkRoot)
+	return deleted, nil
+}
+
 type aliyunStore struct {
 	bucket     *oss.Bucket
 	basePrefix string
@@ -245,6 +295,54 @@ func (s aliyunStore) Exists(ctx context.Context, key string) (bool, error) {
 	_ = ctx
 	fullKey := JoinKey(s.basePrefix, key)
 	return s.bucket.IsObjectExist(fullKey)
+}
+
+func (s aliyunStore) DeletePrefix(ctx context.Context, prefix string) (int, error) {
+	_ = ctx
+	prefix = strings.TrimLeft(strings.TrimSpace(prefix), "/")
+	if prefix == "" {
+		return 0, errors.New("empty prefix")
+	}
+	fullPrefix := JoinKey(s.basePrefix, prefix)
+
+	deleted := 0
+	marker := ""
+	for {
+		opts := []oss.Option{oss.Prefix(fullPrefix), oss.MaxKeys(1000)}
+		if marker != "" {
+			opts = append(opts, oss.Marker(marker))
+		}
+		res, err := s.bucket.ListObjects(opts...)
+		if err != nil {
+			return deleted, err
+		}
+		if len(res.Objects) == 0 {
+			break
+		}
+		keys := make([]string, 0, len(res.Objects))
+		for _, o := range res.Objects {
+			if strings.TrimSpace(o.Key) == "" {
+				continue
+			}
+			keys = append(keys, o.Key)
+		}
+		if len(keys) > 0 {
+			// Quiet=true to reduce response size; errors are returned as API error.
+			if _, err := s.bucket.DeleteObjects(keys, oss.DeleteObjectsQuiet(true)); err != nil {
+				return deleted, err
+			}
+			deleted += len(keys)
+		}
+		if !res.IsTruncated {
+			break
+		}
+		marker = strings.TrimSpace(res.NextMarker)
+		if marker == "" {
+			// Defensive: avoid infinite loop if SDK returns truncated=true without marker.
+			break
+		}
+	}
+	return deleted, nil
 }
 
 type localSTS struct {
