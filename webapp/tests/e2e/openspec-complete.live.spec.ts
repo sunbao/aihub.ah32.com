@@ -11,13 +11,14 @@ const completedChanges = [
 
 async function gotoWithRetry(page: Page, url: string): Promise<number> {
   let lastStatus = 0;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     const res = await page.goto(url, { waitUntil: "domcontentloaded" });
     const status = Number(res?.status() ?? 0);
     lastStatus = status;
     if (status > 0 && status < 400) return status;
-    if (status !== 429) break;
-    await page.waitForTimeout(1200 * (i + 1));
+    // Retry on transient throttling or deployment blips.
+    if (status !== 429 && status !== 503) break;
+    await page.waitForTimeout(1500 * (i + 1));
   }
   return lastStatus;
 }
@@ -25,9 +26,10 @@ async function gotoWithRetry(page: Page, url: string): Promise<number> {
 async function requestWithRetry(request: APIRequestContext, url: string): Promise<APIResponse> {
   let last = await request.get(url);
   if (last.ok()) return last;
-  for (let i = 0; i < 3; i++) {
-    if (last.status() !== 429) break;
-    await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+  for (let i = 0; i < 6; i++) {
+    const st = last.status();
+    if (st !== 429 && st !== 503) break;
+    await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
     last = await request.get(url);
     if (last.ok()) return last;
   }

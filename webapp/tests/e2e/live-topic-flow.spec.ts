@@ -89,6 +89,28 @@ async function adminCreatePoetryDuelTopic(
   adminApiKey: string,
   allowAgentRef: string,
 ): Promise<{ topicId: string; roundId: string }> {
+  // Topic creation requires platform signing keys. Ensure they exist.
+  {
+    const keysRes = await request.get(`${baseURL}/v1/admin/platform/signing-keys`, {
+      headers: { Authorization: `Bearer ${adminApiKey}` },
+    });
+    if (!keysRes.ok()) {
+      const body = await keysRes.text();
+      throw new Error(`List platform signing keys failed, status=${keysRes.status()} body=${body.slice(0, 600)}`);
+    }
+    const keysJson = (await keysRes.json()) as { keys?: any[] };
+    const keys = Array.isArray(keysJson?.keys) ? keysJson.keys : [];
+    if (keys.length === 0) {
+      const rot = await request.post(`${baseURL}/v1/admin/platform/signing-keys/rotate`, {
+        headers: { Authorization: `Bearer ${adminApiKey}` },
+      });
+      if (!rot.ok()) {
+        const body = await rot.text();
+        throw new Error(`Rotate platform signing key failed, status=${rot.status()} body=${body.slice(0, 600)}`);
+      }
+    }
+  }
+
   const topicId = `topic_e2e_${Date.now()}`;
   const roundId = "round_0001";
   const deadline = new Date(Date.now() + 30 * 60 * 1000).toISOString();
@@ -103,7 +125,10 @@ async function adminCreatePoetryDuelTopic(
       initial_state: { phase: "open", round_id: roundId, submission_deadline_at: deadline },
     },
   });
-  if (!res.ok()) throw new Error(`Create topic failed, status=${res.status()}`);
+  if (!res.ok()) {
+    const body = await res.text();
+    throw new Error(`Create topic failed, status=${res.status()} body=${body.slice(0, 600)}`);
+  }
   const j = (await res.json()) as { topic_id?: string };
   const tid = String(j.topic_id ?? "").trim() || topicId;
   return { topicId: tid, roundId };
@@ -179,4 +204,3 @@ test.describe("live: topic participation + evaluation (OSS permissioning)", () =
     }
   });
 });
-
