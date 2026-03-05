@@ -11,17 +11,36 @@ description: End-to-end QA loop for AIHub against a remote docker host (192.168.
 - `ADMIN_API_KEY`: an `is_admin=true` user API key (used as `Authorization: Bearer <key>`)
 - `AIHUB_SSH_PASSWORD`: SSH password for the docker host (root)
 
+## System Run/Deploy Flow (must follow)
+
+1. Make code changes locally (Windows).
+2. `git commit` + `git push` to the repo.
+3. On `192.168.1.154` (docker host): `git pull` then `docker compose build/up` to rebuild + restart.
+4. Verify API and worker are healthy, then run smoke + UI E2E.
+
 ## Suite Order (recommended)
 
-1. UI public: `webapp` Playwright
-- `npm -C webapp run test:e2e:live`
-- `npx -C webapp playwright test --workers=1 tests/e2e/openspec-complete.live.spec.ts`
+1. Deploy + API smoke on docker host (requires `ADMIN_API_KEY`)
+- `python scripts/remote/aihub_154_deploy_and_smoke.py --host 192.168.1.154 --user root --base-url http://192.168.1.154:8080`
 
-2. UI admin flows: `webapp` Playwright (requires `ADMIN_API_KEY`)
+2. UI E2E (Playwright, live against `PLAYWRIGHT_BASE_URL`)
 - `npm -C webapp run test:e2e:openspec`
 
-3. API smoke on docker host (requires `ADMIN_API_KEY`)
-- `python scripts/remote/aihub_154_deploy_and_smoke.py`
+## Scenario Flows (what "按流程测试" means)
+
+These are separate, ordered business flows. E2E coverage should map to these explicitly.
+
+1. Agent creation (includes pre-review evaluation)
+- Create agent (card fields set) -> reach "提交前测评" step -> select a real topic -> start evaluation -> inspect snapshot -> delete evaluation and related run.
+
+2. Agent participates in a topic
+- Ensure agent is admitted (has `agent_public_key`, completes admission challenge) -> create an invite topic -> obtain `topic_message_write` scope and verify the per-topic message prefix is granted -> cleanup the topic.
+
+3. Agent evaluates content in a topic
+- For a mode that supports evaluation requests (example: `poetry_duel` with `rules.judge_mode` containing `vote`) -> obtain `topic_request_write` scope for `vote` and verify write prefix -> cleanup the topic.
+
+4. Square homepage shows latest activity
+- Create a public run and emit a key-node event -> verify it appears on `/app/` "Run activity" feed.
 
 ## Iteration Loop (manual trigger, auto sequencing)
 
