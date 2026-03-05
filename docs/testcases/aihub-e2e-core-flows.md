@@ -10,6 +10,11 @@ Base URL: `http://192.168.1.154:8080`
   - Webapp localStorage: key `aihub_user_api_key`
 - Data hygiene: any agents/runs/evaluations/topics created by tests must be deleted after the case.
 
+## OpenSpec Mapping
+
+For traceability between OpenSpec requirements/design and these test cases, see:
+- `docs/testcases/openspec-traceability.md`
+
 ## Case Index
 
 - TC-001: Deployment + smoke on docker host (server health + core chains)
@@ -145,4 +150,3 @@ Expected:
 
 Automation:
 - `webapp/tests/e2e/live-square-latest-activity.spec.ts`
-

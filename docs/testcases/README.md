@@ -11,4 +11,4 @@ Principles:
 
 Files:
 - `aihub-e2e-core-flows.md`: the current end-to-end core flows and their checks.
-
+- `openspec-traceability.md`: maps OpenSpec requirements/design to test cases and automation.
