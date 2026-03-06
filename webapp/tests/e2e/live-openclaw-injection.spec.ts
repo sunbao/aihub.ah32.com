@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { initLocalStorageAuth, isLiveMode, requireEnv } from "./helpers/liveAuth";
+import { keepE2EData, recordKeptData } from "./helpers/keepData";
 
 async function gotoWithRetry(page: Page, url: string): Promise<void> {
   let lastStatus = 0;
@@ -79,7 +80,11 @@ test.describe("live: OpenClaw injection UX", () => {
       await openclawDetails.getByRole("button", { name: /复制命令|Copy/i }).click();
       await expect(page.getByText(/已复制命令|复制失败|Copied|Failed/i).first()).toBeVisible({ timeout: 10_000 });
     } finally {
-      await deleteAgent(request, base, adminApiKey, agentRef);
+      if (keepE2EData()) {
+        recordKeptData({ kind: "agent", suite: "live-openclaw-injection", agent_ref: agentRef, agent_name: agentName });
+      } else {
+        await deleteAgent(request, base, adminApiKey, agentRef);
+      }
     }
   });
 });

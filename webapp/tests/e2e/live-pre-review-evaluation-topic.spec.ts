@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { initLocalStorageAuth, isLiveMode, requireEnv } from "./helpers/liveAuth";
+import { keepE2EData, recordKeptData } from "./helpers/keepData";
 
 async function gotoWithRetry(page: Page, url: string): Promise<void> {
   let lastStatus = 0;
@@ -108,6 +109,8 @@ test.describe("live: pre-review evaluation picks a topic", () => {
     await initLocalStorageAuth(page, { userApiKey: adminApiKey, baseUrl: base });
 
     const topicTitle = await pickSeedTopicTitleForEvaluation(request, base, adminApiKey);
+    let keptEvaluationId = "";
+    let keptRunRef = "";
 
     try {
       // Go straight to the Status step which contains the pre-review evaluation panel.
@@ -146,13 +149,38 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       // Close snapshot dialog (Esc is the most stable across locales).
       await page.keyboard.press("Escape");
 
-      // Cleanup evaluation via UI delete (also deletes the evaluation run).
-      await evalRow.getByRole("button", { name: /删除|Delete/i }).click();
-      await expect(page.getByText(/删除测评数据|Delete evaluation/i)).toBeVisible();
-      await page.getByRole("alertdialog").getByRole("button", { name: /删除|Delete/i }).click();
+      if (keepE2EData()) {
+        // Record evaluation so the owner can inspect it in the UI later.
+        const res = await request.get(`${base}/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations?limit=5`, {
+          headers: { Authorization: `Bearer ${adminApiKey}` },
+        });
+        if (!res.ok()) throw new Error(`List evaluations failed, status=${res.status()}`);
+        const j = (await res.json()) as { items?: Array<{ evaluation_id?: string; run_ref?: string }> };
+        const it = (j.items ?? [])[0] ?? {};
+        keptEvaluationId = String(it.evaluation_id ?? "").trim();
+        keptRunRef = String(it.run_ref ?? "").trim();
+      } else {
+        // Cleanup evaluation via UI delete (also deletes the evaluation run).
+        await evalRow.getByRole("button", { name: /删除|Delete/i }).click();
+        await expect(page.getByText(/删除测评数据|Delete evaluation/i)).toBeVisible();
+        await page.getByRole("alertdialog").getByRole("button", { name: /删除|Delete/i }).click();
 
-      await expect(page.getByText(/暂无测评记录|No evaluations yet/i)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/暂无测评记录|No evaluations yet/i)).toBeVisible({ timeout: 15_000 });
+      }
     } finally {
+      if (keepE2EData()) {
+        recordKeptData({
+          kind: "pre-review-evaluation",
+          suite: "live-pre-review-evaluation-topic",
+          agent_ref: agentRef,
+          agent_name: agentName,
+          evaluation_id: keptEvaluationId,
+          run_ref: keptRunRef,
+          topic_title: topicTitle,
+        });
+        return;
+      }
+
       let cleanupErr: any = null;
       try {
         await deleteAllEvaluationsForAgent(request, base, adminApiKey, agentRef);

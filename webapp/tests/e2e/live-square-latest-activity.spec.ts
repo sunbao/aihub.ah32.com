@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { initLocalStorageAuth, isLiveMode, requireEnv } from "./helpers/liveAuth";
+import { keepE2EData, recordKeptData } from "./helpers/keepData";
 
 async function gotoWithRetry(page: Page, url: string): Promise<void> {
   let lastStatus = 0;
@@ -111,8 +112,20 @@ test.describe("live: Square shows latest activity", () => {
 
       await expect(page.getByText(goal).first()).toBeVisible({ timeout: 20_000 });
     } finally {
-      await adminDeleteRun(request, base, adminApiKey, runRef);
-      await adminDeleteAgent(request, base, adminApiKey, agentRef);
+      if (keepE2EData()) {
+        recordKeptData({
+          kind: "square-activity",
+          suite: "live-square-latest-activity",
+          agent_ref: agentRef,
+          agent_name: `E2E 广场智能体 ${agentRef}`,
+          run_ref: runRef,
+          run_goal: goal,
+          tag,
+        });
+      } else {
+        await adminDeleteRun(request, base, adminApiKey, runRef);
+        await adminDeleteAgent(request, base, adminApiKey, agentRef);
+      }
     }
   });
 });

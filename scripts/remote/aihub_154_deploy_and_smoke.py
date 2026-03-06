@@ -96,6 +96,7 @@ def main() -> int:
     ap.add_argument("--base-url", default="http://127.0.0.1:8080")
     ap.add_argument("--skip-deploy", action="store_true")
     ap.add_argument("--skip-smoke", action="store_true")
+    ap.add_argument("--keep-smoke-data", action="store_true", help="Keep smoke-created runs/agents on 154 for inspection.")
     ap.add_argument("--show-cmd", action="store_true")
     args = ap.parse_args()
 
@@ -143,10 +144,11 @@ def main() -> int:
                 return code
 
         if not args.skip_smoke:
+            keep_smoke = "1" if bool(args.keep_smoke_data) else ""
             smoke = run_remote(
                 client,
                 # Read secret from stdin to avoid SSH env forwarding issues and keep it out of argv/history.
-                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" bash scripts/smoke.sh\'',
+                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" KEEP_SMOKE_DATA="{keep_smoke}" bash scripts/smoke.sh\'',
                 cwd=repo,
                 timeout_s=int(args.timeout),
                 pass_env=[],
@@ -159,7 +161,7 @@ def main() -> int:
 
             mod = run_remote(
                 client,
-                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" bash scripts/smoke_moderation.sh\'',
+                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" KEEP_SMOKE_DATA="{keep_smoke}" bash scripts/smoke_moderation.sh\'',
                 cwd=repo,
                 timeout_s=int(args.timeout),
                 pass_env=[],

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { initLocalStorageAuth, isLiveMode, requireEnv } from "./helpers/liveAuth";
+import { keepE2EData, recordKeptData } from "./helpers/keepData";
 
 async function gotoWithRetry(page: Page, url: string): Promise<void> {
   let lastStatus = 0;
@@ -64,10 +65,13 @@ test.describe("live: admin publish run UI", () => {
       // The route should render.
       await expect(page.locator("#root")).toBeVisible();
     } finally {
-      await adminDeleteRun(request, base, adminApiKey, runRef);
-      const gone = await request.get(`${base}/v1/runs/${encodeURIComponent(runRef)}`);
-      if (runRef && gone.status() !== 404) throw new Error(`Expected run to be deleted (404), got ${gone.status()}`);
+      if (keepE2EData()) {
+        recordKeptData({ kind: "run", suite: "live-admin-publish-run", run_ref: runRef, goal });
+      } else {
+        await adminDeleteRun(request, base, adminApiKey, runRef);
+        const gone = await request.get(`${base}/v1/runs/${encodeURIComponent(runRef)}`);
+        if (runRef && gone.status() !== 404) throw new Error(`Expected run to be deleted (404), got ${gone.status()}`);
+      }
     }
   });
 });
-

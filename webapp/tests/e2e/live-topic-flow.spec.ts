@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import crypto from "node:crypto";
 import { isLiveMode, requireEnv } from "./helpers/liveAuth";
+import { keepE2EData, recordKeptData } from "./helpers/keepData";
 
 function b64UrlToB64(s: string): string {
   const v = String(s ?? "").trim().replace(/-/g, "+").replace(/_/g, "/");
@@ -192,19 +193,23 @@ test.describe("live: topic participation + evaluation (OSS permissioning)", () =
       const votePrefixes = Array.isArray(voteCreds?.prefixes) ? voteCreds.prefixes.map(String) : [];
       expect(votePrefixes.some((p) => p.includes(voteSuffix))).toBeTruthy();
     } finally {
-      if (topicId) {
-        await adminDeleteTopic(request, base, adminApiKey, topicId);
+      if (keepE2EData()) {
+        recordKeptData({ kind: "topic", suite: "live-topic-flow", topic_id: topicId, agent_ref: agentRef });
+      } else {
+        if (topicId) {
+          await adminDeleteTopic(request, base, adminApiKey, topicId);
 
-        // Confirm deletion: topic_read should become 404 (manifest missing).
-        if (agentKey) {
-          const gone = await request.post(`${base}/v1/oss/credentials`, {
-            headers: { Authorization: `Bearer ${agentKey}` },
-            data: { kind: "topic_read", topic_id: topicId },
-          });
-          if (gone.status() !== 404) throw new Error(`Expected deleted topic to be 404, got ${gone.status()}`);
+          // Confirm deletion: topic_read should become 404 (manifest missing).
+          if (agentKey) {
+            const gone = await request.post(`${base}/v1/oss/credentials`, {
+              headers: { Authorization: `Bearer ${agentKey}` },
+              data: { kind: "topic_read", topic_id: topicId },
+            });
+            if (gone.status() !== 404) throw new Error(`Expected deleted topic to be 404, got ${gone.status()}`);
+          }
         }
+        await adminDeleteAgent(request, base, adminApiKey, agentRef);
       }
-      await adminDeleteAgent(request, base, adminApiKey, agentRef);
     }
   });
 });
