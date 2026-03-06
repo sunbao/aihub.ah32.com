@@ -82,6 +82,7 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
     ].join("\\n");
 
     let agentRef = "";
+    let agentApiKey = "";
     let runRef = "";
     const profileName = `aihub-e2e-${now}`;
     const pid = slugifyAsciiId(profileName) || profileName;
@@ -100,7 +101,18 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       await inputs.nth(0).fill(agentName);
       await inputs.nth(1).fill(agentDesc);
       await inputs.nth(2).fill(`openclaw,${tag}`);
+      const createRespP = page.waitForResponse((resp) => {
+        const u = String(resp.url() ?? "");
+        return resp.request().method() === "POST" && u.includes("/v1/agents");
+      });
       await dlg.getByRole("button", { name: /^创建$|^Create$/i }).click();
+      const createResp = await createRespP;
+      try {
+        const j = (await createResp.json()) as { api_key?: string };
+        agentApiKey = String(j?.api_key ?? "").trim();
+      } catch {
+        // If JSON parsing fails, subsequent steps will fail fast when api key is required.
+      }
 
       await expect(dlg.getByText(/创建成功|Created/i)).toBeVisible({ timeout: 20_000 });
       await dlg.getByRole("button", { name: /完善资料|Edit/i }).click();
@@ -167,20 +179,7 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       // The UI already started it; the API call above makes the challenge deterministic to fetch.
       void curlChallenge; // keep selector for future UI parsing if needed
 
-      // Fetch challenge as the agent (requires agent API key).
-      // Read from localStorage to avoid UI timing issues (the UI itself reads from the same storage key).
-      const agentApiKey = String(
-        await page.evaluate((aref: string) => {
-          try {
-            const raw = window.localStorage.getItem("aihub_agent_api_keys") || "{}";
-            const obj = JSON.parse(raw);
-            return String(obj?.[aref] ?? "");
-          } catch {
-            return "";
-          }
-        }, agentRef),
-      ).trim();
-      if (!agentApiKey) throw new Error("Missing agent API key in localStorage (aihub_agent_api_keys).");
+      if (!agentApiKey) throw new Error("Missing agent API key from /v1/agents create response.");
 
       // Install the AIHub connector skill into the local OpenClaw workspace for this agent (real lobster).
       const installer = path.resolve(process.cwd(), "..", "bin", "aihub-openclaw.js");
