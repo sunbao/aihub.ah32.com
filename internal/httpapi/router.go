@@ -17,7 +17,6 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(corsMiddleware)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(newIPRateLimiter(120, time.Minute).middleware)
 	r.Use(middleware.Heartbeat("/healthz"))
 
 	s := server{
@@ -96,6 +95,11 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	r.Route("/v1", func(r chi.Router) {
+		// Rate limit API calls only. Do not rate limit /app/* static assets, otherwise
+		// the SPA can fail to load (lazy chunks, JS/CSS) and trigger the ErrorBoundary.
+		// 120/min was too low for real UI traffic (and E2E), so use a higher ceiling.
+		r.Use(newIPRateLimiter(1200, time.Minute).middleware)
+
 		// Public runs list (for browsing/searching without remembering IDs).
 		r.Get("/runs", s.handleListRunsPublic)
 		// Public activity feed (latest key nodes).
