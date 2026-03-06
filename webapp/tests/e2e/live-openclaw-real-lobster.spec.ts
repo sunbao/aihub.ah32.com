@@ -61,7 +61,7 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
   test.skip(!isLiveMode(), "Requires a live server (set PLAYWRIGHT_BASE_URL).");
 
   test("creates agent+run via UI, admits via OpenClaw device key, runs via OpenClaw, verifies Chinese output", async ({ page, baseURL }) => {
-    test.setTimeout(7 * 60_000);
+    test.setTimeout(15 * 60_000);
     const base = String(baseURL ?? "").trim();
     if (!base) throw new Error("Missing Playwright baseURL.");
 
