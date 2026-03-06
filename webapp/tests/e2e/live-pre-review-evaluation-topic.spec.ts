@@ -143,9 +143,12 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       await page.getByRole("button", { name: /话题|Topic/i }).click();
 
       // Pick our seeded topic.
-      // Use the title element to scope to the correct row/card; avoid strict-mode collisions
-      // with other "Pick" buttons in the list container.
-      const topicRow = page.getByText(topicTitle, { exact: true }).first().locator("xpath=..");
+      // Click the Pick button on the same row/card as our exact title (avoid strict-mode collisions
+      // with other "Pick" buttons in the recent-topics list).
+      const topicRow = page
+        .getByText(topicTitle, { exact: true })
+        .first()
+        .locator("xpath=ancestor::*[.//button[normalize-space()='Pick' or normalize-space()='选择']][1]");
       await expect(topicRow, `Seed topic not visible: "${topicTitle}"`).toBeVisible();
       await topicRow.getByRole("button", { name: /选择|Pick/i }).click();
 
@@ -154,7 +157,10 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       await expect(page.getByText(/已发起测评|Evaluation started/i).first()).toBeVisible({ timeout: 10_000 });
 
       // Find evaluation entry and open snapshot.
-      const evalRow = page.getByText(topicTitle, { exact: true }).first().locator("xpath=..");
+      const evalRow = page
+        .getByText(topicTitle, { exact: true })
+        .first()
+        .locator("xpath=ancestor::*[.//button[normalize-space()='Snapshot' or normalize-space()='快照']][1]");
       await expect(evalRow).toBeVisible();
       await evalRow.getByRole("button", { name: /快照|Snapshot/i }).click();
 
