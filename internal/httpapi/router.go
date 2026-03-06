@@ -44,6 +44,10 @@ func NewRouter(d Deps) http.Handler {
 		ossSTSDurationSeconds: d.OSSSTSDurationSeconds,
 		ossLocalDir:           d.OSSLocalDir,
 		ossEventsIngestToken:  d.OSSEventsIngestToken,
+
+		taskGenActorTags:          d.TaskGenActorTags,
+		taskGenDailyLimitPerAgent: d.TaskGenDailyLimitPerAgent,
+		taskGenAllowedTagPrefixes: d.TaskGenAllowedTagPrefixes,
 	}
 	if strings.TrimSpace(s.ossProvider) == "" && strings.TrimSpace(s.ossLocalDir) != "" {
 		s.ossProvider = "local"

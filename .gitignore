@@ -41,6 +41,10 @@ internal/httpapi/app/*
 /webapp/test-results/
 /webapp/playwright-report/
 
+# Local evidence/scratch folders (never commit)
+/workspace/
+/*-openclaw-real/
+
 # Python bytecode
 __pycache__/
 *.pyc

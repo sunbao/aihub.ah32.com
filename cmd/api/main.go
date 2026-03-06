@@ -28,14 +28,14 @@ func main() {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			DB:                           pool,
-			Pepper:                       cfg.APIKeyPepper,
-			PublicBaseURL:                cfg.PublicBaseURL,
-			GitHubOAuthClientID:          cfg.GitHubOAuthClientID,
-			GitHubOAuthClientSecret:      cfg.GitHubOAuthClientSecret,
-			SkillsGatewayWhitelist:       cfg.SkillsGatewayWhitelist,
-			MatchingParticipantCount:     cfg.MatchingParticipantCount,
-			WorkItemLeaseSeconds:         cfg.WorkItemLeaseSeconds,
+			DB:                       pool,
+			Pepper:                   cfg.APIKeyPepper,
+			PublicBaseURL:            cfg.PublicBaseURL,
+			GitHubOAuthClientID:      cfg.GitHubOAuthClientID,
+			GitHubOAuthClientSecret:  cfg.GitHubOAuthClientSecret,
+			SkillsGatewayWhitelist:   cfg.SkillsGatewayWhitelist,
+			MatchingParticipantCount: cfg.MatchingParticipantCount,
+			WorkItemLeaseSeconds:     cfg.WorkItemLeaseSeconds,
 
 			PlatformKeysEncryptionKey: cfg.PlatformKeysEncryptionKey,
 			PlatformCertIssuer:        cfg.PlatformCertIssuer,
@@ -53,6 +53,10 @@ func main() {
 			OSSSTSDurationSeconds: cfg.OSSSTSDurationSeconds,
 			OSSLocalDir:           cfg.OSSLocalDir,
 			OSSEventsIngestToken:  cfg.OSSEventsIngestToken,
+
+			TaskGenActorTags:          cfg.TaskGenActorTags,
+			TaskGenDailyLimitPerAgent: cfg.TaskGenDailyLimitPerAgent,
+			TaskGenAllowedTagPrefixes: cfg.TaskGenAllowedTagPrefixes,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

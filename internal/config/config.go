@@ -10,13 +10,13 @@ import (
 )
 
 type Config struct {
-	DatabaseURL                  string
-	HTTPAddr                     string
-	APIKeyPepper                 string
-	PublicBaseURL                string
-	GitHubOAuthClientID          string
-	GitHubOAuthClientSecret      string
-	SkillsGatewayWhitelist       []string
+	DatabaseURL             string
+	HTTPAddr                string
+	APIKeyPepper            string
+	PublicBaseURL           string
+	GitHubOAuthClientID     string
+	GitHubOAuthClientSecret string
+	SkillsGatewayWhitelist  []string
 
 	MatchingParticipantCount int
 	WorkItemLeaseSeconds     int
@@ -28,17 +28,22 @@ type Config struct {
 	PlatformCertTTLSeconds    int
 	PromptViewMaxChars        int
 
-	OSSProvider          string // "aliyun" | "local" | ""
-	OSSEndpoint          string
-	OSSRegion            string
-	OSSBucket            string
-	OSSBasePrefix        string
-	OSSAccessKeyID       string
-	OSSAccessKeySecret   string
-	OSSSTSRoleARN        string
+	OSSProvider           string // "aliyun" | "local" | ""
+	OSSEndpoint           string
+	OSSRegion             string
+	OSSBucket             string
+	OSSBasePrefix         string
+	OSSAccessKeyID        string
+	OSSAccessKeySecret    string
+	OSSSTSRoleARN         string
 	OSSSTSDurationSeconds int
-	OSSLocalDir          string
-	OSSEventsIngestToken string
+	OSSLocalDir           string
+	OSSEventsIngestToken  string
+
+	// Agent-driven task generation (from checkin artifact proposal JSON).
+	TaskGenActorTags          []string
+	TaskGenDailyLimitPerAgent int
+	TaskGenAllowedTagPrefixes []string
 }
 
 func Load() (Config, error) {
@@ -81,17 +86,25 @@ func Load() (Config, error) {
 		stsDuration = 3600
 	}
 
+	taskGenDailyLimit := getenvIntDefault("AIHUB_TASKGEN_DAILY_LIMIT_PER_AGENT", 3)
+	if taskGenDailyLimit < 0 {
+		taskGenDailyLimit = 0
+	}
+	if taskGenDailyLimit > 100 {
+		taskGenDailyLimit = 100
+	}
+
 	cfg := Config{
-		DatabaseURL:                  os.Getenv("AIHUB_DATABASE_URL"),
-		HTTPAddr:                     getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
-		APIKeyPepper:                 os.Getenv("AIHUB_API_KEY_PEPPER"),
-		PublicBaseURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("AIHUB_PUBLIC_BASE_URL")), "/"),
-		GitHubOAuthClientID:          strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_ID")),
-		GitHubOAuthClientSecret:      strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_SECRET")),
-		SkillsGatewayWhitelist:       getenvCSV("AIHUB_SKILLS_GATEWAY_WHITELIST"),
-		MatchingParticipantCount:     participantCount,
-		WorkItemLeaseSeconds:         leaseSeconds,
-		WorkerTickSeconds:            workerTick,
+		DatabaseURL:              os.Getenv("AIHUB_DATABASE_URL"),
+		HTTPAddr:                 getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
+		APIKeyPepper:             os.Getenv("AIHUB_API_KEY_PEPPER"),
+		PublicBaseURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("AIHUB_PUBLIC_BASE_URL")), "/"),
+		GitHubOAuthClientID:      strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_ID")),
+		GitHubOAuthClientSecret:  strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_SECRET")),
+		SkillsGatewayWhitelist:   getenvCSV("AIHUB_SKILLS_GATEWAY_WHITELIST"),
+		MatchingParticipantCount: participantCount,
+		WorkItemLeaseSeconds:     leaseSeconds,
+		WorkerTickSeconds:        workerTick,
 
 		PlatformKeysEncryptionKey: strings.TrimSpace(os.Getenv("AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY")),
 		PlatformCertIssuer:        getenvDefault("AIHUB_PLATFORM_CERT_ISSUER", "aihub"),
@@ -109,6 +122,10 @@ func Load() (Config, error) {
 		OSSSTSDurationSeconds: stsDuration,
 		OSSLocalDir:           strings.TrimSpace(os.Getenv("AIHUB_OSS_LOCAL_DIR")),
 		OSSEventsIngestToken:  strings.TrimSpace(os.Getenv("AIHUB_OSS_EVENTS_INGEST_TOKEN")),
+
+		TaskGenActorTags:          getenvCSV("AIHUB_TASKGEN_ACTOR_TAGS"),
+		TaskGenDailyLimitPerAgent: taskGenDailyLimit,
+		TaskGenAllowedTagPrefixes: getenvCSV("AIHUB_TASKGEN_ALLOWED_REQUIRED_TAG_PREFIXES"),
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -49,6 +49,11 @@ type server struct {
 	ossSTSDurationSeconds int
 	ossLocalDir           string
 	ossEventsIngestToken  string
+
+	// Agent-driven task generation (from checkin artifact proposal JSON).
+	taskGenActorTags          []string
+	taskGenDailyLimitPerAgent int
+	taskGenAllowedTagPrefixes []string
 }
 
 type eventDTO struct {
@@ -222,9 +227,9 @@ type createAgentRequest struct {
 }
 
 type createAgentResponse struct {
-	AgentRef   string         `json:"agent_ref"`
-	APIKey     string         `json:"api_key"`
-	Endpoints  map[string]any `json:"endpoints"`
+	AgentRef  string         `json:"agent_ref"`
+	APIKey    string         `json:"api_key"`
+	Endpoints map[string]any `json:"endpoints"`
 }
 
 func normalizeTags(tags []string) []string {
@@ -1515,54 +1520,10 @@ func (s server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	var runID uuid.UUID
-	runRef := ""
-	for attempt := 0; attempt < 5; attempt++ {
-		ref, err := randomPublicRef(runRefPrefix)
-		if err != nil {
-			logError(ctx, "create run: generate run_ref failed", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
-			return
-		}
-		runRef = ref
-		err = tx.QueryRow(ctx, `
-				insert into runs (public_ref, publisher_user_id, goal, constraints, status, review_status)
-				values ($1, $2, $3, $4, 'created', 'approved')
-				returning id
-			`, runRef, userID, req.Goal, req.Constraints).Scan(&runID)
-		if err == nil {
-			break
-		}
-		if isUniqueViolation(err) {
-			logError(ctx, "create run: run_ref collision on insert", err)
-			continue
-		}
-		logError(ctx, "create run: insert run failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
-		return
-	}
-	if runID == uuid.Nil {
-		logError(ctx, "create run: insert run failed after retries", errors.New("run_ref collision"))
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
-		return
-	}
-
-	for _, t := range req.RequiredTags {
-		if _, err := tx.Exec(ctx, `
-			insert into run_required_tags (run_id, tag) values ($1, $2)
-			on conflict do nothing
-		`, runID, t); err != nil {
-			logError(ctx, "create run: insert run tag failed", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run tags failed"})
-			return
-		}
-	}
-
-	// MVP: create a single initial work item and offer it to a matched set of agents.
-	workItemID, err := s.createInitialWorkItemAndOffers(ctx, tx, runID, userID, req.RequiredTags, req.ScheduledAt)
+	runID, runRef, workItemID, err := s.createRunInTx(ctx, tx, userID, req.Goal, req.Constraints, req.RequiredTags, req.ScheduledAt, true)
 	if err != nil {
-		logError(ctx, "create run: create initial work item failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "matching failed"})
+		logError(ctx, "create run: create failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
 		return
 	}
 

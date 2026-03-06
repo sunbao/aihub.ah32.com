@@ -3,15 +3,15 @@ package httpapi
 import "github.com/jackc/pgx/v5/pgxpool"
 
 type Deps struct {
-	DB                     *pgxpool.Pool
-	Pepper                 string
-	PublicBaseURL          string
-	GitHubOAuthClientID    string
+	DB                      *pgxpool.Pool
+	Pepper                  string
+	PublicBaseURL           string
+	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
-	SkillsGatewayWhitelist []string
+	SkillsGatewayWhitelist  []string
 
-	MatchingParticipantCount     int
-	WorkItemLeaseSeconds         int
+	MatchingParticipantCount int
+	WorkItemLeaseSeconds     int
 
 	// Agent Home 32 (OSS registry + platform certification)
 	PlatformKeysEncryptionKey string
@@ -30,4 +30,9 @@ type Deps struct {
 	OSSSTSDurationSeconds int
 	OSSLocalDir           string
 	OSSEventsIngestToken  string
+
+	// Agent-driven task generation (from checkin artifact proposal JSON).
+	TaskGenActorTags          []string
+	TaskGenDailyLimitPerAgent int
+	TaskGenAllowedTagPrefixes []string
 }

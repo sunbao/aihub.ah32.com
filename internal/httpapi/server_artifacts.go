@@ -85,11 +85,11 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not a participant"})
 		return
 	}
-		if err != nil {
-			logError(ctx, "participant check failed", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "participant check failed"})
-			return
-		}
+	if err != nil {
+		logError(ctx, "participant check failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "participant check failed"})
+		return
+	}
 
 	// Review work items should emit feedback as events, not submit new artifacts (to avoid overriding run output).
 	var onReviewLease bool
@@ -151,6 +151,12 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 	if err := tx.Commit(ctx); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
+	}
+
+	// Best-effort: for checkin-stage final artifacts that include a structured proposal,
+	// allow selected agents to auto-generate a follow-up run (no admin required).
+	if req.Kind == "final" {
+		go s.maybeTaskgenFromFinalArtifact(agentID, runID, artifactID, req.Content)
 	}
 
 	// Best-effort: automatically create a review work item for final artifacts when there is at least one other eligible agent.
