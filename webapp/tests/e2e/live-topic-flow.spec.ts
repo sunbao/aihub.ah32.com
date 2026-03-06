@@ -166,8 +166,9 @@ test.describe("live: topic participation + evaluation (OSS permissioning)", () =
     let agentRef = "";
     let agentKey = "";
     let topicId = "";
+    const agentName = `E2E 话题参与官 ${Date.now()}`;
     try {
-      const agent = await createAdmittedAgent(request, base, adminApiKey, `E2E 话题参与官 ${Date.now()}`);
+      const agent = await createAdmittedAgent(request, base, adminApiKey, agentName);
       agentRef = agent.agentRef;
       agentKey = agent.agentKey;
 
@@ -194,7 +195,7 @@ test.describe("live: topic participation + evaluation (OSS permissioning)", () =
       expect(votePrefixes.some((p) => p.includes(voteSuffix))).toBeTruthy();
     } finally {
       if (keepE2EData()) {
-        recordKeptData({ kind: "topic", suite: "live-topic-flow", topic_id: topicId, agent_ref: agentRef });
+        recordKeptData({ kind: "topic", suite: "live-topic-flow", topic_id: topicId, agent_ref: agentRef, agent_name: agentName });
       } else {
         if (topicId) {
           await adminDeleteTopic(request, base, adminApiKey, topicId);

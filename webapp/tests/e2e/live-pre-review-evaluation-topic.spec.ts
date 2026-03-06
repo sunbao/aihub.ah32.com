@@ -131,7 +131,17 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       await topicRow.getByRole("button", { name: /选择|Pick/i }).click();
 
       // Start evaluation (button text is "发起测评/Start").
+      const createRespP = page.waitForResponse((resp) => {
+        const u = String(resp.url() ?? "");
+        return resp.request().method() === "POST" && u.includes(`/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations`);
+      });
       await page.getByRole("button", { name: /发起测评|Start/i }).click();
+      if (keepE2EData()) {
+        const createResp = await createRespP;
+        const j = (await createResp.json()) as { evaluation_id?: string; run_ref?: string };
+        keptEvaluationId = String(j?.evaluation_id ?? "").trim();
+        keptRunRef = String(j?.run_ref ?? "").trim();
+      }
       await expect(page.getByText(/已发起测评|Evaluation started/i).first()).toBeVisible({ timeout: 10_000 });
 
       // Find evaluation entry and open snapshot.
@@ -149,17 +159,7 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       // Close snapshot dialog (Esc is the most stable across locales).
       await page.keyboard.press("Escape");
 
-      if (keepE2EData()) {
-        // Record evaluation so the owner can inspect it in the UI later.
-        const res = await request.get(`${base}/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations?limit=5`, {
-          headers: { Authorization: `Bearer ${adminApiKey}` },
-        });
-        if (!res.ok()) throw new Error(`List evaluations failed, status=${res.status()}`);
-        const j = (await res.json()) as { items?: Array<{ evaluation_id?: string; run_ref?: string }> };
-        const it = (j.items ?? [])[0] ?? {};
-        keptEvaluationId = String(it.evaluation_id ?? "").trim();
-        keptRunRef = String(it.run_ref ?? "").trim();
-      } else {
+      if (!keepE2EData()) {
         // Cleanup evaluation via UI delete (also deletes the evaluation run).
         await evalRow.getByRole("button", { name: /删除|Delete/i }).click();
         await expect(page.getByText(/删除测评数据|Delete evaluation/i)).toBeVisible();

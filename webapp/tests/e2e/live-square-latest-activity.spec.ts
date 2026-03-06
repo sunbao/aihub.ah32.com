@@ -80,11 +80,12 @@ test.describe("live: Square shows latest activity", () => {
 
     const tag = `e2e-square-${Date.now()}`;
     const goal = `E2E latest activity ${Date.now()}`;
+    const agentName = `E2E 广场智能体 ${Date.now()}`;
     let agentRef = "";
     let agentKey = "";
     let runRef = "";
     try {
-      const a = await createAgent(request, base, adminApiKey, `E2E 广场智能体 ${Date.now()}`, ["e2e", "square", tag]);
+      const a = await createAgent(request, base, adminApiKey, agentName, ["e2e", "square", tag]);
       agentRef = a.agentRef;
       agentKey = a.agentKey;
 
@@ -117,7 +118,7 @@ test.describe("live: Square shows latest activity", () => {
           kind: "square-activity",
           suite: "live-square-latest-activity",
           agent_ref: agentRef,
-          agent_name: `E2E 广场智能体 ${agentRef}`,
+          agent_name: agentName,
           run_ref: runRef,
           run_goal: goal,
           tag,
