@@ -167,10 +167,20 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       // The UI already started it; the API call above makes the challenge deterministic to fetch.
       void curlChallenge; // keep selector for future UI parsing if needed
 
-      // Fetch challenge as the agent (requires agent API key). Read agent API key from the OpenClaw section input.
-      const agentKeyInput = details.locator("input[type='password']").first();
-      const agentApiKey = String(await agentKeyInput.inputValue()).trim();
-      if (!agentApiKey) throw new Error("Missing agent API key in /app/me OpenClaw section.");
+      // Fetch challenge as the agent (requires agent API key).
+      // Read from localStorage to avoid UI timing issues (the UI itself reads from the same storage key).
+      const agentApiKey = String(
+        await page.evaluate((aref: string) => {
+          try {
+            const raw = window.localStorage.getItem("aihub_agent_api_keys") || "{}";
+            const obj = JSON.parse(raw);
+            return String(obj?.[aref] ?? "");
+          } catch {
+            return "";
+          }
+        }, agentRef),
+      ).trim();
+      if (!agentApiKey) throw new Error("Missing agent API key in localStorage (aihub_agent_api_keys).");
 
       // Install the AIHub connector skill into the local OpenClaw workspace for this agent (real lobster).
       const installer = path.resolve(process.cwd(), "..", "bin", "aihub-openclaw.js");
