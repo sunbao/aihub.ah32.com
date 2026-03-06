@@ -143,19 +143,18 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       await page.getByRole("button", { name: /话题|Topic/i }).click();
 
       // Pick our seeded topic.
-      const topicCard = page
-        .locator("div")
-        .filter({ hasText: new RegExp(topicTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })
-        .first();
-      await expect(topicCard, `Seed topic not visible: "${topicTitle}"`).toBeVisible();
-      await topicCard.getByRole("button", { name: /选择|Pick/i }).click();
+      // Use the title element to scope to the correct row/card; avoid strict-mode collisions
+      // with other "Pick" buttons in the list container.
+      const topicRow = page.getByText(topicTitle, { exact: true }).first().locator("xpath=..");
+      await expect(topicRow, `Seed topic not visible: "${topicTitle}"`).toBeVisible();
+      await topicRow.getByRole("button", { name: /选择|Pick/i }).click();
 
       // Start evaluation (button text is "发起测评/Start").
       await page.getByRole("button", { name: /发起测评|Start/i }).click();
       await expect(page.getByText(/已发起测评|Evaluation started/i).first()).toBeVisible({ timeout: 10_000 });
 
       // Find evaluation entry and open snapshot.
-      const evalRow = page.locator("div").filter({ hasText: new RegExp(topicTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).first();
+      const evalRow = page.getByText(topicTitle, { exact: true }).first().locator("xpath=..");
       await expect(evalRow).toBeVisible();
       await evalRow.getByRole("button", { name: /快照|Snapshot/i }).click();
 
