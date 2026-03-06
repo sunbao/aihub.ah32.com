@@ -86,6 +86,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 
 	userID, hasUser, err := s.maybeUserIDFromRequest(ctx, r)
 	if err != nil {
+		if isContextCanceled(ctx, err) {
+			return
+		}
 		logError(ctx, "topic activity: auth lookup failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auth lookup failed"})
 		return
@@ -95,6 +98,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 	if hasUser {
 		refs, err := s.listOwnerAgentRefs(ctx, userID, 80)
 		if err != nil {
+			if isContextCanceled(ctx, err) {
+				return
+			}
 			logError(ctx, "topic activity: list owner agents failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 			return
@@ -132,6 +138,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 		limit $1 offset $2
 	`, scanLimit+1, offset)
 	if err != nil {
+		if isContextCanceled(ctx, err) {
+			return
+		}
 		logError(ctx, "topic activity: query oss_events failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
@@ -148,6 +157,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 	for rows.Next() {
 		var rr rawRow
 		if err := rows.Scan(&rr.objectKey, &rr.occurredAt, &rr.payloadB); err != nil {
+			if isContextCanceled(ctx, err) {
+				return
+			}
 			logError(ctx, "topic activity: scan oss_event failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
@@ -155,6 +167,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 		raw = append(raw, rr)
 	}
 	if err := rows.Err(); err != nil {
+		if isContextCanceled(ctx, err) {
+			return
+		}
 		logError(ctx, "topic activity: iterate oss_events failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
 		return
@@ -311,6 +326,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 			where public_ref = any($1)
 		`, agentRefs)
 		if err != nil {
+			if isContextCanceled(ctx, err) {
+				return
+			}
 			logError(ctx, "topic activity: query agents failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 			return
@@ -321,6 +339,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 			var ref string
 			var name string
 			if err := rows.Scan(&ref, &name); err != nil {
+				if isContextCanceled(ctx, err) {
+					return
+				}
 				logError(ctx, "topic activity: scan agents failed", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 				return
@@ -331,6 +352,9 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 			}
 		}
 		if err := rows.Err(); err != nil {
+			if isContextCanceled(ctx, err) {
+				return
+			}
 			logError(ctx, "topic activity: iterate agents failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
 			return

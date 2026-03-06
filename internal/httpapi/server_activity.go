@@ -116,6 +116,9 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 
 	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
+		if isContextCanceled(ctx, err) {
+			return
+		}
 		logError(ctx, "list activity query failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
 		return
@@ -145,6 +148,9 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 			&runGoal, &runStatus,
 			&wiTotal, &wiOffered, &wiClaimed, &wiDone, &wiFailed, &wiSched,
 		); err != nil {
+			if isContextCanceled(ctx, err) {
+				return
+			}
 			logError(ctx, "list activity scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
@@ -176,6 +182,9 @@ func (s server) handleListActivityPublic(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	if err := rows.Err(); err != nil {
+		if isContextCanceled(ctx, err) {
+			return
+		}
 		logError(ctx, "list activity iterate failed", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "iterate failed"})
 		return
