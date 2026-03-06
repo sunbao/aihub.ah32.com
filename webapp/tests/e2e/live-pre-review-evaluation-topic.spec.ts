@@ -28,46 +28,24 @@ async function createAgent(request: APIRequestContext, baseURL: string, adminApi
   return { agentRef, agentKey };
 }
 
-async function ensurePlatformSigningKey(request: APIRequestContext, baseURL: string, adminApiKey: string): Promise<void> {
-  const keysRes = await request.get(`${baseURL}/v1/admin/platform/signing-keys`, {
+async function pickSeedTopicTitleForEvaluation(
+  request: APIRequestContext,
+  baseURL: string,
+  adminApiKey: string,
+): Promise<string> {
+  const res = await request.get(`${baseURL}/v1/pre-review-evaluation/sources/recent-topics?limit=200`, {
     headers: { Authorization: `Bearer ${adminApiKey}` },
   });
-  if (!keysRes.ok()) throw new Error(`List platform signing keys failed, status=${keysRes.status()}`);
-  const keysJson = (await keysRes.json()) as { keys?: any[] };
-  const keys = Array.isArray(keysJson?.keys) ? keysJson.keys : [];
-  if (keys.length > 0) return;
-
-  const rot = await request.post(`${baseURL}/v1/admin/platform/signing-keys/rotate`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-  });
-  if (!rot.ok()) throw new Error(`Rotate platform signing key failed, status=${rot.status()}`);
-}
-
-async function adminCreatePublicTopic(request: APIRequestContext, baseURL: string, adminApiKey: string, topicId: string, title: string) {
-  await ensurePlatformSigningKey(request, baseURL, adminApiKey);
-  const res = await request.post(`${baseURL}/v1/admin/oss/topics`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-    data: {
-      topic_id: topicId,
-      title,
-      visibility: "public",
-      mode: "freeform",
-      initial_state: {},
-    },
-  });
-  if (!res.ok()) throw new Error(`Create topic failed, status=${res.status()}`);
-  const j = (await res.json()) as { topic_id?: string };
-  const tid = String(j.topic_id ?? "").trim() || topicId;
-  return { topicId: tid, title };
-}
-
-async function adminDeleteTopic(request: APIRequestContext, baseURL: string, adminApiKey: string, topicId: string): Promise<void> {
-  const tid = String(topicId ?? "").trim();
-  if (!tid) return;
-  const res = await request.delete(`${baseURL}/v1/admin/oss/topics/${encodeURIComponent(tid)}`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-  });
-  if (!res.ok()) throw new Error(`Delete topic failed, status=${res.status()}`);
+  if (!res.ok()) {
+    const body = await res.text();
+    throw new Error(`List recent topics failed, status=${res.status()} body=${body.slice(0, 600)}`);
+  }
+  const j = (await res.json()) as { items?: Array<{ topic_id?: string; title?: string }> };
+  const items = Array.isArray(j?.items) ? j.items : [];
+  const seed = items.find((it) => String(it?.topic_id ?? "").startsWith("topic_pre_review_seed_") && String(it?.title ?? "").trim());
+  const title = String((seed ?? items[0])?.title ?? "").trim();
+  if (!title) throw new Error("No recent topics available for evaluation.");
+  return title;
 }
 
 async function patchAgentForWizardUnlock(request: APIRequestContext, baseURL: string, adminApiKey: string, agentRef: string) {
@@ -129,12 +107,9 @@ test.describe("live: pre-review evaluation picks a topic", () => {
     // UI auth: treat ADMIN_API_KEY as the user API key for console flows.
     await initLocalStorageAuth(page, { userApiKey: adminApiKey, baseUrl: base });
 
-    const topicId = `topic_e2e_eval_${Date.now()}`;
-    const topicTitle = `E2E Eval Topic ${Date.now()}`;
+    const topicTitle = await pickSeedTopicTitleForEvaluation(request, base, adminApiKey);
 
     try {
-      await adminCreatePublicTopic(request, base, adminApiKey, topicId, topicTitle);
-
       // Go straight to the Status step which contains the pre-review evaluation panel.
       await gotoWithRetry(page, `/app/agents/${encodeURIComponent(agentRef)}/card/edit?step=6`);
       await expect(page.getByRole("button", { name: /话题|Topic/i })).toBeVisible();
@@ -183,11 +158,6 @@ test.describe("live: pre-review evaluation picks a topic", () => {
         await deleteAllEvaluationsForAgent(request, base, adminApiKey, agentRef);
       } catch (e: any) {
         cleanupErr = e;
-      }
-      try {
-        await adminDeleteTopic(request, base, adminApiKey, topicId);
-      } catch (e: any) {
-        if (!cleanupErr) cleanupErr = e;
       }
       try {
         await deleteAgent(request, base, adminApiKey, agentRef);
