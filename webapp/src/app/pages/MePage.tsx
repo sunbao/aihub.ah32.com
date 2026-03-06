@@ -816,11 +816,6 @@ function CreateAgentDialog({
   const [creating, setCreating] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [createdAgent, setCreatedAgent] = useState<{ agentRef: string; name: string } | null>(null);
-  const [evalTopic, setEvalTopic] = useState("");
-  const [evalCreating, setEvalCreating] = useState(false);
-  const [evalError, setEvalError] = useState("");
-  const [evalRunRef, setEvalRunRef] = useState("");
-  const [evalExpiresAt, setEvalExpiresAt] = useState("");
 
   async function submit(e?: FormEvent) {
     e?.preventDefault();
@@ -853,41 +848,6 @@ function CreateAgentDialog({
     }
   }
 
-  async function startEvaluation() {
-    const agentRef = String(createdAgent?.agentRef ?? "").trim();
-    if (!agentRef) return;
-    if (!userApiKey) {
-      setEvalError("未登录，请先登录后再开始测评。");
-      return;
-    }
-    setEvalCreating(true);
-    setEvalError("");
-    setEvalRunRef("");
-    setEvalExpiresAt("");
-    try {
-      const body: any = {};
-      if (evalTopic.trim()) body.topic = evalTopic.trim();
-      const res = await apiFetchJson<{ evaluation_id: string; run_ref: string; expires_at: string }>(
-        `/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations`,
-        {
-          method: "POST",
-          apiKey: userApiKey,
-          body,
-        },
-      );
-      const runRef = String(res?.run_ref ?? "").trim();
-      const expiresAt = String(res?.expires_at ?? "").trim();
-      setEvalRunRef(runRef);
-      setEvalExpiresAt(expiresAt);
-      toast({ title: "已发起测评", description: runRef ? "测评任务已创建，裁判智能体将尽快给出结果。" : "" });
-    } catch (e: any) {
-      console.warn("[AIHub] CreateAgentDialog start evaluation failed", { agentRef, error: e });
-      setEvalError(String(e?.message ?? "发起测评失败"));
-    } finally {
-      setEvalCreating(false);
-    }
-  }
-
   if (createdAgent) {
     return (
       <DialogContent>
@@ -896,54 +856,22 @@ function CreateAgentDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">
-            智能体「{createdAgent.name}」已创建。下一步建议开始测评（创建流程的一部分）。
+            智能体「{createdAgent.name}」已创建。下一步建议先完善卡片资料。测评是可选参考，可在卡片编辑页里发起。
           </div>
-
-          <div className="space-y-2 rounded-md border bg-background p-3">
-            <div className="text-xs text-muted-foreground">开始测评</div>
-            <Input
-              value={evalTopic}
-              onChange={(e) => setEvalTopic(e.target.value)}
-              placeholder="测评重点（可选）：例如是否跑题、是否冒充、是否输出不合规内容…"
-            />
-            <Button className="w-full" onClick={startEvaluation} disabled={evalCreating}>
-              {evalCreating ? "发起中…" : "开始测评"}
+          <div className="flex gap-2 pt-2">
+            <Button
+              className="flex-1"
+              onClick={() => {
+                onClose?.();
+                nav(`/agents/${encodeURIComponent(createdAgent.agentRef)}/card/edit`);
+              }}
+            >
+              完善资料
             </Button>
-            {evalError ? <div className="text-sm text-destructive">{evalError}</div> : null}
-            {evalRunRef ? (
-              <div className="space-y-2 pt-1">
-                <div className="text-xs text-muted-foreground">{evalExpiresAt ? `到期时间：${evalExpiresAt}` : ""}</div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() => {
-                      onClose?.();
-                      nav(`/runs/${encodeURIComponent(evalRunRef)}`);
-                    }}
-                  >
-                    查看测评结果
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      onClose?.();
-                      nav(`/agents/${encodeURIComponent(createdAgent.agentRef)}/card/edit`);
-                    }}
-                  >
-                    完善资料
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <DialogFooter className="pt-2">
-            <Button variant="secondary" onClick={() => onClose?.()}>
+            <Button variant="secondary" className="flex-1" onClick={() => onClose?.()}>
               完成
             </Button>
-          </DialogFooter>
+          </div>
         </div>
       </DialogContent>
     );

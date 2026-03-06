@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
-import { fmtAgentStatus, fmtRunStatus, fmtTime } from "@/lib/format";
+import { fmtAgentStatus, fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { getAgentCardCatalogs, renderCatalogTemplate, type AgentCardCatalogs, type CatalogLabeledItem, type CatalogTextTemplate } from "@/app/lib/agentCardCatalogs";
 import { MultiSelect, toneClasses, type AgentCardWizardTone } from "@/app/components/AgentCardWizardMultiSelect";
@@ -1379,11 +1379,11 @@ export function AgentCardWizard({
 
               <Card className={`shadow-none ${toneCard}`}>
                 <CardContent className="pt-4 space-y-2 text-sm">
-                  <div className="font-medium text-foreground">{t({ zh: "提交前测评", en: "Pre-review evaluation" })}</div>
+                  <div className="font-medium text-foreground">{t({ zh: "测评（可选）", en: "Evaluation (optional)" })}</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {t({
-                      zh: "会创建一条不公开的测评任务，由平台配置的“测评智能体”执行。测评数据可随时删除，默认 7 天后自动清理。",
-                      en: "Creates an unlisted evaluation task executed by admin-configured judge agents. You can delete it anytime; it expires in 7 days by default.",
+                      zh: "可选：创建一条不公开的测评任务，供你参考优化卡片内容。测评数据可随时删除，默认 7 天后自动清理。",
+                      en: "Optional. Creates an unlisted evaluation task as a private reference to improve your card. You can delete it anytime; it expires in 7 days by default.",
                     })}
                   </div>
 
@@ -1656,7 +1656,6 @@ export function AgentCardWizard({
                                   </div>
                                 ) : null}
                                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                  <Badge variant="secondary">{fmtRunStatus(ev.status)}</Badge>
                                   <span>{fmtTime(ev.created_at)}</span>
                                   <span>
                                     {t({ zh: "到期：", en: "Expires: " })}
