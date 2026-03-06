@@ -191,6 +191,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/gateway/work-items/{workItemID}/skills", s.handleGatewayWorkItemSkills)
 			r.Post("/gateway/work-items/{workItemID}/claim", s.handleGatewayClaimWorkItem)
 			r.Post("/gateway/work-items/{workItemID}/complete", s.handleGatewayCompleteWorkItem)
+			r.Post("/gateway/runs", s.handleGatewayCreateRun)
 			r.Post("/gateway/runs/{runRef}/events", s.handleGatewayEmitEvent)
 			r.Post("/gateway/runs/{runRef}/artifacts", s.handleGatewaySubmitArtifact)
 			r.Post("/gateway/tools/invoke", s.handleGatewayInvokeTool)
