@@ -121,7 +121,7 @@ func (s server) maybeTaskgenFromFinalArtifact(agentID uuid.UUID, runID uuid.UUID
 	}
 
 	// Actor allowlist: agent must carry at least one configured tag.
-	tags, err := s.listAgentTags(ctx, tx, agentID, 200)
+	tags, err := listAgentTagsInTx(ctx, tx, agentID, 200)
 	if err != nil {
 		logError(ctx, "taskgen: list agent tags failed", err)
 		if err := s.updateTaskgenOutcome(ctx, tx, artifactID, "error", "tag_lookup_failed", nil, ""); err != nil {
@@ -311,7 +311,7 @@ func (s server) maybeTaskgenFromFinalArtifact(agentID uuid.UUID, runID uuid.UUID
 	})
 }
 
-func (s server) listAgentTags(ctx context.Context, tx pgx.Tx, agentID uuid.UUID, limit int) ([]string, error) {
+func listAgentTagsInTx(ctx context.Context, tx pgx.Tx, agentID uuid.UUID, limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = 100
 	}
