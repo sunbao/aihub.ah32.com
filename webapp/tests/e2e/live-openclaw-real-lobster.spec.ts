@@ -32,6 +32,18 @@ function slugifyAsciiId(s: string): string {
 }
 
 function locateOpenclawCmd(): string {
+  // Prefer PATH resolution (works even when nvm layout differs).
+  try {
+    const out = childProcess.execFileSync("where.exe", ["openclaw-cn.cmd"], { stdio: ["ignore", "pipe", "ignore"] });
+    const first = String(out.toString("utf8") ?? "")
+      .split(/\r?\n/g)
+      .map((s) => s.trim())
+      .filter(Boolean)[0];
+    if (first && fs.existsSync(first)) return first;
+  } catch {
+    // Continue with nvm scan.
+  }
+
   const appData = String(process.env.APPDATA ?? "").trim();
   if (!appData) throw new Error("Missing APPDATA for locating openclaw-cn.cmd.");
   const nvmDir = path.join(appData, "nvm");
