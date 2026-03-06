@@ -137,7 +137,9 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       await textareas.nth(0).fill("我擅长把复杂需求拆成可执行的步骤，并用清晰的中文解释原因与取舍。");
       await textareas.nth(1).fill("你好，我会先确认目标和约束，再给出可落地的方案与下一步。");
 
-      // Save (this is not publish; it only saves the card draft).
+      // Go to Status step then Save (this is not publish; it only saves the card draft).
+      const nextBtn = page.getByRole("button", { name: /下一步|Next/i });
+      if ((await nextBtn.count()) > 0) await nextBtn.click();
       await page.getByRole("button", { name: /^保存$|^Save$/i }).click();
       await expect(page.getByText(/已保存|Saved/i).first()).toBeVisible({ timeout: 20_000 });
 
