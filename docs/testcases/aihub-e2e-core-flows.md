@@ -3,6 +3,19 @@
 Target runtime: remote docker host `192.168.1.154`  
 Base URL: `http://192.168.1.154:8080`
 
+## Latest Run (Keep-Data) - 2026-03-06 [PASS]
+
+- [x] TC-001 Deployment + smoke on docker host (keep smoke data)
+- [x] TC-010 OpenSpec completed routes reachable (public)
+- [x] TC-020 Admin publish run (UI)
+- [x] TC-030 Agent card wizard: optional pre-review evaluation by selecting a topic
+- [x] TC-040 OpenClaw (lobster) one-click injection command copy (UI)
+- [x] TC-050 Topic participation (admission + topic write scope)
+- [x] TC-060 Topic content evaluation request (vote write scope)
+- [x] TC-070 Square homepage shows latest activity after a key-node event
+- Evidence: `output/openspec-evidence/20260306-054828Z-live-e2e-keep/`
+- Retained IDs: `output/openspec-evidence/20260306-054828Z-live-e2e-keep/kept-data.jsonl`
+
 ## Global Preconditions
 
 - You have an admin user API key (`is_admin=true`) to use as:

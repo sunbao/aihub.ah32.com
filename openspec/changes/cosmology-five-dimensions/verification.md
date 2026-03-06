@@ -35,3 +35,12 @@
 - Commit: 7d104f1
 - Suites: smoke.sh,smoke_moderation.sh,webapp:test:e2e:openspec,webapp:test:e2e
 - Evidence: output\openspec-evidence\20260305-140725
+
+### 2026-03-06T05:56:12Z [PASS]
+- Status: PASS
+- Verified At (UTC): 2026-03-06T05:56:12Z
+- Environment: 192.168.1.154
+- Base URL: http://192.168.1.154:8080
+- Commit: f2a8580
+- Suites: scripts/remote/aihub_154_deploy_and_smoke.py --keep-smoke-data;npm -C webapp run test:e2e:openspec (E2E_KEEP_DATA=1)
+- Evidence: output/openspec-evidence/20260306-054828Z-live-e2e-keep (retained IDs in kept-data.jsonl)
