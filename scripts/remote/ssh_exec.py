@@ -89,6 +89,99 @@ def _stream_channel(channel: paramiko.Channel, prefix: str) -> None:
             time.sleep(0.05)
 
 
+def run_remote_capture(
+    client: paramiko.SSHClient,
+    cmd: str,
+    *,
+    cwd: str | None,
+    timeout_s: int,
+    pass_env: list[str],
+    show_cmd: bool,
+    stdin_text: str | None = None,
+    stdin_note: str | None = None,
+    max_capture_bytes: int = 4 * 1024 * 1024,
+) -> tuple[int, str, str]:
+    """
+    Like run_remote(), but also captures stdout/stderr for parsing (e.g. SMOKE_META lines).
+
+    This is intentionally bounded to avoid unbounded memory growth when running long builds.
+    """
+    final_cmd = _build_shell_cmd(cmd, cwd)
+    env = {}
+    for k in pass_env:
+        if k not in os.environ:
+            raise SystemExit(f"Missing local env var to pass through: {k}")
+        env[k] = str(os.environ[k])
+
+    if show_cmd:
+        env_note = f" (pass env: {', '.join(pass_env)})" if pass_env else ""
+        sin_note = f" (stdin: {stdin_note})" if stdin_note else ""
+        print(f"[ssh] {client.get_transport().getpeername()[0]}$ {cmd}{env_note}{sin_note}", file=sys.stderr)
+
+    transport = client.get_transport()
+    if not transport:
+        raise SystemExit("SSH transport is not available.")
+
+    chan = transport.open_session(timeout=timeout_s)
+    chan.settimeout(timeout_s)
+    # Never allocate a PTY when sending secrets via stdin (TTY echo can leak secrets).
+    if stdin_text is None:
+        chan.get_pty()
+    if env:
+        chan.update_environment(env)
+    chan.exec_command(final_cmd)
+    if stdin_text is not None:
+        chan.sendall(stdin_text)
+        try:
+            chan.shutdown_write()
+        except Exception:
+            pass
+
+    out = bytearray()
+    err = bytearray()
+    while True:
+        progressed = False
+        if chan.recv_ready():
+            progressed = True
+            b = chan.recv(4096)
+            sys.stdout.buffer.write(b)
+            sys.stdout.buffer.flush()
+            if len(out) < max_capture_bytes:
+                out.extend(b[: max_capture_bytes - len(out)])
+        if chan.recv_stderr_ready():
+            progressed = True
+            b = chan.recv_stderr(4096)
+            sys.stderr.buffer.write(b)
+            sys.stderr.buffer.flush()
+            if len(err) < max_capture_bytes:
+                err.extend(b[: max_capture_bytes - len(err)])
+
+        if chan.exit_status_ready():
+            while chan.recv_ready():
+                b = chan.recv(4096)
+                sys.stdout.buffer.write(b)
+                if len(out) < max_capture_bytes:
+                    out.extend(b[: max_capture_bytes - len(out)])
+            while chan.recv_stderr_ready():
+                b = chan.recv_stderr(4096)
+                sys.stderr.buffer.write(b)
+                if len(err) < max_capture_bytes:
+                    err.extend(b[: max_capture_bytes - len(err)])
+            sys.stdout.buffer.flush()
+            sys.stderr.buffer.flush()
+            break
+
+        if not progressed:
+            time.sleep(0.05)
+
+    code = int(chan.recv_exit_status())
+    return (
+        code,
+        out.decode("utf-8", errors="replace"),
+        err.decode("utf-8", errors="replace"),
+    )
+
+
 def run_remote(
     client: paramiko.SSHClient,
     cmd: str,

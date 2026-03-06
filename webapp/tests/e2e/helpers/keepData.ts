@@ -6,8 +6,37 @@ export function keepE2EData(): boolean {
   return v === "1" || v.toLowerCase() === "true";
 }
 
+function _findRepoRoot(startDir: string): string {
+  // Playwright is usually invoked with `-C webapp`, so process.cwd() becomes `<repo>/webapp`.
+  // We want evidence paths to be stable relative to repo root, not to the current package dir.
+  let d = path.resolve(startDir);
+  for (let i = 0; i < 12; i++) {
+    const agents = path.join(d, "AGENTS.md");
+    const compose = path.join(d, "docker-compose.yml");
+    const openspecDir = path.join(d, "openspec");
+    if ((fs.existsSync(agents) && fs.existsSync(compose)) || fs.existsSync(openspecDir)) {
+      return d;
+    }
+
+    const parent = path.dirname(d);
+    if (parent === d) {
+      break;
+    }
+    d = parent;
+  }
+  return path.resolve(startDir);
+}
+
 export function keepLogPath(): string {
-  return String(process.env.E2E_KEEP_LOG ?? "").trim();
+  const p = String(process.env.E2E_KEEP_LOG ?? "").trim();
+  if (!p) return "";
+
+  // If the user provided a relative path (common), resolve it to repo root so it lands under `<repo>/output/...`.
+  if (!path.isAbsolute(p)) {
+    const repoRoot = _findRepoRoot(process.cwd());
+    return path.resolve(repoRoot, p);
+  }
+  return p;
 }
 
 export function recordKeptData(entry: Record<string, any>): void {
@@ -24,4 +53,3 @@ export function recordKeptData(entry: Record<string, any>): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.appendFileSync(p, JSON.stringify(entry) + "\n", "utf8");
 }
-

@@ -8,7 +8,13 @@ Base URL: `http://192.168.1.154:8080`
 - You have an admin user API key (`is_admin=true`) to use as:
   - HTTP header: `Authorization: Bearer <ADMIN_API_KEY>`
   - Webapp localStorage: key `aihub_user_api_key`
-- Data hygiene: any agents/runs/evaluations/topics created by tests must be deleted after the case.
+- Keep-data mode (recommended for acceptance / inspection):
+  - Do NOT delete any agents/runs/evaluations/topics created by the tests.
+  - Always record retained IDs into an evidence JSONL file so humans can inspect in UI.
+  - Flags:
+    - Playwright: `E2E_KEEP_DATA=1` + `E2E_KEEP_LOG=output/openspec-evidence/<stamp>/kept-data.jsonl`
+    - Smoke: run via `scripts/remote/aihub_154_deploy_and_smoke.py --keep-smoke-data` (it captures `SMOKE_META/SMOKE_MOD_META` into evidence JSONL)
+- Cleanup is a separate, manual operation (do not run automatically in keep-data mode).
 
 ## OpenSpec Mapping
 
@@ -19,11 +25,11 @@ For traceability between OpenSpec requirements/design and these test cases, see:
 
 - TC-001: Deployment + smoke on docker host (server health + core chains)
 - TC-010: OpenSpec completed routes reachable (public)
-- TC-020: Admin publish run (UI) + cleanup
-- TC-030: Agent card wizard: pre-review evaluation by selecting a topic + cleanup
+- TC-020: Admin publish run (UI)
+- TC-030: Agent card wizard: optional pre-review evaluation by selecting a topic
 - TC-040: OpenClaw (lobster) one-click injection command copy (UI)
-- TC-050: Topic participation (admission + topic write scope) + cleanup
-- TC-060: Topic content evaluation request (vote write scope) + cleanup
+- TC-050: Topic participation (admission + topic write scope)
+- TC-060: Topic content evaluation request (vote write scope)
 - TC-070: Square homepage shows latest activity after a key-node event
 
 ## TC-001 Deployment + Smoke (Docker Host)
@@ -38,7 +44,7 @@ Steps:
 Expected:
 - Services restart successfully, migrations complete, API listens on `:8080`.
 - Smoke suites pass end-to-end.
-- Smoke-created data is cleaned up (runs/agents).
+- When keep-data mode is enabled, smoke-created data is retained and written to evidence JSONL.
 
 Automation:
 - Remote runner: `scripts/remote/aihub_154_deploy_and_smoke.py`
@@ -59,34 +65,30 @@ Expected:
 Automation:
 - `webapp/tests/e2e/openspec-complete.live.spec.ts`
 
-## TC-020 Admin Publish Run (UI) + Cleanup
+## TC-020 Admin Publish Run (UI)
 
 Steps:
 1. Open `/app/admin` (authenticated).
 2. Fill goal/constraints/tags and publish.
 3. Confirm redirect to `/app/runs/<run_ref>`.
-4. Delete the run via admin API and confirm it is gone.
 
 Expected:
 - Run is created and viewable.
-- Run can be deleted and is no longer accessible.
 
 Automation:
 - `webapp/tests/e2e/live-admin-publish-run.spec.ts`
 
-## TC-030 Agent Card Wizard: Pre-review Evaluation (Topic Source) + Cleanup
+## TC-030 Agent Card Wizard: Pre-review Evaluation (Topic Source)
 
 Steps:
 1. Create an agent.
-2. Ensure required fields are set so the wizard can reach the pre-review evaluation step.
-3. In "提交前测评": select a real topic source, start evaluation.
+2. Fill a Card (or skip evaluation if the user does not want it as a gate).
+3. If you choose to run evaluation as a reference: select a real topic source and start evaluation.
 4. Inspect the injected snapshot (topic/title/messages).
-5. Delete the evaluation, and ensure related unlisted run is deleted.
 
 Expected:
 - Evaluation can be started from a selected topic source.
 - Snapshot is present and readable.
-- Evaluation deletion removes the evaluation and its run (no residue).
 
 Automation:
 - `webapp/tests/e2e/live-pre-review-evaluation-topic.spec.ts`
@@ -95,7 +97,7 @@ Automation:
 
 Steps:
 1. Open `/app/me` (authenticated).
-2. Trigger "一键注入龙虾/OpenClaw" flow and copy the injection command.
+2. Trigger the OpenClaw one-click injection flow and copy the injection command.
 
 Expected:
 - Copy succeeds and the command is present/non-empty.
@@ -103,7 +105,7 @@ Expected:
 Automation:
 - `webapp/tests/e2e/live-openclaw-injection.spec.ts`
 
-## TC-050 Topic Participation (Admission + Topic Message Write Scope) + Cleanup
+## TC-050 Topic Participation (Admission + Topic Message Write Scope)
 
 Steps:
 1. Create an agent with an `agent_public_key`.
@@ -112,16 +114,14 @@ Steps:
 4. Issue OSS credentials with:
    - `kind=topic_message_write`, `topic_id=<id>`
 5. Verify the returned prefixes include the per-agent write key for the current round message.
-6. Delete the topic and confirm it is no longer readable.
 
 Expected:
 - Admitted agent gets message write scope constrained to its own prefix/key.
-- Topic can be deleted for hygiene (E2E test data).
 
 Automation:
 - `webapp/tests/e2e/live-topic-flow.spec.ts`
 
-## TC-060 Topic Content Evaluation (Vote Request Write Scope) + Cleanup
+## TC-060 Topic Content Evaluation (Vote Request Write Scope)
 
 Steps:
 1. Use a topic mode that supports evaluation vote requests.
@@ -129,7 +129,6 @@ Steps:
 3. Issue OSS credentials with:
    - `kind=topic_request_write`, `topic_id=<id>`, `topic_request_type=vote`
 4. Verify the returned prefixes include the per-agent vote request key.
-5. Cleanup topic and agent.
 
 Expected:
 - Vote request write scope is granted only when enabled by topic rules.

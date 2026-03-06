@@ -15,8 +15,10 @@ Notes:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -26,7 +28,28 @@ import paramiko
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.remote.ssh_exec import SSHTarget, _connect, run_remote  # type: ignore  # noqa: E402
+from scripts.remote.ssh_exec import SSHTarget, _connect, run_remote, run_remote_capture  # type: ignore  # noqa: E402
+
+
+def _now_stamp_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+
+
+_SMOKE_META_RE = re.compile(r"^(SMOKE_(?:MOD_)?META)\s+(.*)$", re.MULTILINE)
+
+
+def _parse_meta_lines(text: str) -> list[dict]:
+    out: list[dict] = []
+    for m in _SMOKE_META_RE.finditer(text or ""):
+        kind = m.group(1).strip()
+        rest = m.group(2).strip()
+        fields: dict[str, str] = {}
+        for tok in rest.split():
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                fields[str(k).strip()] = str(v).strip()
+        out.append({"kind": kind, **fields})
+    return out
 
 
 def _env_required(name: str) -> str:
@@ -97,6 +120,11 @@ def main() -> int:
     ap.add_argument("--skip-deploy", action="store_true")
     ap.add_argument("--skip-smoke", action="store_true")
     ap.add_argument("--keep-smoke-data", action="store_true", help="Keep smoke-created runs/agents on 154 for inspection.")
+    ap.add_argument(
+        "--evidence-jsonl",
+        default="",
+        help="Local JSONL path to append kept smoke metadata to (recommended when using --keep-smoke-data).",
+    )
     ap.add_argument("--show-cmd", action="store_true")
     args = ap.parse_args()
 
@@ -117,6 +145,14 @@ def main() -> int:
         repo = str(args.repo_dir).strip() or _detect_repo_dir(client, timeout_s=int(args.timeout))
         ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
         print(f"[aihub] target={args.host} repo={repo} utc={ts}", file=sys.stderr)
+
+        evidence_jsonl = str(args.evidence_jsonl).strip()
+        if args.keep_smoke_data and not evidence_jsonl:
+            # Default evidence location under repo root. This is a local file, never written on the remote host.
+            stamp = _now_stamp_utc()
+            evidence_jsonl = str(_REPO_ROOT / "output" / "openspec-evidence" / f"{stamp}-154-smoke-keep" / "kept-data.jsonl")
+        if evidence_jsonl:
+            pathlib.Path(evidence_jsonl).parent.mkdir(parents=True, exist_ok=True)
 
         # Preconditions
         if not args.skip_smoke:
@@ -145,30 +181,80 @@ def main() -> int:
 
         if not args.skip_smoke:
             keep_smoke = "1" if bool(args.keep_smoke_data) else ""
-            smoke = run_remote(
-                client,
+            smoke_cmd = (
                 # Read secret from stdin to avoid SSH env forwarding issues and keep it out of argv/history.
-                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" KEEP_SMOKE_DATA="{keep_smoke}" bash scripts/smoke.sh\'',
-                cwd=repo,
-                timeout_s=int(args.timeout),
-                pass_env=[],
-                show_cmd=bool(args.show_cmd),
-                stdin_text=f"{admin_api_key}\n",
-                stdin_note="ADMIN_API_KEY",
+                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" KEEP_SMOKE_DATA="{keep_smoke}" bash scripts/smoke.sh\''
             )
+            if args.keep_smoke_data and evidence_jsonl:
+                smoke, out, err = run_remote_capture(
+                    client,
+                    smoke_cmd,
+                    cwd=repo,
+                    timeout_s=int(args.timeout),
+                    pass_env=[],
+                    show_cmd=bool(args.show_cmd),
+                    stdin_text=f"{admin_api_key}\n",
+                    stdin_note="ADMIN_API_KEY",
+                )
+                meta = _parse_meta_lines(out + "\n" + err)
+                if meta:
+                    with open(evidence_jsonl, "a", encoding="utf-8") as f:
+                        for entry in meta:
+                            payload = {
+                                "suite": "smoke",
+                                "host": str(args.host),
+                                "base_url": str(args.base_url),
+                                **entry,
+                            }
+                            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            else:
+                smoke = run_remote(
+                    client,
+                    smoke_cmd,
+                    cwd=repo,
+                    timeout_s=int(args.timeout),
+                    pass_env=[],
+                    show_cmd=bool(args.show_cmd),
+                    stdin_text=f"{admin_api_key}\n",
+                    stdin_note="ADMIN_API_KEY",
+                )
             if smoke != 0:
                 return smoke
 
-            mod = run_remote(
-                client,
-                f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" KEEP_SMOKE_DATA="{keep_smoke}" bash scripts/smoke_moderation.sh\'',
-                cwd=repo,
-                timeout_s=int(args.timeout),
-                pass_env=[],
-                show_cmd=bool(args.show_cmd),
-                stdin_text=f"{admin_api_key}\n",
-                stdin_note="ADMIN_API_KEY",
-            )
+            mod_cmd = f'bash -c \'read -r ADMIN_API_KEY; export ADMIN_API_KEY; BASE="{args.base_url}" KEEP_SMOKE_DATA="{keep_smoke}" bash scripts/smoke_moderation.sh\''
+            if args.keep_smoke_data and evidence_jsonl:
+                mod, out, err = run_remote_capture(
+                    client,
+                    mod_cmd,
+                    cwd=repo,
+                    timeout_s=int(args.timeout),
+                    pass_env=[],
+                    show_cmd=bool(args.show_cmd),
+                    stdin_text=f"{admin_api_key}\n",
+                    stdin_note="ADMIN_API_KEY",
+                )
+                meta = _parse_meta_lines(out + "\n" + err)
+                if meta:
+                    with open(evidence_jsonl, "a", encoding="utf-8") as f:
+                        for entry in meta:
+                            payload = {
+                                "suite": "smoke_moderation",
+                                "host": str(args.host),
+                                "base_url": str(args.base_url),
+                                **entry,
+                            }
+                            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            else:
+                mod = run_remote(
+                    client,
+                    mod_cmd,
+                    cwd=repo,
+                    timeout_s=int(args.timeout),
+                    pass_env=[],
+                    show_cmd=bool(args.show_cmd),
+                    stdin_text=f"{admin_api_key}\n",
+                    stdin_note="ADMIN_API_KEY",
+                )
             if mod != 0:
                 return mod
 
