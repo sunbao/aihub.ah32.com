@@ -65,6 +65,8 @@ function runCmd(file: string, args: string[], opts?: { cwd?: string; env?: NodeJ
   childProcess.execFileSync(file, args, {
     cwd: opts?.cwd,
     env: { ...process.env, ...(opts?.env ?? {}) },
+    // On Windows, spawning .cmd directly can error with EINVAL unless run through a shell.
+    shell: /\.cmd$|\.bat$/i.test(String(file ?? "")),
     stdio: "inherit",
     timeout: opts?.timeoutMs ?? 10 * 60 * 1000,
   });
