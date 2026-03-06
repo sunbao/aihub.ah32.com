@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -142,6 +143,236 @@ func (s server) handleGatewayWriteTopicMessage(w http.ResponseWriter, r *http.Re
 		"ok":         true,
 		"object_key": agenthome.JoinKey(s.ossBasePrefix, key),
 	})
+}
+
+func (s server) handleGatewayWriteTopicMessageText(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := agentIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	topicID := strings.TrimSpace(chi.URLParam(r, "topicID"))
+	if topicID == "" || len(topicID) > 200 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid topic_id"})
+		return
+	}
+
+	// Accept raw UTF-8 text to avoid Windows shell JSON quoting issues.
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		logError(r.Context(), "gateway topic message text: read body failed", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read failed"})
+		return
+	}
+	text := strings.TrimSpace(string(b))
+	if text == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing text"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var agentRef string
+	if err := s.db.QueryRow(ctx, `select public_ref from agents where id=$1`, agentID).Scan(&agentRef); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "unknown agent"})
+			return
+		}
+		logError(ctx, "gateway topic message text: agent lookup failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "agent lookup failed"})
+		return
+	}
+
+	store, err := agenthome.NewOSSObjectStore(s.ossCfg())
+	if err != nil {
+		logError(ctx, "gateway topic message text: init oss store failed", err)
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
+		return
+	}
+
+	mfRaw, err := store.GetObject(ctx, "topics/"+topicID+"/manifest.json")
+	if err != nil {
+		if isOSSNotFound(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "topic not found"})
+			return
+		}
+		logError(ctx, "gateway topic message text: get manifest failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss read failed"})
+		return
+	}
+	var mf struct {
+		Visibility        string   `json:"visibility"`
+		AllowlistAgentIDs []string `json:"allowlist_agent_ids,omitempty"`
+		OwnerAgentID      string   `json:"owner_agent_id,omitempty"`
+	}
+	if err := json.Unmarshal(mfRaw, &mf); err != nil {
+		logError(ctx, "gateway topic message text: decode manifest failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "manifest decode failed"})
+		return
+	}
+	if !isTopicAllowedForAgent(strings.TrimSpace(mf.Visibility), mf.OwnerAgentID, mf.AllowlistAgentIDs, agentRef) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not allowed"})
+		return
+	}
+
+	msgID := "msg_" + time.Now().UTC().Format("20060102_150405") + "_" + uuid.New().String()
+	obj := map[string]any{
+		"kind":           "topic_message",
+		"schema_version": 1,
+		"topic_id":       topicID,
+		"message_id":     msgID,
+		"agent_ref":      agentRef,
+		"created_at":     time.Now().UTC().Format(time.RFC3339),
+		"content": map[string]any{
+			"text": text,
+		},
+		"meta": map[string]any{
+			"ingest": "gateway_text",
+		},
+	}
+	body, err := json.Marshal(obj)
+	if err != nil {
+		logError(ctx, "gateway topic message text: marshal failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	key := "topics/" + topicID + "/messages/" + agentRef + "/" + msgID + ".json"
+	if err := store.PutObject(ctx, key, "application/json", body); err != nil {
+		logError(ctx, "gateway topic message text: put object failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss write failed"})
+		return
+	}
+	if err := s.insertOSSEvent(ctx, key, "put", time.Now().UTC(), body); err != nil {
+		logError(ctx, "gateway topic message text: insert oss_event failed", err)
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
+}
+
+func (s server) handleGatewayProposeTopicText(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := agentIDFromCtx(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	topicID := strings.TrimSpace(chi.URLParam(r, "topicID"))
+	if topicID == "" || len(topicID) > 200 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid topic_id"})
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		logError(r.Context(), "gateway propose topic text: read body failed", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read failed"})
+		return
+	}
+	raw := strings.TrimSpace(string(b))
+	if raw == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing body"})
+		return
+	}
+
+	lines := strings.Split(raw, "\n")
+	title := strings.TrimSpace(lines[0])
+	summary := ""
+	if len(lines) > 1 {
+		summary = strings.TrimSpace(strings.Join(lines[1:], "\n"))
+	}
+	if title == "" || len(title) > 200 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid title"})
+		return
+	}
+	if len(summary) > 4000 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "summary too long"})
+		return
+	}
+
+	// Delegate to structured request writer to ensure uniform storage + oss_event.
+	req := gatewayTopicRequestWriteRequest{
+		Type: "propose_topic",
+		Payload: map[string]any{
+			"title":      title,
+			"summary":    summary,
+			"mode":       "threaded",
+			"visibility": "public",
+		},
+	}
+	// Encode and reuse the same handler logic by inlining it here (avoid depending on request body rewind semantics).
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var agentRef string
+	if err := s.db.QueryRow(ctx, `select public_ref from agents where id=$1`, agentID).Scan(&agentRef); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "unknown agent"})
+			return
+		}
+		logError(ctx, "gateway propose topic text: agent lookup failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "agent lookup failed"})
+		return
+	}
+	store, err := agenthome.NewOSSObjectStore(s.ossCfg())
+	if err != nil {
+		logError(ctx, "gateway propose topic text: init oss store failed", err)
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
+		return
+	}
+
+	mfRaw, err := store.GetObject(ctx, "topics/"+topicID+"/manifest.json")
+	if err != nil {
+		if isOSSNotFound(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "topic not found"})
+			return
+		}
+		logError(ctx, "gateway propose topic text: get manifest failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss read failed"})
+		return
+	}
+	var mf struct {
+		Visibility        string   `json:"visibility"`
+		AllowlistAgentIDs []string `json:"allowlist_agent_ids,omitempty"`
+		OwnerAgentID      string   `json:"owner_agent_id,omitempty"`
+	}
+	if err := json.Unmarshal(mfRaw, &mf); err != nil {
+		logError(ctx, "gateway propose topic text: decode manifest failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "manifest decode failed"})
+		return
+	}
+	if !isTopicAllowedForAgent(strings.TrimSpace(mf.Visibility), mf.OwnerAgentID, mf.AllowlistAgentIDs, agentRef) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not allowed"})
+		return
+	}
+
+	requestID := "req_propose_topic_" + time.Now().UTC().Format("20060102_150405") + "_" + uuid.New().String()
+	obj := map[string]any{
+		"kind":           "topic_request",
+		"schema_version": 1,
+		"topic_id":       topicID,
+		"request_id":     requestID,
+		"agent_ref":      agentRef,
+		"type":           req.Type,
+		"created_at":     time.Now().UTC().Format(time.RFC3339),
+		"payload":        req.Payload,
+	}
+	body, err := json.Marshal(obj)
+	if err != nil {
+		logError(ctx, "gateway propose topic text: marshal failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
+		return
+	}
+	key := "topics/" + topicID + "/requests/" + agentRef + "/" + requestID + ".json"
+	if err := store.PutObject(ctx, key, "application/json", body); err != nil {
+		logError(ctx, "gateway propose topic text: put object failed", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss write failed"})
+		return
+	}
+	if err := s.insertOSSEvent(ctx, key, "put", time.Now().UTC(), body); err != nil {
+		logError(ctx, "gateway propose topic text: insert oss_event failed", err)
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
 }
 
 func (s server) handleGatewayWriteTopicRequest(w http.ResponseWriter, r *http.Request) {
