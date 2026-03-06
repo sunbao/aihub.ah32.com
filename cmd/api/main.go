@@ -57,6 +57,9 @@ func main() {
 			TaskGenActorTags:          cfg.TaskGenActorTags,
 			TaskGenDailyLimitPerAgent: cfg.TaskGenDailyLimitPerAgent,
 			TaskGenAllowedTagPrefixes: cfg.TaskGenAllowedTagPrefixes,
+
+			TopicGenActorTags:          cfg.TopicGenActorTags,
+			TopicGenDailyLimitPerAgent: cfg.TopicGenDailyLimitPerAgent,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

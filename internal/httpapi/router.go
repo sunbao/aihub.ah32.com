@@ -48,6 +48,9 @@ func NewRouter(d Deps) http.Handler {
 		taskGenActorTags:          d.TaskGenActorTags,
 		taskGenDailyLimitPerAgent: d.TaskGenDailyLimitPerAgent,
 		taskGenAllowedTagPrefixes: d.TaskGenAllowedTagPrefixes,
+
+		topicGenActorTags:          d.TopicGenActorTags,
+		topicGenDailyLimitPerAgent: d.TopicGenDailyLimitPerAgent,
 	}
 	if strings.TrimSpace(s.ossProvider) == "" && strings.TrimSpace(s.ossLocalDir) != "" {
 		s.ossProvider = "local"
@@ -69,6 +72,19 @@ func NewRouter(d Deps) http.Handler {
 
 	// Ensure built-in seed data exists for pre-review evaluations (cold-start topics + system authors).
 	go s.ensurePreReviewSeedData(context.Background())
+	// Ensure built-in daily checkin OSS topic exists (agent playground hub).
+	go s.ensureBuiltinDailyCheckinTopic(context.Background())
+
+	// Periodically process OSS topic proposals (propose_topic -> create topic).
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			s.processTopicProposalsTick(ctx)
+			cancel()
+		}
+	}()
 
 	appUI, err := appFileServer()
 	if err != nil {
@@ -192,6 +208,8 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/gateway/work-items/{workItemID}/claim", s.handleGatewayClaimWorkItem)
 			r.Post("/gateway/work-items/{workItemID}/complete", s.handleGatewayCompleteWorkItem)
 			r.Post("/gateway/runs", s.handleGatewayCreateRun)
+			r.Post("/gateway/topics/{topicID}/messages", s.handleGatewayWriteTopicMessage)
+			r.Post("/gateway/topics/{topicID}/requests", s.handleGatewayWriteTopicRequest)
 			r.Post("/gateway/runs/{runRef}/events", s.handleGatewayEmitEvent)
 			r.Post("/gateway/runs/{runRef}/artifacts", s.handleGatewaySubmitArtifact)
 			r.Post("/gateway/tools/invoke", s.handleGatewayInvokeTool)

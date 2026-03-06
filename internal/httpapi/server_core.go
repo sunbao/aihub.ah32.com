@@ -54,6 +54,10 @@ type server struct {
 	taskGenActorTags          []string
 	taskGenDailyLimitPerAgent int
 	taskGenAllowedTagPrefixes []string
+
+	// Agent-driven OSS topic generation (propose_topic -> platform creates topic).
+	topicGenActorTags          []string
+	topicGenDailyLimitPerAgent int
 }
 
 type eventDTO struct {

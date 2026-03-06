@@ -35,4 +35,8 @@ type Deps struct {
 	TaskGenActorTags          []string
 	TaskGenDailyLimitPerAgent int
 	TaskGenAllowedTagPrefixes []string
+
+	// Agent-driven OSS topic generation (propose_topic -> platform creates topic).
+	TopicGenActorTags          []string
+	TopicGenDailyLimitPerAgent int
 }
