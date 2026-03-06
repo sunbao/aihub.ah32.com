@@ -75,6 +75,7 @@ type UpdateAgentRequest = {
   bio?: string;
   greeting?: string;
   persona_template_id?: string;
+  agent_public_key?: string;
   discovery?: { public: boolean };
   autonomous?: Autonomous;
 };
@@ -331,6 +332,7 @@ export function AgentCardWizard({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [agentPublicKey, setAgentPublicKey] = useState("");
 
   const [personaTemplateId, setPersonaTemplateId] = useState<string>("");
   const [personaTouched, setPersonaTouched] = useState(false);
@@ -444,6 +446,7 @@ export function AgentCardWizard({
       setName(String(a.name ?? ""));
       setDescription(String(a.description ?? ""));
       setAvatarUrl(String(a.avatar_url ?? ""));
+      setAgentPublicKey(String(a.agent_public_key ?? ""));
 
       setPExtrovert(Number(a.personality?.extrovert ?? 0.5));
       setPCurious(Number(a.personality?.curious ?? 0.5));
@@ -786,6 +789,11 @@ export function AgentCardWizard({
         greeting: greeting.trim(),
       };
       if (personaTouched) req.persona_template_id = personaTemplateId;
+      // Admission PoP requires agent_public_key, but it must never be a hard gate.
+      // Server rules: can be set once; do not send if already set.
+      if (!String(agent?.agent_public_key ?? "").trim() && String(agentPublicKey ?? "").trim()) {
+        req.agent_public_key = String(agentPublicKey ?? "").trim();
+      }
 
       await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}`, {
         method: "PATCH",
@@ -1109,6 +1117,38 @@ export function AgentCardWizard({
                   <Input value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." />
                 </div>
 
+                <details className="rounded-md border bg-muted/20 px-3 py-2">
+                  <summary className="cursor-pointer select-none text-xs font-medium text-foreground">
+                    {t({ zh: "OpenClaw 入驻（可选）", en: "OpenClaw admission (optional)" })}
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="text-xs text-muted-foreground">
+                      {t({
+                        zh: "入驻（PoP）只影响 OSS/话题写入等权限，不影响你创建/编辑智能体卡片。若你有本地 OpenClaw，可把它的 Ed25519 公钥填到这里（格式：ed25519:<base64>）。",
+                        en: "Admission (PoP) only affects OSS/topic write scopes; it never blocks card editing. If you have local OpenClaw, paste its Ed25519 public key here (ed25519:<base64>).",
+                      })}
+                    </div>
+
+                    {String(agent?.agent_public_key ?? "").trim() ? (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">{t({ zh: "当前已设置（只读）", en: "Already set (read-only)" })}</div>
+                        <Input value={String(agent?.agent_public_key ?? "").trim()} readOnly className="font-mono text-xs" />
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">{t({ zh: "agent_public_key（可选）", en: "agent_public_key (optional)" })}</div>
+                        <Input
+                          data-testid="agent-public-key-input"
+                          value={agentPublicKey}
+                          onChange={(e) => setAgentPublicKey(e.target.value)}
+                          placeholder="ed25519:..."
+                          className="font-mono text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </details>
+
                 {!basicsValid ? (
                   <div className="text-xs text-destructive">{t({ zh: "名字和一句话介绍为必填", en: "Name and one-liner are required." })}</div>
                 ) : null}
@@ -1218,6 +1258,7 @@ export function AgentCardWizard({
               selected={interests}
               tone="green"
               required
+              testId="wizard-interests"
               onChange={(next) => {
                 setInterests(next);
                 recomputeTemplatesIfNeeded(name, next, capabilities);
@@ -1232,6 +1273,7 @@ export function AgentCardWizard({
               selected={capabilities}
               tone="sky"
               required
+              testId="wizard-capabilities"
               onChange={(next) => {
                 setCapabilities(next);
                 recomputeTemplatesIfNeeded(name, interests, next);

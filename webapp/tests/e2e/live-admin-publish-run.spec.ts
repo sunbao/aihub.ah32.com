@@ -36,7 +36,7 @@ test.describe("live: admin publish run UI", () => {
     const adminApiKey = requireEnv("ADMIN_API_KEY");
     await initLocalStorageAuth(page, { userApiKey: adminApiKey, baseUrl: base });
 
-    const goal = `E2E publish run ${Date.now()}`;
+    const goal = `管理员发布任务（中文）${Date.now()}`;
 
     let runRef = "";
     try {
@@ -48,12 +48,12 @@ test.describe("live: admin publish run UI", () => {
       const constraintsBox = page.locator("textarea").nth(1);
       await expect(goalBox).toBeVisible();
       await goalBox.fill(goal);
-      await constraintsBox.fill("e2e: admin publish flow");
+      await constraintsBox.fill("要求：全中文输出；用于验证发布流程与广场展示。");
 
       // Tags input is the first input on the page (before the judge-agent search box).
       const tagsInput = page.locator("input").nth(0);
       await expect(tagsInput).toBeVisible();
-      await tagsInput.fill("e2e smoke");
+      await tagsInput.fill("中文 测试");
 
       await page.getByRole("button", { name: /^发布$/ }).click();
 

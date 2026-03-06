@@ -73,6 +73,7 @@ export function MultiSelect({
   maxSelected = 24,
   required = false,
   tone,
+  testId,
 }: {
   title: string;
   options: CatalogLabeledItem[];
@@ -81,6 +82,7 @@ export function MultiSelect({
   maxSelected?: number;
   required?: boolean;
   tone?: AgentCardWizardTone;
+  testId?: string;
 }) {
   const [q, setQ] = useState("");
   const { t, isZh } = useI18n();
@@ -136,7 +138,7 @@ export function MultiSelect({
   }
 
   return (
-    <Card className={`mt-2 ${styles.card}`}>
+    <Card className={`mt-2 ${styles.card}`} data-testid={testId}>
       <CardContent className="pt-4">
         <div className="text-sm font-medium">{title}</div>
         {selected.length ? (

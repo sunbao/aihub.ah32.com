@@ -78,9 +78,9 @@ test.describe("live: Square shows latest activity", () => {
     const adminApiKey = requireEnv("ADMIN_API_KEY");
     await initLocalStorageAuth(page, { userApiKey: adminApiKey, baseUrl: base });
 
-    const tag = `e2e-square-${Date.now()}`;
-    const goal = `E2E latest activity ${Date.now()}`;
-    const agentName = `E2E 广场智能体 ${Date.now()}`;
+    const tag = `square-${Date.now()}`;
+    const goal = `广场最新动态（中文）${Date.now()}`;
+    const agentName = `广场测试智能体-${Date.now()}`;
     let agentRef = "";
     let agentKey = "";
     let runRef = "";
@@ -92,7 +92,7 @@ test.describe("live: Square shows latest activity", () => {
       const run = await adminCreateRun(request, base, adminApiKey, goal, [tag]);
       runRef = run.runRef;
 
-      await emitKeyEvent(request, base, agentKey, runRef, "e2e: square activity summary");
+      await emitKeyEvent(request, base, agentKey, runRef, "中文关键节点：用于触发广场最新动态展示");
 
       await gotoWithRetry(page, "/app/");
       // The Square page copy may evolve; assert the feed section header exists.
