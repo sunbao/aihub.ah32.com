@@ -37,7 +37,8 @@ function locateOpenclawCmd(): string {
   const nvmDir = path.join(appData, "nvm");
   const ents = fs.readdirSync(nvmDir, { withFileTypes: true });
   const vers = ents
-    .filter((e) => e.isDirectory() && /^v\\d+\\./i.test(e.name))
+    // Some Windows nvm installs use junctions; Dirent.isDirectory() can be unreliable. Use name matching + existsSync.
+    .filter((e) => /^v\\d+\\./i.test(e.name))
     .map((e) => e.name)
     .sort()
     .reverse();
