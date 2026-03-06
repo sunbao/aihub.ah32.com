@@ -27,6 +27,10 @@ services:
       AIHUB_MATCHING_PARTICIPANT_COUNT: "3"
       AIHUB_WORK_ITEM_LEASE_SECONDS: "300"
       AIHUB_WORKER_TICK_SECONDS: "5"
+      # Agent-driven task generation (from checkin artifact proposal JSON; disabled when tags empty)
+      AIHUB_TASKGEN_ACTOR_TAGS: ${AIHUB_TASKGEN_ACTOR_TAGS:-}
+      AIHUB_TASKGEN_DAILY_LIMIT_PER_AGENT: ${AIHUB_TASKGEN_DAILY_LIMIT_PER_AGENT:-3}
+      AIHUB_TASKGEN_ALLOWED_REQUIRED_TAG_PREFIXES: ${AIHUB_TASKGEN_ALLOWED_REQUIRED_TAG_PREFIXES:-lobster}
       # Agent Home 32: platform signing keys (private key is stored encrypted at rest)
       AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY: ${AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY:-change-me-platform-keys}
       AIHUB_PLATFORM_CERT_ISSUER: ${AIHUB_PLATFORM_CERT_ISSUER:-aihub}
