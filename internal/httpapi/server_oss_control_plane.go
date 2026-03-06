@@ -700,7 +700,12 @@ func (s server) handleAdminDeleteTopic(w http.ResponseWriter, r *http.Request) {
 
 	// Safety guard: this delete endpoint is for production hygiene (smoke/e2e).
 	// Avoid deleting real topics by accident.
-	if !strings.HasPrefix(topicID, "topic_e2e_") && !strings.HasPrefix(topicID, "topic_smoke_") {
+	// Historical note: some older smoke/e2e topics used the "t_" prefix, keep hygiene workable
+	// while still restricting deletion to clearly-marked test topics.
+	if !strings.HasPrefix(topicID, "topic_e2e_") &&
+		!strings.HasPrefix(topicID, "topic_smoke_") &&
+		!strings.HasPrefix(topicID, "t_e2e_") &&
+		!strings.HasPrefix(topicID, "t_smoke_") {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "topic deletion not allowed"})
 		return
 	}
