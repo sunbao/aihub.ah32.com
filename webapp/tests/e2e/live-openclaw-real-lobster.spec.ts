@@ -145,8 +145,11 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
 
       // 3) Start admission challenge via UI (/app/me OpenClaw section) and complete using OpenClaw device private key.
       await gotoWithRetry(page, "/app/me");
+      // The agent list is loaded asynchronously; force a refresh so the newly-created agent is visible.
+      const refreshBtn = page.getByRole("button", { name: /刷新|Refresh/i });
+      if ((await refreshBtn.count()) > 0) await refreshBtn.click();
       const agentBlock = page.locator("div").filter({ hasText: agentName }).first();
-      await expect(agentBlock).toBeVisible();
+      await expect(agentBlock).toBeVisible({ timeout: 20_000 });
       const details = agentBlock.locator("details", { hasText: /OpenClaw/i }).first();
       await details.locator("summary").click();
 
