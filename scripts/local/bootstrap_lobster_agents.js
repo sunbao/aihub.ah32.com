@@ -107,6 +107,13 @@ async function apiJson(method, url, apiKey, body) {
   return j;
 }
 
+async function startAdmission(baseUrl, userApiKey, agentRef) {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) die("Missing agentRef for admission/start.");
+  // This creates an active challenge (10 min TTL) for the agent to sign.
+  await apiJson("POST", `${baseUrl}/v1/agents/${encodeURIComponent(ref)}/admission/start`, userApiKey, {});
+}
+
 function signChallengeEd25519B64(challenge, privateKeyPem) {
   const chal = String(challenge ?? "").trim();
   if (!chal) die("Missing admission challenge to sign.");
@@ -285,11 +292,32 @@ async function main() {
     const agentApiKey = String(create?.api_key ?? "").trim();
     if (!agentRef || !agentApiKey) die("Create agent response missing agent_ref/api_key.");
 
-    // Admission flow: fetch challenge (agent bearer) and complete (agent bearer).
+    const entry = {
+      role: role.key,
+      agent_name: name,
+      agent_ref: agentRef,
+      tags,
+      admitted: false,
+      openclaw_profile: "",
+      openclaw_skill_key: "",
+      cron_name: "",
+      cron_created: false,
+      cron_id: "",
+      error: "",
+    };
+    created.push(entry);
+    fs.writeFileSync(evidencePath, JSON.stringify({ baseUrl, fleetTag, created }, null, 2) + "\n", "utf8");
+
+    // Admission flow:
+    // 1) Owner starts admission to create an active challenge.
+    // 2) Agent fetches the challenge using its agent API key.
+    // 3) Agent signs and completes admission using the same agent key.
+    await startAdmission(baseUrl, adminKey, agentRef);
     const chalRes = await apiJson("GET", `${baseUrl}/v1/agents/${encodeURIComponent(agentRef)}/admission/challenge`, agentApiKey);
     const challenge = String(chalRes?.challenge ?? "").trim();
     const sigB64 = signChallengeEd25519B64(challenge, privateKeyPem);
     await apiJson("POST", `${baseUrl}/v1/agents/${encodeURIComponent(agentRef)}/admission/complete`, agentApiKey, { signature: sigB64 });
+    entry.admitted = true;
 
     // Install OpenClaw connector for this AIHub agent key.
     // Profile name is ASCII so the resulting skill key is readable.
@@ -300,23 +328,16 @@ async function main() {
     });
     const skillKey = parseInstallerSkillKey(inst.stdout);
     if (!skillKey) die("Failed to parse skill key from installer output.");
+    entry.openclaw_profile = profileName;
+    entry.openclaw_skill_key = skillKey;
 
     // Create cron job for this agent profile.
     const cronName = `${role.name} 拉取任务`;
     const cronMessage = buildCronMessage(skillKey);
     const cron = await addCronJobIfMissing(openclawEntry, cronName, cronMessage);
-
-    created.push({
-      role: role.key,
-      agent_name: name,
-      agent_ref: agentRef,
-      tags,
-      openclaw_profile: profileName,
-      openclaw_skill_key: skillKey,
-      cron_name: cronName,
-      cron_created: cron.created,
-      cron_id: cron.id,
-    });
+    entry.cron_name = cronName;
+    entry.cron_created = Boolean(cron.created);
+    entry.cron_id = String(cron.id ?? "");
 
     // Keep the local output free of secrets (no API keys).
     fs.writeFileSync(evidencePath, JSON.stringify({ baseUrl, fleetTag, created }, null, 2) + "\n", "utf8");
@@ -328,4 +349,3 @@ async function main() {
 }
 
 main().catch((e) => die(e && e.stack ? e.stack : String(e)));
-
