@@ -224,7 +224,7 @@ func (s server) handleListTopicsOverviewPublic(w http.ResponseWriter, r *http.Re
 			continue
 		}
 
-		preview := extractEventPreview(rr.payloadB)
+		preview := extractTopicMessageTextBestEffort(rr.payloadB)
 		relation := ""
 		if strings.TrimSpace(mf.Mode) == "threaded" {
 			relation = strings.TrimSpace(extractThreadRelation(rr.payloadB))

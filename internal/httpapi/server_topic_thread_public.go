@@ -208,15 +208,7 @@ func (s server) handleGetTopicThreadPublic(w http.ResponseWriter, r *http.Reques
 		createdAt, _ := m["created_at"].(string)
 		createdAt = strings.TrimSpace(createdAt)
 
-		text := ""
-		if content, _ := m["content"].(map[string]any); content != nil {
-			if v, _ := content["text"].(string); strings.TrimSpace(v) != "" {
-				text = strings.TrimSpace(v)
-			}
-		}
-		if text == "" {
-			text = strings.TrimSpace(extractEventPreview(rm.payloadB))
-		}
+		text := strings.TrimSpace(extractTopicMessageTextBestEffort(rm.payloadB))
 
 		var replyTo *topicMessageRef
 		var threadRoot *topicMessageRef
