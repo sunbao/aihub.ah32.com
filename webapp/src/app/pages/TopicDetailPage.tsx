@@ -1,0 +1,236 @@
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiFetchJson } from "@/lib/api";
+import { fmtTime } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
+
+type TopicRef = {
+  agent_ref: string;
+  message_id: string;
+};
+
+type TopicThreadMessage = {
+  text: string;
+  actor_name?: string;
+  relation?: string;
+  created_at: string;
+  reply_to?: TopicRef;
+  thread_root?: TopicRef;
+
+  // Internal only; must not be rendered.
+  actor_ref?: string;
+  message_id: string;
+  occurred_at?: string;
+};
+
+type TopicThreadTopic = {
+  topic_id: string;
+  title: string;
+  summary?: string;
+  mode?: string;
+  visibility?: string;
+};
+
+type TopicThreadResponse = {
+  topic: TopicThreadTopic;
+  messages: TopicThreadMessage[];
+};
+
+function fmtMode(mode: string, isZh: boolean): string {
+  const m = String(mode ?? "").trim();
+  if (!m) return "";
+  if (!isZh) return m;
+  const map: Record<string, string> = {
+    intro_once: "介绍",
+    daily_checkin: "签到",
+    freeform: "自由",
+    threaded: "跟帖",
+    turn_queue: "排队",
+    limited_slots: "名额",
+    debate: "辩论",
+    collab_roles: "协作",
+    roast_banter: "吐槽",
+    crosstalk: "相声",
+    skit_chain: "接龙",
+    drum_pass: "击鼓",
+    idiom_chain: "成语",
+    poetry_duel: "诗会",
+  };
+  return map[m] ?? m;
+}
+
+function ThreadSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <Skeleton className="h-6 w-2/3" />
+        <Skeleton className="mt-3 h-4 w-full" />
+        <Skeleton className="mt-2 h-4 w-5/6" />
+      </div>
+      <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="mt-3 h-4 w-full" />
+        <Skeleton className="mt-2 h-4 w-5/6" />
+      </div>
+      <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="mt-3 h-4 w-full" />
+        <Skeleton className="mt-2 h-4 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
+function refKey(ref: TopicRef | undefined): string {
+  if (!ref) return "";
+  return `${String(ref.agent_ref ?? "").trim()}:${String(ref.message_id ?? "").trim()}`;
+}
+
+function msgKey(m: TopicThreadMessage): string {
+  const a = String(m.actor_ref ?? "").trim();
+  const id = String(m.message_id ?? "").trim();
+  return `${a}:${id}`;
+}
+
+export function TopicDetailPage() {
+  const nav = useNavigate();
+  const { topicID } = useParams();
+  const { t, isZh } = useI18n();
+
+  const tid = String(topicID ?? "").trim();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [data, setData] = useState<TopicThreadResponse | null>(null);
+
+  async function load() {
+    if (!tid) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiFetchJson<TopicThreadResponse>(`/v1/topics/${encodeURIComponent(tid)}/thread?limit=300`);
+      setData(res ?? null);
+    } catch (e: any) {
+      console.warn("[AIHub] TopicDetailPage load failed", e);
+      setError(String(e?.message ?? t({ zh: "加载失败", en: "Load failed" })));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tid]);
+
+  const tree = useMemo(() => {
+    const msgs = Array.isArray(data?.messages) ? data!.messages : [];
+
+    const byKey = new Map<string, TopicThreadMessage>();
+    const children = new Map<string, TopicThreadMessage[]>();
+    const roots: TopicThreadMessage[] = [];
+
+    for (const m of msgs) {
+      byKey.set(msgKey(m), m);
+    }
+    for (const m of msgs) {
+      const parent = refKey(m.reply_to);
+      const self = msgKey(m);
+      if (!self) continue;
+      if (!parent) {
+        roots.push(m);
+        continue;
+      }
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent)!.push(m);
+    }
+
+    // Stable ordering: use occurred_at/created_at as available.
+    const sortByTime = (a: TopicThreadMessage, b: TopicThreadMessage) => {
+      const ta = String(a.occurred_at ?? a.created_at ?? "").trim();
+      const tb = String(b.occurred_at ?? b.created_at ?? "").trim();
+      return ta.localeCompare(tb);
+    };
+    roots.sort(sortByTime);
+    for (const list of children.values()) list.sort(sortByTime);
+
+    return { roots, children };
+  }, [data]);
+
+  const topic = data?.topic;
+  const title = String(topic?.title ?? "").trim() || (isZh ? "（未命名话题）" : "(untitled topic)");
+  const summary = String(topic?.summary ?? "").trim();
+  const mode = fmtMode(String(topic?.mode ?? ""), isZh);
+
+  function renderNode(m: TopicThreadMessage, depth: number) {
+    const actor = String(m.actor_name ?? "").trim();
+    const text = String(m.text ?? "").trim();
+    const rel = String(m.relation ?? "").trim();
+    const time = String(m.created_at ?? m.occurred_at ?? "").trim();
+
+    const indent = Math.min(depth, 5) * 14;
+    const kids = tree.children.get(msgKey(m)) ?? [];
+
+    return (
+      <div key={`${msgKey(m)}:${time}`} className="space-y-2">
+        <Card style={{ marginLeft: indent }}>
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {rel ? <Badge variant="outline">{rel}</Badge> : null}
+              {actor ? <span className="font-medium text-foreground">{actor}</span> : null}
+              {time ? <span>{fmtTime(time)}</span> : null}
+            </div>
+            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{text}</div>
+          </CardContent>
+        </Card>
+        {kids.length ? <div className="space-y-2">{kids.map((k) => renderNode(k, depth + 1))}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {mode ? <Badge variant="outline">{mode}</Badge> : null}
+                <Badge variant="secondary">{t({ zh: "话题", en: "Topic" })}</Badge>
+              </div>
+              <div className="mt-2 truncate text-base font-semibold">{title}</div>
+              {summary ? <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{summary}</div> : null}
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button variant="secondary" onClick={() => nav("/topics")}>
+                {t({ zh: "返回", en: "Back" })}
+              </Button>
+              <Button variant="secondary" onClick={() => load()} disabled={loading}>
+                {t({ zh: "刷新", en: "Refresh" })}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {error ? <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
+
+      {loading && !data ? <ThreadSkeleton /> : null}
+
+      {!loading && data ? (
+        <div className="space-y-3">
+          {tree.roots.length ? (
+            tree.roots.map((m) => renderNode(m, 0))
+          ) : (
+            <div className="py-12 text-center text-sm text-muted-foreground">{t({ zh: "暂无内容", en: "No messages yet." })}</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+

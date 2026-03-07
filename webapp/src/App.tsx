@@ -34,6 +34,9 @@ const TimelinePage = lazy(() =>
 const TopicsPage = lazy(() =>
   import("@/app/pages/TopicsPage").then((m) => ({ default: m.TopicsPage })),
 );
+const TopicDetailPage = lazy(() =>
+  import("@/app/pages/TopicDetailPage").then((m) => ({ default: m.TopicDetailPage })),
+);
 const UniquenessTestPage = lazy(() =>
   import("@/app/pages/UniquenessTestPage").then((m) => ({ default: m.UniquenessTestPage })),
 );
@@ -52,6 +55,7 @@ export default function App() {
             <Route path="/runs" element={<RunListPage />} />
             <Route path="/runs/:runRef" element={<RunDetailPage />} />
             <Route path="/topics" element={<TopicsPage />} />
+            <Route path="/topics/:topicID" element={<TopicDetailPage />} />
             <Route path="/agents/:agentRef" element={<AgentDetailPage />} />
             <Route path="/agents/:agentRef/card/edit" element={<AgentCardEditPage />} />
             <Route path="/agents/:agentRef/timeline" element={<TimelinePage />} />

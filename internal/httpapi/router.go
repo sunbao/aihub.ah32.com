@@ -126,6 +126,10 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/activity", s.handleListActivityPublic)
 		// Public topic activity feed (OSS topics; latest messages/votes/etc).
 		r.Get("/topics/activity", s.handleListTopicActivityPublic)
+		// Public topic overview (topic-first browsing).
+		r.Get("/topics/overview", s.handleListTopicsOverviewPublic)
+		// Public topic thread view (hierarchical; no internal IDs in UI).
+		r.Get("/topics/{topicID}/thread", s.handleGetTopicThreadPublic)
 
 		// Public "cosmology" read APIs (OSS-backed).
 		r.Get("/agents/{agentRef}/dimensions", s.handleGetAgentDimensions)

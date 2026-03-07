@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,20 +38,28 @@ type ActivityResponse = {
   next_offset: number;
 };
 
-type TopicActivityItem = {
-  topic_id?: string;
-  topic_title: string;
-  topic_summary?: string;
-  topic_mode?: string;
-  kind: string;
-  relation?: string;
+type TopicOverviewHighlight = {
   actor_name?: string;
   preview?: string;
+  relation?: string;
   occurred_at: string;
 };
 
-type TopicActivityResponse = {
-  items: TopicActivityItem[];
+type TopicOverviewItem = {
+  topic_id: string;
+  title: string;
+  summary?: string;
+  mode?: string;
+  last_kind?: string;
+  last_relation?: string;
+  last_preview?: string;
+  last_actor_name?: string;
+  last_occurred_at: string;
+  highlights?: TopicOverviewHighlight[];
+};
+
+type TopicsOverviewResponse = {
+  items: TopicOverviewItem[];
   has_more: boolean;
   next_offset: number;
 };
@@ -181,42 +189,47 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   );
 }
 
-function TopicActivityRow({ item }: { item: TopicActivityItem }) {
+function TopicOverviewRow({ item }: { item: TopicOverviewItem }) {
   const nav = useNavigate();
   const { isZh } = useI18n();
-  const title = String(item.topic_title ?? "").trim() || (isZh ? "（未命名话题）" : "(untitled topic)");
-  const summary = String(item.topic_summary ?? "").trim();
-  const preview = String(item.preview ?? "").trim();
-  const actor = String(item.actor_name ?? "").trim();
-  const kind = String(item.kind ?? "").trim().toLowerCase();
-  const kindLabel =
-    kind === "message"
-      ? isZh
-        ? "跟帖/反馈"
-        : "Reply/Feedback"
-      : kind === "vote"
-        ? isZh
-          ? "投票/裁判"
-          : "Vote/Judge"
-        : kind || (isZh ? "动态" : "Activity");
-  const mode = fmtTopicMode(item.topic_mode ?? "", isZh);
-  const rel = String(item.relation ?? "").trim();
+  const title = String(item.title ?? "").trim() || (isZh ? "（未命名话题）" : "(untitled topic)");
+  const summary = String(item.summary ?? "").trim();
+  const lastPreview = String(item.last_preview ?? "").trim();
+  const lastActor = String(item.last_actor_name ?? "").trim();
+  const mode = fmtTopicMode(item.mode ?? "", isZh);
+  const rel = String(item.last_relation ?? "").trim();
+  const highlights = Array.isArray(item.highlights) ? item.highlights : [];
   return (
     <Card
       className="mb-3 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50"
-      onClick={() => nav("/topics")}
+      onClick={() => nav(`/topics/${encodeURIComponent(String(item.topic_id ?? "").trim())}`)}
     >
       <CardContent className="pt-4">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant={kind === "message" ? "default" : kind === "vote" ? "secondary" : "outline"}>{kindLabel}</Badge>
           {mode ? <Badge variant="outline">{mode}</Badge> : null}
           {rel ? <Badge variant="outline">{rel}</Badge> : null}
-          {actor ? <span className="font-medium text-foreground">{actor}</span> : null}
-          <span>{fmtTime(item.occurred_at)}</span>
+          {lastActor ? <span className="font-medium text-foreground">{lastActor}</span> : null}
+          <span>{fmtTime(item.last_occurred_at)}</span>
         </div>
         <div className="mt-2 text-sm font-medium leading-normal">{trunc(title, 120)}</div>
-        {preview ? <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{trunc(preview, 220)}</div> : null}
-        {!preview && summary ? <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{trunc(summary, 220)}</div> : null}
+        {lastPreview ? <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{trunc(lastPreview, 220)}</div> : null}
+        {!lastPreview && summary ? <div className="mt-2 line-clamp-2 text-sm text-muted-foreground">{trunc(summary, 220)}</div> : null}
+
+        {highlights.length > 1 ? (
+          <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+            {highlights.slice(1, 3).map((h, idx) => {
+              const hp = String(h?.preview ?? "").trim();
+              const ha = String(h?.actor_name ?? "").trim();
+              if (!hp) return null;
+              return (
+                <div key={`${ha}:${h.occurred_at}:${idx}`} className="line-clamp-1">
+                  {ha ? <span className="mr-2 text-foreground/80">{ha}</span> : null}
+                  <span>{trunc(hp, 120)}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -250,7 +263,7 @@ export function SquarePage() {
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
 
-  const [topicItems, setTopicItems] = useState<TopicActivityItem[]>([]);
+  const [topicItems, setTopicItems] = useState<TopicOverviewItem[]>([]);
   const [topicLoading, setTopicLoading] = useState(false);
   const [topicError, setTopicError] = useState<string>("");
 
@@ -284,14 +297,14 @@ export function SquarePage() {
     };
   }, []);
 
-  // Topic activity preview (OSS topics)
+  // Topic overview preview (topic-first)
   useEffect(() => {
     const ac = new AbortController();
     async function loadTopicPreview() {
       setTopicLoading(true);
       setTopicError("");
       try {
-        const res = await apiFetchJson<TopicActivityResponse>("/v1/topics/activity?limit=8&offset=0", { signal: ac.signal });
+        const res = await apiFetchJson<TopicsOverviewResponse>("/v1/topics/overview?limit=8&offset=0", { signal: ac.signal });
         setTopicItems(Array.isArray(res.items) ? res.items : []);
       } catch (e: any) {
         if (e?.name === "AbortError") {
@@ -401,7 +414,7 @@ export function SquarePage() {
       </div>
 
       <div className="flex items-center justify-between px-1">
-         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题动态", en: "Topic activity" })}</h2>
+         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题", en: "Topics" })}</h2>
          <div className="flex gap-2">
            <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
             {t({ zh: "更多", en: "More" })}
@@ -429,7 +442,7 @@ export function SquarePage() {
         ) : null}
 
         {topicItems.map((item, idx) => (
-          <TopicActivityRow key={`${item.topic_id || item.occurred_at}:${idx}`} item={item} />
+          <TopicOverviewRow key={`${item.topic_id || item.last_occurred_at}:${idx}`} item={item} />
         ))}
 
         {topicLoading && (
@@ -441,7 +454,7 @@ export function SquarePage() {
 
         {!topicLoading && topicItems.length === 0 && !topicError ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
-            {t({ zh: "暂无话题动态", en: "No topic items yet." })}
+            {t({ zh: "暂无话题", en: "No topics yet." })}
           </div>
         ) : null}
       </div>
@@ -492,10 +505,14 @@ export function SquarePage() {
 
         {!hasMore && items.length > 0 && (
           <div className="py-4 text-center text-xs text-muted-foreground/50">
-            {t({ zh: "- 已经到底了 -", en: "- End -", })}
+            {t({ zh: "- 已经到底了 -", en: "- End -" })}
           </div>
         )}
       </div>
     </div>
   );
 }
+
+
+
+
