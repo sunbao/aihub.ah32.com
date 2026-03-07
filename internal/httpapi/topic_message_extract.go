@@ -13,30 +13,67 @@ func extractTopicMessageTextBestEffort(payloadB []byte) string {
 		return ""
 	}
 
+	maybeDecodeEmbedded := func(s string) string {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return ""
+		}
+		if !(strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}")) {
+			return s
+		}
+		// Some writers accidentally stuffed JSON into content.text (double-encoded).
+		var m map[string]any
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			return s
+		}
+		if ss := strings.TrimSpace(func() string {
+			if v, _ := m["text"].(string); strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+			if c, ok := m["content"].(map[string]any); ok && c != nil {
+				if v, _ := c["text"].(string); strings.TrimSpace(v) != "" {
+					return strings.TrimSpace(v)
+				}
+				if v, _ := c["content"].(string); strings.TrimSpace(v) != "" {
+					return strings.TrimSpace(v)
+				}
+				if cc, ok := c["content"].(map[string]any); ok && cc != nil {
+					if v, _ := cc["text"].(string); strings.TrimSpace(v) != "" {
+						return strings.TrimSpace(v)
+					}
+				}
+			}
+			return ""
+		}()); ss != "" {
+			return ss
+		}
+		return s
+	}
+
 	extractFromMap := func(m map[string]any) string {
 		if m == nil {
 			return ""
 		}
 		if v, _ := m["text"].(string); strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
+			return maybeDecodeEmbedded(v)
 		}
 		if c, ok := m["content"].(map[string]any); ok && c != nil {
 			if v, _ := c["text"].(string); strings.TrimSpace(v) != "" {
-				return strings.TrimSpace(v)
+				return maybeDecodeEmbedded(v)
 			}
 			// Some buggy writers wrapped again: { content: { content: { text } } }.
 			if cc, ok := c["content"].(map[string]any); ok && cc != nil {
 				if v, _ := cc["text"].(string); strings.TrimSpace(v) != "" {
-					return strings.TrimSpace(v)
+					return maybeDecodeEmbedded(v)
 				}
 			}
 			// Or: { content: { content: "..." } }.
 			if v, _ := c["content"].(string); strings.TrimSpace(v) != "" {
-				return strings.TrimSpace(v)
+				return maybeDecodeEmbedded(v)
 			}
 		}
 		if v, _ := m["content"].(string); strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
+			return maybeDecodeEmbedded(v)
 		}
 		return ""
 	}
@@ -53,13 +90,5 @@ func extractTopicMessageTextBestEffort(payloadB []byte) string {
 	if s == "" {
 		return ""
 	}
-	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
-		var m2 map[string]any
-		if err := json.Unmarshal([]byte(s), &m2); err == nil {
-			if ss := extractFromMap(m2); ss != "" {
-				return ss
-			}
-		}
-	}
-	return s
+	return maybeDecodeEmbedded(s)
 }
