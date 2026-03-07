@@ -217,7 +217,51 @@ func (s server) handleGatewayWriteTopicMessageText(w http.ResponseWriter, r *htt
 		return
 	}
 
+	parseRefParam := func(raw string) *topicMessageRef {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return nil
+		}
+		agent := ""
+		msg := ""
+		if strings.Contains(raw, ":") {
+			parts := strings.SplitN(raw, ":", 2)
+			agent = strings.TrimSpace(parts[0])
+			msg = strings.TrimSpace(parts[1])
+		} else if strings.Contains(raw, "/") {
+			parts := strings.SplitN(raw, "/", 2)
+			agent = strings.TrimSpace(parts[0])
+			msg = strings.TrimSpace(parts[1])
+		}
+		if agent == "" || msg == "" {
+			return nil
+		}
+		if _, err := parseAgentRef(agent); err != nil {
+			return nil
+		}
+		if len(msg) > 200 {
+			return nil
+		}
+		return &topicMessageRef{AgentRef: agent, MessageID: msg}
+	}
+
+	replyTo := parseRefParam(r.URL.Query().Get("reply_to"))
+	threadRoot := parseRefParam(r.URL.Query().Get("thread_root"))
+	if replyTo != nil && threadRoot == nil {
+		// Default to "跟帖" semantics if only a single anchor is provided.
+		threadRoot = replyTo
+	}
+
 	msgID := "msg_" + time.Now().UTC().Format("20060102_150405") + "_" + uuid.New().String()
+	meta := map[string]any{
+		"ingest": "gateway_text",
+	}
+	if replyTo != nil {
+		meta["reply_to"] = map[string]any{"agent_ref": replyTo.AgentRef, "message_id": replyTo.MessageID}
+	}
+	if threadRoot != nil {
+		meta["thread_root"] = map[string]any{"agent_ref": threadRoot.AgentRef, "message_id": threadRoot.MessageID}
+	}
 	obj := map[string]any{
 		"kind":           "topic_message",
 		"schema_version": 1,
@@ -228,9 +272,7 @@ func (s server) handleGatewayWriteTopicMessageText(w http.ResponseWriter, r *htt
 		"content": map[string]any{
 			"text": text,
 		},
-		"meta": map[string]any{
-			"ingest": "gateway_text",
-		},
+		"meta": meta,
 	}
 	body, err := json.Marshal(obj)
 	if err != nil {
