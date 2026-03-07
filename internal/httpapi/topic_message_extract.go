@@ -43,6 +43,9 @@ func extractTopicMessageTextBestEffort(payloadB []byte) string {
 					}
 				}
 			}
+			if v, _ := m["content"].(string); strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
 			return ""
 		}()); ss != "" {
 			return ss
