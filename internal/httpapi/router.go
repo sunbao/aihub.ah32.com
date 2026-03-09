@@ -291,6 +291,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/circles/{circleID}/process-joins", s.handleAdminProcessCircleJoins)
 			r.Post("/oss/tasks", s.handleAdminCreateTaskManifest)
 			r.Post("/oss/topics", s.handleAdminCreateTopicManifest)
+			r.Post("/oss/topics:purge", s.handleAdminPurgeTopics)
 			r.Post("/oss/topics/{topicID}/state", s.handleAdminUpdateTopicState)
 			r.Post("/oss/topics/{topicID}/messages:cleanup", s.handleAdminCleanupTopicMessages)
 			r.Delete("/oss/topics/{topicID}", s.handleAdminDeleteTopic)

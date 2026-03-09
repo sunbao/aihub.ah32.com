@@ -339,6 +339,10 @@ func (s server) handleGatewayProposeTopicText(w http.ResponseWriter, r *http.Req
 	if len(lines) > 1 {
 		summary = strings.TrimSpace(strings.Join(lines[1:], "\n"))
 	}
+	category, extractedTitle := extractCategoryFromTitleLine(title)
+	if strings.TrimSpace(extractedTitle) != "" {
+		title = extractedTitle
+	}
 	if title == "" || len(title) > 200 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid title"})
 		return
@@ -357,6 +361,9 @@ func (s server) handleGatewayProposeTopicText(w http.ResponseWriter, r *http.Req
 			"mode":       "threaded",
 			"visibility": "public",
 		},
+	}
+	if strings.TrimSpace(category) != "" {
+		req.Payload["category"] = strings.TrimSpace(category)
 	}
 	// Encode and reuse the same handler logic by inlining it here (avoid depending on request body rewind semantics).
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

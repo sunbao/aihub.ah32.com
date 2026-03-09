@@ -50,7 +50,7 @@ function locateOpenclawCmd(): string {
   const ents = fs.readdirSync(nvmDir, { withFileTypes: true });
   const vers = ents
     // Some Windows nvm installs use junctions; Dirent.isDirectory() can be unreliable. Use name matching + existsSync.
-    .filter((e) => /^v\\d+\\./i.test(e.name))
+    .filter((e) => /^v\d+\./i.test(e.name))
     .map((e) => e.name)
     .sort()
     .reverse();
@@ -61,22 +61,34 @@ function locateOpenclawCmd(): string {
   throw new Error("openclaw-cn.cmd not found under %APPDATA%\\\\nvm\\\\v*.");
 }
 
+function locateOpenclawEntryJs(): string {
+  // Avoid executing the .cmd shim. On Windows it requires a shell and can split args unexpectedly.
+  const cmd = locateOpenclawCmd();
+  const dp0 = path.dirname(cmd);
+  const entry = path.join(dp0, "node_modules", "openclaw-cn", "dist", "entry.js");
+  if (!fs.existsSync(entry)) throw new Error(`openclaw-cn entry.js not found: ${entry}`);
+  return entry;
+}
+
 function runCmd(file: string, args: string[], opts?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number }): void {
   childProcess.execFileSync(file, args, {
     cwd: opts?.cwd,
     env: { ...process.env, ...(opts?.env ?? {}) },
-    // On Windows, spawning .cmd directly can error with EINVAL unless run through a shell.
-    shell: /\.cmd$|\.bat$/i.test(String(file ?? "")),
     stdio: "inherit",
     timeout: opts?.timeoutMs ?? 10 * 60 * 1000,
   });
 }
 
+function runOpenclaw(entryJs: string, args: string[], opts?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number }): void {
+  runCmd("node", [entryJs, ...args], opts);
+}
+
 test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", () => {
+  test.use({ locale: "zh-CN" });
   test.skip(!isLiveMode(), "Requires a live server (set PLAYWRIGHT_BASE_URL).");
 
   test("creates agent+run via UI, admits via OpenClaw device key, runs via OpenClaw, verifies Chinese output", async ({ page, baseURL }) => {
-    test.setTimeout(15 * 60_000);
+    test.setTimeout(35 * 60_000);
     const base = String(baseURL ?? "").trim();
     if (!base) throw new Error("Missing Playwright baseURL.");
 
@@ -88,12 +100,12 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
     const tag = `openclaw-real-${now}`;
     const agentName = `龙虾真实跑-${now}`;
     const agentDesc = "用真实 OpenClaw 跑通：创建智能体 -> 发布任务 -> 龙虾执行 -> 广场展示";
-    const runGoal = `请用中文写一段 150-220 字的短文（真实龙虾执行）：主题是“把测评当作参考而不是门槛”，并给出 3 条可执行建议。标记：${tag}`;
+    const runGoal = "请用中文写一段 150-220 字的短文，主题是“把测评当作参考而不是入驻门槛”，并给出 3 条可执行建议。";
     const runConstraints = [
       "输出必须全中文。",
-      "不要出现英文单词（允许标点和数字）。",
+      "不要出现任何英文字母（允许标点和数字）。",
       "先给 3 条建议的列表，再给一段短文总结。",
-      "执行过程中请发送至少 1 条 summary 事件（作为关键节点）。",
+      "执行过程中请发送至少 1 条摘要事件（作为关键节点）。",
     ].join("\\n");
 
     let agentRef = "";
@@ -264,31 +276,66 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       if (!runRef) throw new Error(`Unable to parse run_ref from URL: ${page.url()}`);
 
       // OpenClaw: ensure gateway is healthy then run an agent turn to claim-next and execute.
-      const oc = locateOpenclawCmd();
-      runCmd(oc, ["doctor", "--repair"], { timeoutMs: 3 * 60 * 1000 });
+      const ocEntry = locateOpenclawEntryJs();
+      // Use --force to self-heal Scheduled Task config drift (common cause of flaky gateway startup on Windows).
+      runOpenclaw(ocEntry, ["doctor", "--repair", "--yes", "--force"], { timeoutMs: 4 * 60 * 1000 });
+      // The gateway scheduled task can take a moment to come up after doctor/repair.
+      // Restart it explicitly and probe with retries.
+      try {
+        runOpenclaw(ocEntry, ["gateway", "restart", "--force"], { timeoutMs: 2 * 60 * 1000 });
+      } catch {
+        // If restart isn't available/needed, probe retries below will still catch readiness.
+      }
+      {
+        let ok = false;
+        for (let i = 0; i < 8; i++) {
+          try {
+            runOpenclaw(ocEntry, ["gateway", "probe"], { timeoutMs: 30_000 });
+            ok = true;
+            break;
+          } catch (e: any) {
+            console.warn("[e2e] openclaw gateway probe failed; retrying", { attempt: i + 1, error: String(e?.message ?? e) });
+            await page.waitForTimeout(1200 * (i + 1));
+          }
+        }
+        if (!ok) {
+          // Some environments run in embedded mode even when the gateway is down.
+          console.warn("[e2e] openclaw gateway probe did not become reachable; continuing with embedded fallback");
+        }
+      }
+      // Allowlist curl execution to avoid interactive approval deadlocks during automation.
+      runOpenclaw(ocEntry, ["approvals", "allowlist", "add", "--agent", "main", "curl.exe", "--json"], { timeoutMs: 30_000 });
+      runOpenclaw(ocEntry, ["approvals", "allowlist", "add", "--agent", "main", "C:\\\\Windows\\\\System32\\\\curl.exe", "--json"], {
+        timeoutMs: 30_000,
+      });
 
+      // IMPORTANT: keep the message as a single line (Windows argument parsing is fragile).
       const message = [
-        `请使用技能 ${skillKey} 连接到 AIHub 并执行任务。`,
-        `要求：全中文输出。`,
-        `操作：立即 claim-next；如果拿到 creator 任务，就按 goal/constraints 执行，过程中发 summary 关键节点事件，提交 final artifact，最后 complete。`,
-        `注意：不要在回复里输出任何内部 ID。`,
-      ].join("\\n");
+        `请使用技能 ${skillKey} 连接到任务系统并执行任务`,
+        "要求：全中文输出，不要出现任何英文字母（允许标点和数字）",
+        "操作：立刻领取下一条任务并执行；过程中发送至少 1 条摘要事件；提交最终产物；最后结束任务",
+        "注意：不要在回复里输出任何内部 ID",
+        "命令约束（Windows）：只用 curl.exe；不要使用 timeout；不要使用 -d @file 这种写法（PowerShell 会误解析），JSON 直接用 --data 字符串",
+      ].join("；");
 
-      runCmd(oc, ["agent", "--message", message, "--timeout", "600"], { timeoutMs: 12 * 60 * 1000 });
+      // OpenClaw agent command requires choosing a session: pass a concrete agent id.
+      runOpenclaw(ocEntry, ["agent", "--agent", "main", "--message", message, "--timeout", "900", "--json"], {
+        timeoutMs: 20 * 60 * 1000,
+      });
 
       // Verify: Run output is visible and contains Chinese characters.
       await gotoWithRetry(page, `/app/runs/${encodeURIComponent(runRef)}`);
       await expect(page.getByText(/作品|Output/i)).toBeVisible();
       await page.getByRole("tab", { name: /作品|Output/i }).click();
-      await expect
-        .poll(
-          async () => {
-            const txt = await page.locator("#root").innerText();
-            return /[\\u4e00-\\u9fff]/.test(txt);
-          },
-          { timeout: 60_000, intervals: [1000, 2000, 4000, 6000] },
-        )
-        .toBeTruthy();
+      // Validate output from the Output panel (rendered markdown or raw pre) and avoid nav chrome.
+      const outEl = page
+        .locator("main")
+        .locator("pre.whitespace-pre-wrap, div.prose")
+        .filter({ hasText: /[\u4e00-\u9fff]/ })
+        .first();
+      await expect(outEl).toBeVisible({ timeout: 5 * 60_000 });
+      const outText = await outEl.innerText();
+      if (/[A-Za-z]/.test(outText)) throw new Error("Run output contains English letters; expected Chinese-only output.");
 
       // Verify: Square shows the run goal as latest activity.
       await gotoWithRetry(page, "/app/");

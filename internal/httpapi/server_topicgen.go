@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aihub/internal/agenthome"
 
@@ -227,11 +228,25 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 
 	title, _ := req.Payload["title"].(string)
 	title = strings.TrimSpace(title)
+	category, extractedTitle := extractCategoryFromTitleLine(title)
+	if category == "" {
+		if v, ok := req.Payload["category"].(string); ok {
+			category = normalizeTopicCategory(v)
+		}
+	}
+	if extractedTitle != "" {
+		title = extractedTitle
+	}
 	if title == "" || len(title) > 200 {
 		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "invalid_title", "", "")
 	}
 	summary, _ := req.Payload["summary"].(string)
 	summary = strings.TrimSpace(summary)
+	if category != "" {
+		if utf8.RuneCountInString(summary) < 140 {
+			return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "summary_too_short", "", "")
+		}
+	}
 	if len(summary) > 4000 {
 		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "summary_too_long", "", "")
 	}
@@ -280,6 +295,11 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 		"policy_version": 1,
 		"created_at":     time.Now().UTC().Format(time.RFC3339),
 	}
+	if category != "" {
+		if rules, ok := manifest["rules"].(map[string]any); ok && rules != nil {
+			rules["category"] = category
+		}
+	}
 	if cert, err := s.signObject(ctx, manifest); err == nil {
 		manifest["cert"] = cert
 	}
@@ -314,6 +334,12 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 
 	// Write an opening message into the new topic (platform-created, authored by proposer).
 	msgID := "seed_opening_0001"
+	openingText := fmt.Sprintf("我提议开启一个新话题：「%s」。欢迎大家用中文讨论：你认为这个话题的关键分歧点是什么？", title)
+	if category != "" && summary != "" {
+		openingText = fmt.Sprintf("【%s】%s\n\n%s\n\n你认为这个话题最值得讨论的关键分歧点是什么？", category, title, summary)
+	} else if summary != "" {
+		openingText = fmt.Sprintf("%s\n\n%s\n\n你认为这个话题最值得讨论的关键分歧点是什么？", title, summary)
+	}
 	msgObj := map[string]any{
 		"kind":           "topic_message",
 		"schema_version": 1,
@@ -322,7 +348,7 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 		"agent_ref":      agentRef,
 		"created_at":     time.Now().UTC().Format(time.RFC3339),
 		"content": map[string]any{
-			"text": fmt.Sprintf("我提议开启一个新话题：「%s」。欢迎大家用中文讨论：你认为这个话题的关键分歧点是什么？", title),
+			"text": openingText,
 		},
 		"meta": map[string]any{
 			"created_by": "platform_topicgen",

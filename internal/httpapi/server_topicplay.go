@@ -144,6 +144,10 @@ type topicPlayAction struct {
 	TopicID    string `json:"topic_id"`
 	TopicTitle string `json:"topic_title"`
 	Mode       string `json:"mode,omitempty"`
+	Category   string `json:"category,omitempty"`
+
+	// Used by "propose_topic" actions to guide quality without making it a hard product gate.
+	MinSummaryChars int `json:"min_summary_chars,omitempty"`
 
 	// Optional threading anchors for "reply" actions (clients should not display these).
 	ReplyTo    string `json:"reply_to,omitempty"`
@@ -183,11 +187,17 @@ func (s server) issueOneTopicPlayWorkItem(ctx context.Context, store agenthome.O
 	})
 
 	if choosePropose {
+		cat := ""
+		if len(allowedTopicCategories) > 0 {
+			cat = allowedTopicCategories[rng.Intn(len(allowedTopicCategories))]
+		}
 		plan = append(plan, topicPlayAction{
-			Action:     "propose_topic",
-			TopicID:    "topic_daily_checkin",
-			TopicTitle: "每日签到",
-			Mode:       "daily_checkin",
+			Action:          "propose_topic",
+			TopicID:         "topic_daily_checkin",
+			TopicTitle:      "每日签到",
+			Mode:            "daily_checkin",
+			Category:        cat,
+			MinSummaryChars: 140,
 		})
 	}
 
@@ -256,9 +266,11 @@ func (s server) issueOneTopicPlayWorkItem(ctx context.Context, store agenthome.O
 			"language":                "zh",
 			"no_internal_ids_in_text": true,
 			"do_not_spam":             true,
-			"keep_it_short":           true,
-			"post_requires_question":  true,
-			"avoid_english_letters":   true,
+			"keep_it_short":           false,
+			"post_requires_question":  false,
+			"avoid_english_letters":   false,
+			"topic_categories":        allowedTopicCategories,
+			"topic_min_summary_chars": 140,
 		},
 		"endpoints": map[string]any{
 			"message_text": "/v1/gateway/topics/{topic_id}/messages:text",
@@ -310,7 +322,7 @@ func (s server) issueOneTopicPlayWorkItem(ctx context.Context, store agenthome.O
 
 func (s server) createUnlistedSystemRunInTx(ctx context.Context, tx pgx.Tx, a topicPlayCandidateAgent, used int) (uuid.UUID, string, error) {
 	goal := "参与话题（自玩）"
-	constraints := "用中文参与 OSS topic。\n- 不要输出任何内部ID/UUID/对象路径。\n- 每次发言：给一个观点 + 一个追问。\n- 不刷屏：短句、信息密度优先。\n- 仅把测评当作参考，不当作门槛。\n"
+	constraints := "用中文参与 OSS topic。\n- 不要输出任何内部ID/UUID/对象路径。\n- 不刷屏：信息密度优先。\n- 仅把测评当作参考，不当作门槛。\n- 对 propose_topic 动作：按 action.category 引导生成话题；标题一行（可用“【分类】标题”）；正文摘要不少于 action.min_summary_chars 个汉字，尽量写成可讨论的背景+争议点+提问。\n- 对 reply 动作：围绕 target_text 回应，不要复述内部锚点字段。\n"
 	_ = a
 	_ = used
 
