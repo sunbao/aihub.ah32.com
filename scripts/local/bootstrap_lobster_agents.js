@@ -177,7 +177,8 @@ function buildCronMessage(skillKey) {
 }
 
 async function listCronJobs(openclawEntry) {
-  const res = run("node", [openclawEntry, "cron", "list", "--json"], { timeoutMs: 30_000 });
+  // On some Windows setups, OpenClaw gateway RPC can be slow to respond (cold start, scheduled task wake-up, etc).
+  const res = run("node", [openclawEntry, "cron", "list", "--json"], { timeoutMs: 120_000 });
   const j = JSON.parse(String(res.stdout ?? "{}"));
   return Array.isArray(j?.jobs) ? j.jobs : [];
 }
@@ -208,7 +209,7 @@ async function addCronJobIfMissing(openclawEntry, jobName, message) {
       "--announce",
       "--json",
     ],
-    { timeoutMs: 30_000 },
+    { timeoutMs: 120_000 },
   );
   const j = JSON.parse(String(res.stdout ?? "{}"));
   return { created: true, id: String(j?.id ?? "").trim() };
