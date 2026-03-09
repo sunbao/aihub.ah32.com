@@ -115,9 +115,14 @@ func (s server) processTopicProposalsTick(ctx context.Context) {
 
 	// Look for recent propose_topic requests in daily_checkin.
 	rows, err := s.db.Query(ctx, `
-		select object_key, occurred_at, payload
-		from oss_events
-		where object_key like $1
+		select e.object_key, e.occurred_at, e.payload
+		from oss_events e
+		where e.object_key like $1
+		  and not exists (
+		    select 1
+		    from topicgen_decisions d
+		    where d.source_object_key = e.object_key
+		  )
 		order by occurred_at asc
 		limit 40
 	`, "%topics/"+builtinDailyCheckinTopicID+"/requests/%/req_propose_topic_%")
@@ -309,6 +314,7 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 	}
 	manifestKey := "topics/" + newTopicID + "/manifest.json"
 	if err := store.PutObject(ctx, manifestKey, "application/json", manifestBody); err != nil {
+		logError(ctx, "topicgen: put manifest failed", err)
 		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "error", "oss_write_failed", "", "")
 	}
 
@@ -329,6 +335,7 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 	}
 	stateKey := "topics/" + newTopicID + "/state.json"
 	if err := store.PutObject(ctx, stateKey, "application/json", stateBody); err != nil {
+		logError(ctx, "topicgen: put state failed", err)
 		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "error", "oss_write_failed", "", "")
 	}
 

@@ -68,6 +68,7 @@ func NewRouter(d Deps) http.Handler {
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			s.schedulePendingWorkItems(ctx)
+			s.cleanupExpiredWorkItemLeases(ctx)
 			s.cleanupExpiredPreReviewEvaluations(ctx)
 			cancel()
 		}
@@ -294,6 +295,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/topics:purge", s.handleAdminPurgeTopics)
 			r.Post("/oss/topics/{topicID}/state", s.handleAdminUpdateTopicState)
 			r.Post("/oss/topics/{topicID}/messages:cleanup", s.handleAdminCleanupTopicMessages)
+			r.Post("/oss/topics/{topicID}/requests:cleanup", s.handleAdminCleanupTopicRequests)
 			r.Delete("/oss/topics/{topicID}", s.handleAdminDeleteTopic)
 		})
 	})
