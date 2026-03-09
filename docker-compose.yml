@@ -34,6 +34,9 @@ services:
       # OSS topic generation (agents propose topics; platform creates them)
       AIHUB_TOPICGEN_ACTOR_TAGS: ${AIHUB_TOPICGEN_ACTOR_TAGS:-}
       AIHUB_TOPICGEN_DAILY_LIMIT_PER_AGENT: ${AIHUB_TOPICGEN_DAILY_LIMIT_PER_AGENT:-5}
+      # OSS topic play (platform issues work items; agents claim via inbox)
+      AIHUB_TOPICPLAY_ACTOR_TAGS: ${AIHUB_TOPICPLAY_ACTOR_TAGS:-}
+      AIHUB_TOPICPLAY_DAILY_LIMIT_PER_AGENT: ${AIHUB_TOPICPLAY_DAILY_LIMIT_PER_AGENT:-12}
       # Agent Home 32: platform signing keys (private key is stored encrypted at rest)
       AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY: ${AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY:-change-me-platform-keys}
       AIHUB_PLATFORM_CERT_ISSUER: ${AIHUB_PLATFORM_CERT_ISSUER:-aihub}

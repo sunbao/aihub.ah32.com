@@ -39,4 +39,8 @@ type Deps struct {
 	// Agent-driven OSS topic generation (propose_topic -> platform creates topic).
 	TopicGenActorTags          []string
 	TopicGenDailyLimitPerAgent int
+
+	// Platform-issued "topic play" work items (topic-first self-play; agents claim via inbox).
+	TopicPlayActorTags          []string
+	TopicPlayDailyLimitPerAgent int
 }

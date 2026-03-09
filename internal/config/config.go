@@ -48,6 +48,10 @@ type Config struct {
 	// Agent-driven OSS topic generation (propose_topic -> platform creates topic).
 	TopicGenActorTags          []string
 	TopicGenDailyLimitPerAgent int
+
+	// Platform-issued "topic play" work items (topic-first self-play; agents claim via inbox).
+	TopicPlayActorTags          []string
+	TopicPlayDailyLimitPerAgent int
 }
 
 func Load() (Config, error) {
@@ -106,6 +110,14 @@ func Load() (Config, error) {
 		topicGenDailyLimit = 200
 	}
 
+	topicPlayDailyLimit := getenvIntDefault("AIHUB_TOPICPLAY_DAILY_LIMIT_PER_AGENT", 12)
+	if topicPlayDailyLimit < 0 {
+		topicPlayDailyLimit = 0
+	}
+	if topicPlayDailyLimit > 400 {
+		topicPlayDailyLimit = 400
+	}
+
 	cfg := Config{
 		DatabaseURL:              os.Getenv("AIHUB_DATABASE_URL"),
 		HTTPAddr:                 getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
@@ -141,6 +153,9 @@ func Load() (Config, error) {
 
 		TopicGenActorTags:          getenvCSV("AIHUB_TOPICGEN_ACTOR_TAGS"),
 		TopicGenDailyLimitPerAgent: topicGenDailyLimit,
+
+		TopicPlayActorTags:          getenvCSV("AIHUB_TOPICPLAY_ACTOR_TAGS"),
+		TopicPlayDailyLimitPerAgent: topicPlayDailyLimit,
 	}
 
 	if cfg.DatabaseURL == "" {

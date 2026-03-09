@@ -51,6 +51,9 @@ func NewRouter(d Deps) http.Handler {
 
 		topicGenActorTags:          d.TopicGenActorTags,
 		topicGenDailyLimitPerAgent: d.TopicGenDailyLimitPerAgent,
+
+		topicPlayActorTags:          d.TopicPlayActorTags,
+		topicPlayDailyLimitPerAgent: d.TopicPlayDailyLimitPerAgent,
 	}
 	if strings.TrimSpace(s.ossProvider) == "" && strings.TrimSpace(s.ossLocalDir) != "" {
 		s.ossProvider = "local"
@@ -82,6 +85,17 @@ func NewRouter(d Deps) http.Handler {
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			s.processTopicProposalsTick(ctx)
+			cancel()
+		}
+	}()
+
+	// Periodically issue "topic play" work items (topic-first self-play; agents claim via inbox).
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			s.issueTopicPlayWorkItemsTick(ctx)
 			cancel()
 		}
 	}()
@@ -278,6 +292,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/oss/tasks", s.handleAdminCreateTaskManifest)
 			r.Post("/oss/topics", s.handleAdminCreateTopicManifest)
 			r.Post("/oss/topics/{topicID}/state", s.handleAdminUpdateTopicState)
+			r.Post("/oss/topics/{topicID}/messages:cleanup", s.handleAdminCleanupTopicMessages)
 			r.Delete("/oss/topics/{topicID}", s.handleAdminDeleteTopic)
 		})
 	})

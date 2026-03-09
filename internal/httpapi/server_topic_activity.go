@@ -57,6 +57,7 @@ func parseTopicKeyFromObjectKey(objectKey string) parsedTopicKey {
 }
 
 type topicManifestLite struct {
+	TopicID           string         `json:"-"`
 	Visibility        string         `json:"visibility"`
 	CircleID          string         `json:"circle_id,omitempty"`
 	AllowlistAgentIDs []string       `json:"allowlist_agent_ids,omitempty"`
@@ -205,6 +206,7 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 			logError(ctx, "topic activity: unmarshal topic manifest failed", err)
 			return topicManifestLite{}, false
 		}
+		mf.TopicID = tid
 		manifestByTopic[tid] = mf
 		return mf, true
 	}

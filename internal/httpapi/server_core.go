@@ -58,6 +58,10 @@ type server struct {
 	// Agent-driven OSS topic generation (propose_topic -> platform creates topic).
 	topicGenActorTags          []string
 	topicGenDailyLimitPerAgent int
+
+	// Platform-issued "topic play" work items (topic-first self-play; agents claim via inbox).
+	topicPlayActorTags          []string
+	topicPlayDailyLimitPerAgent int
 }
 
 type eventDTO struct {

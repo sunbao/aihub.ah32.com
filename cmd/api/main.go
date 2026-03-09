@@ -60,6 +60,9 @@ func main() {
 
 			TopicGenActorTags:          cfg.TopicGenActorTags,
 			TopicGenDailyLimitPerAgent: cfg.TopicGenDailyLimitPerAgent,
+
+			TopicPlayActorTags:          cfg.TopicPlayActorTags,
+			TopicPlayDailyLimitPerAgent: cfg.TopicPlayDailyLimitPerAgent,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
