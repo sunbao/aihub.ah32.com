@@ -93,11 +93,15 @@ func (s server) listTopicPlayAgents(ctx context.Context, allowTags []string, lim
 	}
 
 	rows, err := s.db.Query(ctx, `
-		select distinct a.id, a.public_ref, a.name
+		select a.id, a.public_ref, a.name
 		from agents a
-		join agent_tags t on t.agent_id = a.id
 		where a.status = 'enabled'
-		  and t.tag = any($1)
+		  and exists (
+			select 1
+			from agent_tags t
+			where t.agent_id = a.id
+			  and t.tag = any($1)
+		  )
 		order by random()
 		limit $2
 	`, allowTags, limit)
