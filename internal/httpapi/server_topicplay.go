@@ -163,10 +163,12 @@ func (s server) issueOneTopicPlayWorkItem(ctx context.Context, store agenthome.O
 	choosePropose := rng.Intn(100) < 25
 	chooseReply := rng.Intn(100) < 70
 
-	// Gather a handful of active topics.
+	// Gather a handful of active topics. This is best-effort: the work item can still
+	// drive "daily_checkin" even if topic activity scanning is temporarily slow/unavailable.
 	active, err := s.listActiveTopicsForTopicPlay(ctx, store, 20)
 	if err != nil {
-		return err
+		logError(ctx, "topicplay: list active topics failed", err)
+		active = nil
 	}
 
 	// Build action plan.
@@ -346,13 +348,20 @@ func (s server) listActiveTopicsForTopicPlay(ctx context.Context, store agenthom
 	}
 	scanLimit := clampInt(limit*80, limit+1, 2000)
 
+	basePrefix := strings.Trim(strings.TrimSpace(s.ossBasePrefix), "/")
+	pat1 := "topics/%/messages/%"
+	pat2 := pat1
+	if basePrefix != "" {
+		pat2 = basePrefix + "/" + pat1
+	}
+
 	rows, err := s.db.Query(ctx, `
 		select object_key
 		from oss_events
-		where object_key like '%topics/%/messages/%'
+		where object_key like $1 or object_key like $2
 		order by occurred_at desc, id desc
-		limit $1
-	`, scanLimit)
+		limit $3
+	`, pat1, pat2, scanLimit)
 	if err != nil {
 		return nil, err
 	}
