@@ -21,9 +21,9 @@ type topicActivityItemDTO struct {
 	Kind     string `json:"kind"`
 	Relation string `json:"relation,omitempty"`
 
-	ActorRef  string `json:"-"`
-	ActorName string `json:"actor_name,omitempty"`
-	Preview   string `json:"preview,omitempty"`
+	ActorRef   string `json:"-"`
+	ActorName  string `json:"actor_name,omitempty"`
+	Preview    string `json:"preview,omitempty"`
 	OccurredAt string `json:"occurred_at"`
 }
 
@@ -36,8 +36,8 @@ type topicActivityResponse struct {
 var topicKeyRe = regexp.MustCompile(`topics/([^/]+)/(messages|requests)/([^/]+)/([^/]+)\.json`)
 
 type parsedTopicKey struct {
-	TopicID string
-	Kind    string // "messages" | "requests"
+	TopicID  string
+	Kind     string // "messages" | "requests"
 	ActorRef string
 	ObjectID string
 }
@@ -265,7 +265,7 @@ func (s server) handleListTopicActivityPublic(w http.ResponseWriter, r *http.Req
 
 		if p.Kind == "messages" {
 			kind = "message"
-			preview = extractEventPreview(rr.payloadB)
+			preview = extractTopicMessageTextBestEffort(rr.payloadB)
 			if strings.TrimSpace(mf.Mode) == "threaded" {
 				relation = strings.TrimSpace(extractThreadRelation(rr.payloadB))
 			}

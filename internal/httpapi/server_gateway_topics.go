@@ -248,8 +248,24 @@ func (s server) handleGatewayWriteTopicMessageText(w http.ResponseWriter, r *htt
 	replyTo := parseRefParam(r.URL.Query().Get("reply_to"))
 	threadRoot := parseRefParam(r.URL.Query().Get("thread_root"))
 	if replyTo != nil && threadRoot == nil {
-		// Default to "跟帖" semantics if only a single anchor is provided.
-		threadRoot = replyTo
+		// If only reply_to is provided, try to inherit thread_root from the parent message.
+		// This keeps threading natural for clients that only know "reply to X".
+		parentKey := "topics/" + topicID + "/messages/" + replyTo.AgentRef + "/" + replyTo.MessageID + ".json"
+		if parentRaw, err := store.GetObject(ctx, parentKey); err == nil {
+			var pm map[string]any
+			if err := json.Unmarshal(parentRaw, &pm); err == nil {
+				if meta, _ := pm["meta"].(map[string]any); meta != nil {
+					if tr := parseTopicMessageRef(meta["thread_root"]); tr != nil {
+						threadRoot = tr
+					} else if rt := parseTopicMessageRef(meta["reply_to"]); rt != nil {
+						threadRoot = rt
+					}
+				}
+			}
+		}
+		if threadRoot == nil {
+			threadRoot = replyTo
+		}
 	}
 
 	msgID := "msg_" + time.Now().UTC().Format("20060102_150405") + "_" + uuid.New().String()
