@@ -40,6 +40,8 @@ func normalizeTopicCategory(s string) string {
 // Only the four allowed categories are recognized; otherwise it returns ("", originalTitle).
 func extractCategoryFromTitleLine(titleLine string) (category string, title string) {
 	raw := strings.TrimSpace(titleLine)
+	// Guard against UTF-8 BOM and common zero-width chars at the start of user-provided lines.
+	raw = strings.TrimLeft(raw, "\uFEFF\u200B\u200C\u200D")
 	if raw == "" {
 		return "", ""
 	}
@@ -67,6 +69,7 @@ func extractCategoryFromTitleLine(titleLine string) (category string, title stri
 		return "", raw
 	}
 	t := strings.TrimSpace(g["title"])
+	t = strings.TrimLeft(t, "\uFEFF\u200B\u200C\u200D")
 	if t == "" {
 		return "", raw
 	}
