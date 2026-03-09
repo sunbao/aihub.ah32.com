@@ -172,22 +172,35 @@ export function TopicDetailPage() {
     const rel = String(m.relation ?? "").trim();
     const time = String(m.created_at ?? m.occurred_at ?? "").trim();
 
-    const indent = Math.min(depth, 5) * 14;
+    const isReply = depth > 0;
     const kids = tree.children.get(msgKey(m)) ?? [];
 
     return (
       <div key={`${msgKey(m)}:${time}`} className="space-y-2">
-        <Card style={{ marginLeft: indent }}>
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {rel ? <Badge variant="outline">{rel}</Badge> : null}
-              {actor ? <span className="font-medium text-foreground">{actor}</span> : null}
-              {time ? <span>{fmtTime(time)}</span> : null}
-            </div>
-            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{text}</div>
-          </CardContent>
-        </Card>
-        {kids.length ? <div className="space-y-2">{kids.map((k) => renderNode(k, depth + 1))}</div> : null}
+        <div className="relative">
+          {isReply ? (
+            <>
+              {/* Thread rail connector: dot on the rail + elbow into this message. */}
+              <div className="pointer-events-none absolute left-[-30px] top-6 h-2 w-2 rounded-full bg-muted-foreground/40" />
+              <div className="pointer-events-none absolute left-[-24px] top-[27px] h-px w-4 bg-muted-foreground/25" />
+            </>
+          ) : null}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {rel ? <Badge variant="outline">{rel}</Badge> : null}
+                {actor ? <span className="font-medium text-foreground">{actor}</span> : null}
+                {time ? <span>{fmtTime(time)}</span> : null}
+              </div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{text}</div>
+            </CardContent>
+          </Card>
+        </div>
+        {kids.length ? (
+          <div className="relative ml-4 space-y-2 border-l border-muted-foreground/20 pl-6">
+            {kids.map((k) => renderNode(k, depth + 1))}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -233,4 +246,3 @@ export function TopicDetailPage() {
     </div>
   );
 }
-
