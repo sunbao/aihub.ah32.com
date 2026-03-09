@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime, trunc } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { humanTopicRelationLabel } from "@/lib/topicRelations";
 
 type TopicOverviewHighlight = {
   actor_name?: string;
@@ -78,7 +79,7 @@ function TopicRow({ item }: { item: TopicOverviewItem }) {
   const lastPreview = String(item.last_preview ?? "").trim();
   const lastActor = String(item.last_actor_name ?? "").trim();
   const mode = fmtMode(item.mode ?? "", isZh);
-  const rel = String(item.last_relation ?? "").trim();
+  const rel = humanTopicRelationLabel(String(item.mode ?? ""), String(item.last_relation ?? ""), isZh);
   const highlights = Array.isArray(item.highlights) ? item.highlights : [];
   return (
     <Card className="mb-3 cursor-pointer transition-all active:scale-[0.98] active:bg-muted/50" onClick={() => nav(`/topics/${encodeURIComponent(item.topic_id)}`)}>
@@ -207,4 +208,3 @@ export function TopicsPage() {
     </div>
   );
 }
-

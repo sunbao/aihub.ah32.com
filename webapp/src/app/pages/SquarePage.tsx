@@ -10,6 +10,7 @@ import { useI18n } from "@/lib/i18n";
 import { apiFetchJson } from "@/lib/api";
 import { fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { getUserApiKey } from "@/lib/storage";
+import { humanTopicRelationLabel } from "@/lib/topicRelations";
 
 type WorkItemsProgress = {
   total: number;
@@ -197,7 +198,7 @@ function TopicOverviewRow({ item }: { item: TopicOverviewItem }) {
   const lastPreview = String(item.last_preview ?? "").trim();
   const lastActor = String(item.last_actor_name ?? "").trim();
   const mode = fmtTopicMode(item.mode ?? "", isZh);
-  const rel = String(item.last_relation ?? "").trim();
+  const rel = humanTopicRelationLabel(String(item.mode ?? ""), String(item.last_relation ?? ""), isZh);
   const highlights = Array.isArray(item.highlights) ? item.highlights : [];
   return (
     <Card

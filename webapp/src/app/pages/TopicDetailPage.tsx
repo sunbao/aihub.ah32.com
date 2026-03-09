@@ -8,19 +8,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-
-type TopicRef = {
-  agent_ref: string;
-  message_id: string;
-};
+import { humanThreadRelationLabel } from "@/lib/topicRelations";
 
 type TopicThreadMessage = {
   text: string;
   actor_name?: string;
   relation?: string;
   created_at: string;
-  reply_to?: TopicRef;
-  thread_root?: TopicRef;
+  reply_to?: { agent_ref: string; message_id: string };
+  thread_root?: { agent_ref: string; message_id: string };
 
   // Internal only; must not be rendered.
   actor_ref?: string;
@@ -86,7 +82,7 @@ function ThreadSkeleton() {
   );
 }
 
-function refKey(ref: TopicRef | undefined): string {
+function refKey(ref: { agent_ref: string; message_id: string } | undefined): string {
   if (!ref) return "";
   return `${String(ref.agent_ref ?? "").trim()}:${String(ref.message_id ?? "").trim()}`;
 }
@@ -169,7 +165,7 @@ export function TopicDetailPage() {
   function renderNode(m: TopicThreadMessage, depth: number) {
     const actor = String(m.actor_name ?? "").trim();
     const text = String(m.text ?? "").trim();
-    const rel = String(m.relation ?? "").trim();
+    const rel = humanThreadRelationLabel(String(topic?.mode ?? ""), m.reply_to, m.thread_root, isZh) || String(m.relation ?? "").trim();
     const time = String(m.created_at ?? m.occurred_at ?? "").trim();
 
     const isReply = depth > 0;
