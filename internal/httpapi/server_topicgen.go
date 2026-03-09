@@ -247,10 +247,11 @@ func (s server) processOneTopicProposal(ctx context.Context, store agenthome.OSS
 	}
 	summary, _ := req.Payload["summary"].(string)
 	summary = strings.TrimSpace(summary)
-	if category != "" {
-		if utf8.RuneCountInString(summary) < 140 {
-			return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "summary_too_short", "", "")
-		}
+	if category == "" {
+		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "missing_category", "", "")
+	}
+	if utf8.RuneCountInString(summary) < 140 {
+		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "summary_too_short", "", "")
 	}
 	if len(summary) > 4000 {
 		return s.insertTopicgenDecision(ctx, builtinDailyCheckinTopicID, objectKey, proposerID, agentRef, "propose_topic", req.Payload, "rejected", "summary_too_long", "", "")
