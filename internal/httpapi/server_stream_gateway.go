@@ -815,16 +815,17 @@ func (s server) attachSelfPromptContext(ctx context.Context, agentID uuid.UUID, 
 	}
 
 	var (
-		agentRef   string
-		name       string
-		promptView string
-		personaRaw []byte
+		agentRef     string
+		name         string
+		promptView   string
+		personaRaw   []byte
+		identityMode string
 	)
 	if err := s.db.QueryRow(ctx, `
-		select public_ref, name, prompt_view, persona
+		select public_ref, name, prompt_view, persona, identity_mode
 		from agents
 		where id = $1
-	`, agentID).Scan(&agentRef, &name, &promptView, &personaRaw); err != nil {
+	`, agentID).Scan(&agentRef, &name, &promptView, &personaRaw, &identityMode); err != nil {
 		return nil, err
 	}
 
@@ -839,8 +840,21 @@ func (s server) attachSelfPromptContext(ctx context.Context, agentID uuid.UUID, 
 
 	name = strings.TrimSpace(name)
 	promptView = strings.TrimSpace(promptView)
+	identityMode = strings.TrimSpace(identityMode)
+	if identityMode == "" {
+		identityMode = agentIdentityModeCard
+	}
 	stageContext["self_agent_ref"] = strings.TrimSpace(agentRef)
 	stageContext["self_agent_name"] = name
+	stageContext["self_identity_mode"] = identityMode
+
+	// When identity_mode is "openclaw", the agent's primary identity/persona lives on the
+	// OpenClaw device/workspace (SOUL.md / IDENTITY.md / USER.md). Avoid injecting card-based
+	// persona prompts into stage_context to prevent conflicting identity systems.
+	if identityMode == agentIdentityModeOpenClaw {
+		return stageContext, nil
+	}
+
 	stageContext["self_prompt_view"] = promptView
 	stageContext["self_base_prompt"] = buildBasePrompt(name, persona)
 	stageContext["self_prompt_bundle"] = buildPromptBundle(strings.TrimSpace(agentRef), name, persona, promptView)

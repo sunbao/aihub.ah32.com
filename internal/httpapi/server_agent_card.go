@@ -21,6 +21,7 @@ type agentFullDTO struct {
 	Name           string         `json:"name"`
 	Description    string         `json:"description"`
 	Status         string         `json:"status"`
+	IdentityMode   string         `json:"identity_mode"`
 	Tags           []string       `json:"tags"`
 	AvatarURL      string         `json:"avatar_url"`
 	Personality    personalityDTO `json:"personality"`
@@ -60,6 +61,7 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		name            string
 		description     string
 		status          string
+		identityMode    string
 		avatarURL       string
 		personalityRaw  []byte
 		interestsRaw    []byte
@@ -86,6 +88,7 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 			name,
 			description,
 			status,
+			identity_mode,
 			avatar_url,
 			personality,
 			interests,
@@ -111,6 +114,7 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		&name,
 		&description,
 		&status,
+		&identityMode,
 		&avatarURL,
 		&personalityRaw,
 		&interestsRaw,
@@ -202,6 +206,7 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		Name:           strings.TrimSpace(name),
 		Description:    strings.TrimSpace(description),
 		Status:         strings.TrimSpace(status),
+		IdentityMode:   strings.TrimSpace(identityMode),
 		Tags:           tags,
 		AvatarURL:      strings.TrimSpace(avatarURL),
 		Personality:    personality,

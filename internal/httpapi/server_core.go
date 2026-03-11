@@ -223,6 +223,11 @@ type createAgentRequest struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 
+	// identity_mode controls which "identity system" the agent should follow at execution time.
+	// - "openclaw": OpenClaw local workspace identity (SOUL.md/IDENTITY.md/USER.md) is primary (default).
+	// - "card": AIHub Agent Card persona/prompt_view is injected into stage_context and enforced.
+	IdentityMode string `json:"identity_mode,omitempty"`
+
 	AvatarURL         string          `json:"avatar_url,omitempty"`
 	AgentPublicKey    string          `json:"agent_public_key,omitempty"`
 	Personality       *personalityDTO `json:"personality,omitempty"`
@@ -306,6 +311,18 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tags := normalizeTags(req.Tags)
+
+	identityMode := strings.TrimSpace(req.IdentityMode)
+	if identityMode == "" {
+		identityMode = agentIdentityModeOpenClaw
+	} else {
+		m, ok := normalizeAgentIdentityMode(identityMode)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid identity_mode"})
+			return
+		}
+		identityMode = m
+	}
 
 	avatarURL := strings.TrimSpace(req.AvatarURL)
 	if len(avatarURL) > 1024 {
@@ -472,6 +489,7 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 			insert into agents (
 				public_ref,
 				owner_id, name, description, status,
+				identity_mode,
 				avatar_url, personality, interests, capabilities, bio, greeting,
 				discovery, autonomous, persona,
 				agent_public_key,
@@ -481,15 +499,17 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 			values (
 				$1,
 				$2, $3, $4, 'enabled',
-				$5, $6, $7, $8, $9, $10,
-				$11, $12, $13,
-				$14,
+				$5,
+				$6, $7, $8, $9, $10, $11,
+				$12, $13, $14,
 				$15,
-				$16
+				$16,
+				$17
 			)
 			returning id
 		`, agentRef,
 			userID, req.Name, req.Description,
+			identityMode,
 			avatarURL, personalityJSON, interestsJSON, capabilitiesJSON, bio, greeting,
 			discoveryJSON, autonomousJSON, personaJSON,
 			agentPublicKey,
@@ -658,11 +678,12 @@ func (s server) createOnboardingOffer(ctx context.Context, tx pgx.Tx, agentID uu
 }
 
 type agentDTO struct {
-	AgentRef    string   `json:"agent_ref"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Status      string   `json:"status"`
-	Tags        []string `json:"tags"`
+	AgentRef     string   `json:"agent_ref"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Status       string   `json:"status"`
+	IdentityMode string   `json:"identity_mode"`
+	Tags         []string `json:"tags"`
 }
 
 func (s server) handleListAgents(w http.ResponseWriter, r *http.Request) {
@@ -676,7 +697,7 @@ func (s server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	rows, err := s.db.Query(ctx, `
-		select id, public_ref, name, description, status
+		select id, public_ref, name, description, status, identity_mode
 		from agents
 		where owner_id = $1
 		order by created_at desc
@@ -691,13 +712,14 @@ func (s server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	var out []agentDTO
 	for rows.Next() {
 		var (
-			id          uuid.UUID
-			agentRef    string
-			name        string
-			description string
-			status      string
+			id           uuid.UUID
+			agentRef     string
+			name         string
+			description  string
+			status       string
+			identityMode string
 		)
-		if err := rows.Scan(&id, &agentRef, &name, &description, &status); err != nil {
+		if err := rows.Scan(&id, &agentRef, &name, &description, &status, &identityMode); err != nil {
 			logError(ctx, "list agents scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
@@ -711,11 +733,12 @@ func (s server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		out = append(out, agentDTO{
-			AgentRef:    agentRef,
-			Name:        name,
-			Description: description,
-			Status:      status,
-			Tags:        tags,
+			AgentRef:     agentRef,
+			Name:         name,
+			Description:  description,
+			Status:       status,
+			IdentityMode: strings.TrimSpace(identityMode),
+			Tags:         tags,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -870,9 +893,10 @@ func (s server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateAgentRequest struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Status      *string `json:"status"` // enabled|disabled
+	Name         *string `json:"name"`
+	Description  *string `json:"description"`
+	Status       *string `json:"status"` // enabled|disabled
+	IdentityMode *string `json:"identity_mode,omitempty"`
 
 	AvatarURL         *string         `json:"avatar_url,omitempty"`
 	Personality       *personalityDTO `json:"personality,omitempty"`
@@ -904,6 +928,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if req.Name == nil &&
 		req.Description == nil &&
 		req.Status == nil &&
+		req.IdentityMode == nil &&
 		req.AvatarURL == nil &&
 		req.Personality == nil &&
 		req.Interests == nil &&
@@ -934,6 +959,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		curName            string
 		curDescription     string
 		curStatus          string
+		curIdentityMode    string
 		curAvatarURL       string
 		curPersonalityRaw  []byte
 		curInterestsRaw    []byte
@@ -952,7 +978,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(ctx, `
 		select
 			id,
-			name, description, status, avatar_url,
+			name, description, status, identity_mode, avatar_url,
 			personality, interests, capabilities,
 			bio, greeting,
 			discovery, autonomous,
@@ -966,7 +992,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		where public_ref = $1 and owner_id = $2
 	`, agentRef, userID).Scan(
 		&agentID,
-		&curName, &curDescription, &curStatus, &curAvatarURL,
+		&curName, &curDescription, &curStatus, &curIdentityMode, &curAvatarURL,
 		&curPersonalityRaw, &curInterestsRaw, &curCapabilitiesRaw,
 		&curBio, &curGreeting,
 		&curDiscoveryRaw, &curAutonomousRaw,
@@ -990,6 +1016,10 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(curName)
 	description := curDescription
 	status := strings.TrimSpace(curStatus)
+	identityMode := strings.TrimSpace(curIdentityMode)
+	if identityMode == "" {
+		identityMode = agentIdentityModeCard
+	}
 	avatarURL := strings.TrimSpace(curAvatarURL)
 	bio := curBio
 	greeting := curGreeting
@@ -1063,6 +1093,14 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status = st
+	}
+	if req.IdentityMode != nil {
+		m, ok := normalizeAgentIdentityMode(*req.IdentityMode)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid identity_mode"})
+			return
+		}
+		identityMode = m
 	}
 	if req.AvatarURL != nil {
 		u := strings.TrimSpace(*req.AvatarURL)
@@ -1273,8 +1311,9 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			prompt_view = case when $17 <> '' then $17 else prompt_view end,
 			card_cert = $18,
 			card_review_status = $19,
+			identity_mode = $20,
 			updated_at = now()
-		where id = $20 and owner_id = $21
+		where id = $21 and owner_id = $22
 	`,
 		name,
 		description,
@@ -1295,6 +1334,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		promptView,
 		cardCertJSON,
 		cardReviewStatus,
+		identityMode,
 		agentID,
 		userID,
 	)

@@ -37,6 +37,13 @@ function copyDir(src, dst) {
   }
 }
 
+function copyFileIfMissing(src, dst) {
+  if (fs.existsSync(dst)) return false;
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.copyFileSync(src, dst);
+  return true;
+}
+
 function backupFile(p) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = p + ".bak." + stamp;
@@ -194,6 +201,7 @@ function main() {
         "What it does:",
         "  - Installs skill to your OpenClaw workspace skills directory (auto-detected)",
         "  - Writes config to: %USERPROFILE%\\.openclaw\\openclaw.json",
+        "  - Ensures workspace identity templates exist: SOUL.md / IDENTITY.md / USER.md (no overwrite)",
         "  - Does NOT set up scheduling; you control timing in AIHub (/app)",
         ""
       ].join("\n")
@@ -259,6 +267,31 @@ function main() {
 
   const skillDst = path.join(autoSkillsDir, skillKey);
 
+  // Best-effort: seed default identity templates into the OpenClaw workspace root.
+  // OpenClaw loads these files into system prompt automatically; AIHub should not upload them.
+  const workspaceDir = String(workspace || "").trim() || path.join(home, ".openclaw", "workspace");
+  let createdIdentity = [];
+  try {
+    const templatesDir = path.join(repoRoot, "openclaw", "workspace_templates");
+    if (fs.existsSync(templatesDir)) {
+      if (!fs.existsSync(workspaceDir)) fs.mkdirSync(workspaceDir, { recursive: true });
+      if (fs.statSync(workspaceDir).isDirectory()) {
+        const created = [];
+        for (const f of ["SOUL.md", "IDENTITY.md", "USER.md"]) {
+          const src = path.join(templatesDir, f);
+          const dst = path.join(workspaceDir, f);
+          if (!fs.existsSync(src)) continue;
+          if (copyFileIfMissing(src, dst)) created.push(f);
+        }
+        createdIdentity = created;
+      }
+    }
+  } catch (e) {
+    process.stderr.write(
+      "WARN: 初始化 OpenClaw workspace 身份模板失败（可忽略，不影响接入）。错误：" + (e && e.message ? e.message : String(e)) + "\n"
+    );
+  }
+
   cfg.skills = ensureObject(cfg.skills);
   cfg.skills.entries = ensureObject(cfg.skills.entries);
 
@@ -303,6 +336,8 @@ function main() {
       "Backup: " + backup,
       "GatewayCmd: " + gatewayCmdPath,
       "BaseUrl: " + baseUrl,
+      "Workspace: " + workspaceDir,
+      "Workspace identity templates: " + (createdIdentity.length ? ("created " + createdIdentity.join(", ")) : "already present"),
       profileName ? ("Profile: " + profileName) : "Profile: default",
       "Next: 重启 OpenClaw / 重新加载技能；定时任务请到 AIHub /app 生成。"
     ].join("\n") + "\n"

@@ -49,6 +49,7 @@ type AgentListItem = {
   name: string;
   description: string;
   status: string;
+  identity_mode?: string;
   tags: string[];
 };
 
@@ -299,6 +300,26 @@ export function MePage() {
     });
   }
 
+  async function setAgentIdentityMode(agent: AgentListItem, mode: "openclaw" | "card") {
+    const agentRef = String(agent?.agent_ref ?? "").trim();
+    if (!agentRef) return;
+    try {
+      await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}`, {
+        method: "PATCH",
+        apiKey: userApiKey,
+        body: { identity_mode: mode },
+      });
+      toast({
+        title: "已更新身份来源",
+        description: mode === "openclaw" ? "执行时将以本地 OpenClaw 工作区身份为主。" : "执行时将以平台 Agent Card 身份为主。",
+      });
+      loadAgents();
+    } catch (e: any) {
+      console.warn("[AIHub] MePage setAgentIdentityMode failed", { agentRef, mode, error: e });
+      toast({ title: "更新失败", description: String(e?.message ?? ""), variant: "destructive" });
+    }
+  }
+
   async function rotateAgentKey(agent: AgentListItem) {
     const agentRef = String(agent?.agent_ref ?? "").trim();
     if (!agentRef) return;
@@ -454,6 +475,7 @@ export function MePage() {
 
                 const agentKey = String(agentKeyInputs[agentRef] ?? getAgentApiKey(agentRef) ?? "");
                 const profileName = String(profileNames[agentRef] ?? getOpenclawProfileName(agentRef) ?? "");
+                const identityMode = String(a?.identity_mode ?? "").trim().toLowerCase() || "card";
                 const npxCmd = agentKey.trim()
                   ? buildNpxCmd({
                       baseUrl: baseUrl.trim(),
@@ -470,7 +492,10 @@ export function MePage() {
                         {a.description || "暂无简介"}
                       </div>
                     </div>
-                    <Badge variant="secondary">{fmtAgentStatus(a.status)}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{identityMode === "openclaw" ? "OpenClaw" : "Agent Card"}</Badge>
+                      <Badge variant="secondary">{fmtAgentStatus(a.status)}</Badge>
+                    </div>
                   </div>
                   {a.tags?.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -481,6 +506,24 @@ export function MePage() {
                       ))}
                     </div>
                   ) : null}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={identityMode === "openclaw"}
+                      onClick={() => setAgentIdentityMode(a, "openclaw")}
+                    >
+                      用 OpenClaw
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={identityMode === "card"}
+                      onClick={() => setAgentIdentityMode(a, "card")}
+                    >
+                      用 Agent Card
+                    </Button>
+                  </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
@@ -813,9 +856,10 @@ function CreateAgentDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
+  const [identityMode, setIdentityMode] = useState<"openclaw" | "card">("openclaw");
   const [creating, setCreating] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [createdAgent, setCreatedAgent] = useState<{ agentRef: string; name: string } | null>(null);
+  const [createdAgent, setCreatedAgent] = useState<{ agentRef: string; name: string; identityMode: "openclaw" | "card" } | null>(null);
 
   async function submit(e?: FormEvent) {
     e?.preventDefault();
@@ -834,11 +878,11 @@ function CreateAgentDialog({
       const res = await apiFetchJson<CreateAgentResponse>("/v1/agents", {
         method: "POST",
         apiKey: userApiKey,
-        body: { name, description, tags: tagList },
+        body: { name, description, tags: tagList, identity_mode: identityMode },
       });
       const agentName = name.trim() || "智能体";
       onCreated(res.agent_ref, res.api_key, agentName);
-      setCreatedAgent({ agentRef: res.agent_ref, name: agentName });
+      setCreatedAgent({ agentRef: res.agent_ref, name: agentName, identityMode });
       toast({ title: "创建成功", description: "已把接入密钥保存在本地存储中。" });
     } catch (e: any) {
       console.warn("[AIHub] CreateAgentDialog submit failed", e);
@@ -849,6 +893,7 @@ function CreateAgentDialog({
   }
 
   if (createdAgent) {
+    const useOpenclaw = createdAgent.identityMode === "openclaw";
     return (
       <DialogContent>
         <DialogHeader>
@@ -856,20 +901,34 @@ function CreateAgentDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">
-            智能体「{createdAgent.name}」已创建。下一步建议先完善卡片资料。测评是可选参考，可在卡片编辑页里发起。
+            {useOpenclaw ? (
+              <>
+                智能体「{createdAgent.name}」已创建。下一步：去 <span className="font-mono">/app/me</span> 复制 OpenClaw 一键注入命令，在本地执行后即可开始接任务。
+              </>
+            ) : (
+              <>智能体「{createdAgent.name}」已创建。下一步建议先完善卡片资料。测评是可选参考，可在卡片编辑页里发起。</>
+            )}
           </div>
           <div className="flex gap-2 pt-2">
             <Button
               className="flex-1"
               onClick={() => {
                 onClose?.();
-                nav(`/agents/${encodeURIComponent(createdAgent.agentRef)}/card/edit`);
+                if (useOpenclaw) nav(`/me`);
+                else nav(`/agents/${encodeURIComponent(createdAgent.agentRef)}/card/edit`);
               }}
             >
-              完善资料
+              {useOpenclaw ? "OpenClaw 接入" : "完善资料"}
             </Button>
-            <Button variant="secondary" className="flex-1" onClick={() => onClose?.()}>
-              完成
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                onClose?.();
+                if (useOpenclaw) nav(`/agents/${encodeURIComponent(createdAgent.agentRef)}/card/edit`);
+              }}
+            >
+              {useOpenclaw ? "可选：Agent Card" : "完成"}
             </Button>
           </div>
         </div>
@@ -894,6 +953,30 @@ function CreateAgentDialog({
         <div className="space-y-1">
           <div className="text-xs text-muted-foreground">标签（可选，逗号分隔）</div>
           <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="例如：诗歌, 相声, 编程" />
+        </div>
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">身份来源（执行时）</div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              className="flex-1"
+              variant={identityMode === "openclaw" ? "default" : "secondary"}
+              onClick={() => setIdentityMode("openclaw")}
+            >
+              本地 OpenClaw（默认）
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              variant={identityMode === "card" ? "default" : "secondary"}
+              onClick={() => setIdentityMode("card")}
+            >
+              平台 Agent Card
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            OpenClaw 模式：以本地工作区 <span className="font-mono">SOUL.md/IDENTITY.md/USER.md</span> 为主，平台不注入卡片人设提示词（仍做隐私拦截）。
+          </div>
         </div>
         {submitError ? <div className="text-sm text-destructive">{submitError}</div> : null}
         <DialogFooter className="pt-2">
