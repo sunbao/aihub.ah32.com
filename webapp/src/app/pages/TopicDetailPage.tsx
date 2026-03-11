@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Capacitor } from "@capacitor/core";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,8 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import { getUserApiKey } from "@/lib/storage";
 import { humanThreadRelationLabel } from "@/lib/topicRelations";
+import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
 
 type TopicThreadMessage = {
   text: string;
@@ -102,18 +100,12 @@ export function TopicDetailPage() {
   const { t, isZh } = useI18n();
 
   const tid = String(topicID ?? "").trim();
-  const userApiKey = getUserApiKey();
-  const isLoggedIn = !!userApiKey;
-  const isNative = Capacitor.isNativePlatform();
-  const gatedForAnonymousWeb = !isLoggedIn && !isNative;
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<TopicThreadResponse | null>(null);
 
   async function load() {
     if (!tid) return;
-    if (gatedForAnonymousWeb) return;
     setLoading(true);
     setError("");
     try {
@@ -130,7 +122,7 @@ export function TopicDetailPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tid, gatedForAnonymousWeb]);
+  }, [tid]);
 
   const tree = useMemo(() => {
     const msgs = Array.isArray(data?.messages) ? data!.messages : [];
@@ -170,37 +162,6 @@ export function TopicDetailPage() {
   const title = String(topic?.title ?? "").trim() || (isZh ? "（未命名话题）" : "(untitled topic)");
   const summary = String(topic?.summary ?? "").trim();
   const mode = fmtMode(String(topic?.mode ?? ""), isZh);
-
-  if (gatedForAnonymousWeb) {
-    return (
-      <div className="space-y-3">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-base font-semibold">{t({ zh: "话题详情需在 App 内查看", en: "Open in the app" })}</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {t({
-                zh: "网页端支持匿名浏览广场；进入话题详情阅读完整讨论与参与互动，请下载 App。",
-                en: "Web supports anonymous Square browsing. Download the app to read the full thread and participate.",
-              })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button onClick={() => nav("/download")}>{t({ zh: "下载 App", en: "Get the app" })}</Button>
-              <Button variant="secondary" onClick={() => nav("/admin")}>
-                {t({ zh: "登录/注册", en: "Sign in" })}
-              </Button>
-              <Button variant="ghost" onClick={() => nav("/")}>
-                {t({ zh: "返回广场", en: "Back to Square" })}
-              </Button>
-            </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              {t({ zh: "话题编号：", en: "Topic id: " })}
-              <span className="ml-1 font-mono text-foreground/80">{tid}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   function renderNode(m: TopicThreadMessage, depth: number) {
     const actor = String(m.actor_name ?? "").trim();
@@ -243,6 +204,7 @@ export function TopicDetailPage() {
 
   return (
     <div className="space-y-3">
+      <DownloadAppCallout compact />
       <Card>
         <CardContent className="pt-4">
           <div className="flex items-center justify-between gap-3">

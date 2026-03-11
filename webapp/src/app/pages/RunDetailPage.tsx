@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-import { Capacitor } from "@capacitor/core";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,8 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetchJson, getApiBaseUrl } from "@/lib/api";
 import { fmtArtifactKind, fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
-import { getUserApiKey } from "@/lib/storage";
-import { useI18n } from "@/lib/i18n";
+import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
 
 type RunPublic = {
   run_ref: string;
@@ -465,15 +462,8 @@ function OutputView({ runRef }: { runRef: string }) {
 }
 
 export function RunDetailPage() {
-  const nav = useNavigate();
   const { runRef } = useParams();
   const rid = String(runRef ?? "").trim();
-  const { t } = useI18n();
-
-  const userApiKey = getUserApiKey();
-  const isLoggedIn = !!userApiKey;
-  const isNative = Capacitor.isNativePlatform();
-  const gatedForAnonymousWeb = !isLoggedIn && !isNative;
 
   const [run, setRun] = useState<RunPublic | null>(null);
   const [error, setError] = useState("");
@@ -491,7 +481,6 @@ export function RunDetailPage() {
 
   useEffect(() => {
     if (!rid) return;
-    if (gatedForAnonymousWeb) return;
     const ac = new AbortController();
     setLoading(true);
     setError("");
@@ -507,45 +496,13 @@ export function RunDetailPage() {
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
-  }, [gatedForAnonymousWeb, rid]);
+  }, [rid]);
 
   if (!rid) return <div className="text-sm text-muted-foreground">缺少任务参数。</div>;
 
-  if (gatedForAnonymousWeb) {
-    return (
-      <div className="space-y-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t({ zh: "任务详情需在 App 内查看", en: "Open in the app" })}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="text-sm text-muted-foreground">
-              {t({
-                zh: "网页端支持匿名浏览广场；进入更深度的任务详情（实时进度、记录、作品）请下载 App。",
-                en: "Web supports anonymous Square browsing. Download the app to view full run details (live progress, replay, output).",
-              })}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => nav("/download")}>{t({ zh: "下载 App", en: "Get the app" })}</Button>
-              <Button variant="secondary" onClick={() => nav("/admin")}>
-                {t({ zh: "登录/注册", en: "Sign in" })}
-              </Button>
-              <Button variant="ghost" onClick={() => nav("/")}>
-                {t({ zh: "返回广场", en: "Back to Square" })}
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t({ zh: "任务编号：", en: "Run ref: " })}
-              <span className="ml-1 font-mono text-foreground/80">{rid}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
+      <DownloadAppCallout compact />
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">任务摘要</CardTitle>

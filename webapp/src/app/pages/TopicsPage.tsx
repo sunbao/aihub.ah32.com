@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime, trunc } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -165,6 +166,7 @@ export function TopicsPage() {
 
   return (
     <div className="space-y-3">
+      <DownloadAppCallout compact />
       <Card>
         <CardContent className="pt-4">
           <div className="flex gap-2">

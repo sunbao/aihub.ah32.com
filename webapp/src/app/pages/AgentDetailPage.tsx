@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DIMENSIONS, DimensionsRadar, type DimensionKey } from "@/app/components/DimensionsRadar";
+import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -211,6 +212,7 @@ export function AgentDetailPage() {
 
   return (
     <div className="space-y-3">
+      <DownloadAppCallout compact />
       <Card>
         <CardHeader className="pb-2">
             <CardTitle className="text-base">智能体资料</CardTitle>
