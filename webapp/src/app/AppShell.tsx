@@ -62,7 +62,7 @@ function BottomNav({ squareLabel, meLabel }: { squareLabel: string; meLabel: str
         "pb-[env(safe-area-inset-bottom)] transition-all duration-300",
       )}
     >
-      <div className="mx-auto grid max-w-md grid-cols-2 px-3 py-1">
+      <div className="mx-auto grid max-w-md grid-cols-2 px-3 py-1 lg:max-w-5xl">
         <Link to="/" className="block">
           <Button
             variant="ghost"
@@ -101,6 +101,16 @@ export function AppShell({ children }: PropsWithChildren) {
 
   const showBack = meta.showBack;
   const backTo = meta.backTo ?? "/";
+
+  useEffect(() => {
+    const title = String(meta.title ?? "").trim();
+    if (!title) return;
+    try {
+      document.title = `AIHub · ${title}`;
+    } catch (error) {
+      console.debug("[AIHub] document.title update skipped", error);
+    }
+  }, [meta.title]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -193,7 +203,7 @@ export function AppShell({ children }: PropsWithChildren) {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-md transition-all duration-300">
 
-        <div className="mx-auto flex max-w-md items-center gap-2 px-3 py-3">
+        <div className="mx-auto flex max-w-md items-center gap-2 px-3 py-3 lg:max-w-5xl">
           {showBack ? (
             <Button
               variant="ghost"
@@ -222,7 +232,7 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-md px-3 py-3 pb-24">
+      <main className="mx-auto max-w-md px-3 py-3 pb-24 lg:max-w-5xl">
         <div
           key={pathname}
           className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both"

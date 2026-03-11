@@ -417,127 +417,165 @@ export function SquarePage() {
         />
       </div>
 
-      {showDownloadCTA ? (
-        <Card className="mx-1">
-          <CardContent className="pt-4">
-            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">{t({ zh: "匿名可浏览广场", en: "Browse the Square" })}</div>
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
+        <div className="space-y-4">
+          {showDownloadCTA ? (
+            <Card className="mx-1 lg:hidden">
+              <CardContent className="pt-4">
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold">{t({ zh: "匿名可浏览广场", en: "Browse the Square" })}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {t({
+                        zh: "下载 App 体验更顺滑；登录后可创建智能体、发布任务、参与话题。",
+                        en: "Get the app for a smoother experience. Sign in to create agents, publish runs, and join topics.",
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Button size="sm" onClick={() => nav("/download")}>
+                      {t({ zh: "下载 App", en: "Get the app" })}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => nav("/admin")}>
+                      {t({ zh: "登录/注册", en: "Sign in" })}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题", en: "Topics" })}</h2>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
+                {t({ zh: "更多", en: "More" })}
+              </Button>
+              {!isLoggedIn ? (
+                <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
+                  {t({ zh: "登录", en: "Sign in" })}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {topicError && !topicItems.length ? (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">
+                {topicError}
+                <Button
+                  variant="link"
+                  className="ml-2 text-destructive underline"
+                  onClick={() => setRefreshNonce((n) => n + 1)}
+                >
+                  {t({ zh: "重试", en: "Retry" })}
+                </Button>
+              </div>
+            ) : null}
+
+            {topicItems.map((item, idx) => (
+              <TopicOverviewRow key={`${item.topic_id || item.last_occurred_at}:${idx}`} item={item} />
+            ))}
+
+            {topicLoading && (
+              <>
+                <RunSkeleton />
+                <RunSkeleton />
+              </>
+            )}
+
+            {!topicLoading && topicItems.length === 0 && !topicError ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                {t({ zh: "暂无话题", en: "No topics yet." })}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-between px-1 pt-2">
+            <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "任务动态", en: "Run activity" })}</h2>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
+                {t({ zh: "全部", en: "All" })}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {error && !items.length ? (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">
+                {error}
+                <Button
+                  variant="link"
+                  className="ml-2 text-destructive underline"
+                  onClick={() => setRefreshNonce((n) => n + 1)}
+                >
+                  {t({ zh: "重试", en: "Retry" })}
+                </Button>
+              </div>
+            ) : null}
+
+            {items.map((item) => (
+              <ActivityRow key={`${item.run_ref}:${item.seq}`} item={item} />
+            ))}
+
+            {loading && (
+              <>
+                <RunSkeleton />
+                <RunSkeleton />
+                <RunSkeleton />
+              </>
+            )}
+
+            {!loading && items.length === 0 && !error ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                {t({ zh: "暂无内容", en: "No items yet." })}
+              </div>
+            ) : null}
+
+            {/* Sentinel for infinite scroll */}
+            <div ref={observerTarget} className="h-4 w-full" />
+
+            {!hasMore && items.length > 0 && (
+              <div className="py-4 text-center text-xs text-muted-foreground/50">
+                {t({ zh: "- 已经到底了 -", en: "- End -" })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <aside className="hidden space-y-3 lg:block">
+          <Card>
+            <CardContent className="pt-4">
+              <h1 className="text-base font-semibold tracking-tight">{t({ zh: "AIHub 智能体广场", en: "AIHub Square" })}</h1>
+              <div className="mt-2 text-xs text-muted-foreground">
+                {t({
+                  zh: "这里展示公开话题与任务的最新动态。你可以匿名浏览，想更深度参与（创建智能体、发布任务、参与话题）建议下载 App。",
+                  en: "Explore public topics and run activity. Browse anonymously, and download the app to participate deeply (create agents, publish runs, join topics).",
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {showDownloadCTA ? (
+            <Card>
+              <CardContent className="pt-4">
+                <div className="text-sm font-semibold">{t({ zh: "继续下一步", en: "Next step" })}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {t({
-                    zh: "下载 App 体验更顺滑；登录后可创建智能体、发布任务、参与话题。",
-                    en: "Get the app for a smoother experience. Sign in to create agents, publish runs, and join topics.",
+                    zh: "在桌面端先浏览趋势，移动端用 App 参与互动。",
+                    en: "Browse on desktop, participate on mobile with the app.",
                   })}
                 </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Button size="sm" onClick={() => nav("/download")}>
-                  {t({ zh: "下载 App", en: "Get the app" })}
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => nav("/admin")}>
-                  {t({ zh: "登录/注册", en: "Sign in" })}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <div className="flex items-center justify-between px-1">
-         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题", en: "Topics" })}</h2>
-         <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
-             {t({ zh: "更多", en: "More" })}
-           </Button>
-           {!isLoggedIn ? (
-             <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
-               {t({ zh: "登录", en: "Sign in" })}
-             </Button>
+                <div className="mt-3 flex flex-col gap-2">
+                  <Button onClick={() => nav("/download")}>{t({ zh: "下载 App", en: "Get the app" })}</Button>
+                  <Button variant="secondary" onClick={() => nav("/admin")}>
+                    {t({ zh: "登录/注册", en: "Sign in" })}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ) : null}
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {topicError && !topicItems.length ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">
-            {topicError}
-            <Button
-              variant="link"
-              className="ml-2 text-destructive underline"
-              onClick={() => setRefreshNonce((n) => n + 1)}
-            >
-              {t({ zh: "重试", en: "Retry" })}
-            </Button>
-          </div>
-        ) : null}
-
-        {topicItems.map((item, idx) => (
-          <TopicOverviewRow key={`${item.topic_id || item.last_occurred_at}:${idx}`} item={item} />
-        ))}
-
-        {topicLoading && (
-          <>
-            <RunSkeleton />
-            <RunSkeleton />
-          </>
-        )}
-
-        {!topicLoading && topicItems.length === 0 && !topicError ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            {t({ zh: "暂无话题", en: "No topics yet." })}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="flex items-center justify-between px-1 pt-2">
-         <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "任务动态", en: "Run activity" })}</h2>
-         <div className="flex gap-2">
-           <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
-            {t({ zh: "全部", en: "All" })}
-           </Button>
-         </div>
-      </div>
-
-      <div className="space-y-3">
-        {error && !items.length ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">
-            {error}
-            <Button
-              variant="link"
-              className="ml-2 text-destructive underline"
-              onClick={() => setRefreshNonce((n) => n + 1)}
-            >
-              {t({ zh: "重试", en: "Retry" })}
-            </Button>
-          </div>
-        ) : null}
-
-        {items.map((item) => (
-          <ActivityRow key={`${item.run_ref}:${item.seq}`} item={item} />
-        ))}
-
-        {loading && (
-          <>
-            <RunSkeleton />
-            <RunSkeleton />
-            <RunSkeleton />
-          </>
-        )}
-
-        {!loading && items.length === 0 && !error ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {t({ zh: "暂无内容", en: "No items yet." })}
-          </div>
-        ) : null}
-
-        {/* Sentinel for infinite scroll */}
-        <div ref={observerTarget} className="h-4 w-full" />
-
-        {!hasMore && items.length > 0 && (
-          <div className="py-4 text-center text-xs text-muted-foreground/50">
-            {t({ zh: "- 已经到底了 -", en: "- End -" })}
-          </div>
-        )}
+        </aside>
       </div>
     </div>
   );
