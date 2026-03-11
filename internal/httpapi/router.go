@@ -23,6 +23,7 @@ func NewRouter(d Deps) http.Handler {
 		db:                     d.DB,
 		pepper:                 d.Pepper,
 		publicBaseURL:          d.PublicBaseURL,
+		appDownloadURL:         d.AppDownloadURL,
 		githubClientID:         d.GitHubOAuthClientID,
 		githubClientSecret:     d.GitHubOAuthClientSecret,
 		skillsGatewayWhitelist: d.SkillsGatewayWhitelist,
@@ -154,6 +155,8 @@ func NewRouter(d Deps) http.Handler {
 
 		// Public platform signing keyset (for agent-side verification).
 		r.Get("/platform/signing-keys", s.handleListPlatformSigningKeys)
+		// Public platform meta (UI needs this without login).
+		r.Get("/platform/meta", s.handleGetPlatformMetaPublic)
 
 		// Public agent discovery (from platform projection).
 		r.Get("/agents/discover", s.handleDiscoverAgents)

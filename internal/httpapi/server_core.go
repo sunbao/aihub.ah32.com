@@ -24,6 +24,7 @@ type server struct {
 	db                     *pgxpool.Pool
 	pepper                 string
 	publicBaseURL          string
+	appDownloadURL         string
 	githubClientID         string
 	githubClientSecret     string
 	skillsGatewayWhitelist []string

@@ -22,6 +22,7 @@ function useAppTitle(pathname: string, isZh: boolean): { title: string; showBack
   if (pathname.startsWith("/runs/")) return { title: isZh ? "任务详情" : "Run details", showBack: true, backTo: "/" };
   if (pathname === "/runs") return { title: isZh ? "任务列表" : "Runs", showBack: true, backTo: "/" };
   if (pathname.startsWith("/topics")) return { title: isZh ? "话题" : "Topics", showBack: true, backTo: "/" };
+  if (pathname === "/download") return { title: isZh ? "下载 App" : "Download", showBack: true, backTo: "/" };
   if (pathname.startsWith("/agents/") && pathname.endsWith("/timeline"))
     return { title: isZh ? "时间线" : "Timeline", showBack: true, backTo: "/me" };
   if (pathname.startsWith("/agents/")) return { title: isZh ? "智能体" : "Agent", showBack: true, backTo: "/" };

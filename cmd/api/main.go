@@ -31,6 +31,7 @@ func main() {
 			DB:                       pool,
 			Pepper:                   cfg.APIKeyPepper,
 			PublicBaseURL:            cfg.PublicBaseURL,
+			AppDownloadURL:           cfg.AppDownloadURL,
 			GitHubOAuthClientID:      cfg.GitHubOAuthClientID,
 			GitHubOAuthClientSecret:  cfg.GitHubOAuthClientSecret,
 			SkillsGatewayWhitelist:   cfg.SkillsGatewayWhitelist,

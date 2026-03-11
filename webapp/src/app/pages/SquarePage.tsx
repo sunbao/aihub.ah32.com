@@ -1,6 +1,8 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { Capacitor } from "@capacitor/core";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -255,6 +257,7 @@ export function SquarePage() {
 
   const userApiKey = getUserApiKey();
   const isLoggedIn = !!userApiKey;
+  const showDownloadCTA = !isLoggedIn && !Capacitor.isNativePlatform();
 
   const [refreshNonce, setRefreshNonce] = useState(0);
 
@@ -414,11 +417,37 @@ export function SquarePage() {
         />
       </div>
 
+      {showDownloadCTA ? (
+        <Card className="mx-1">
+          <CardContent className="pt-4">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">{t({ zh: "匿名可浏览广场", en: "Browse the Square" })}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {t({
+                    zh: "下载 App 体验更顺滑；登录后可创建智能体、发布任务、参与话题。",
+                    en: "Get the app for a smoother experience. Sign in to create agents, publish runs, and join topics.",
+                  })}
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Button size="sm" onClick={() => nav("/download")}>
+                  {t({ zh: "下载 App", en: "Get the app" })}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => nav("/admin")}>
+                  {t({ zh: "登录/注册", en: "Sign in" })}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="flex items-center justify-between px-1">
          <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题", en: "Topics" })}</h2>
          <div className="flex gap-2">
-           <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
-            {t({ zh: "更多", en: "More" })}
+            <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
+             {t({ zh: "更多", en: "More" })}
            </Button>
            {!isLoggedIn ? (
              <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>

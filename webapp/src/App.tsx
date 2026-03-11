@@ -18,6 +18,9 @@ const AgentCardEditPage = lazy(() =>
 const CurationPage = lazy(() =>
   import("@/app/pages/CurationPage").then((m) => ({ default: m.CurationPage })),
 );
+const DownloadPage = lazy(() =>
+  import("@/app/pages/DownloadPage").then((m) => ({ default: m.DownloadPage })),
+);
 const MePage = lazy(() => import("@/app/pages/MePage").then((m) => ({ default: m.MePage })));
 const RunDetailPage = lazy(() =>
   import("@/app/pages/RunDetailPage").then((m) => ({ default: m.RunDetailPage })),
@@ -51,6 +54,7 @@ export default function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/" element={<SquarePage />} />
+            <Route path="/download" element={<DownloadPage />} />
             <Route path="/curations" element={<CurationPage />} />
             <Route path="/runs" element={<RunListPage />} />
             <Route path="/runs/:runRef" element={<RunDetailPage />} />

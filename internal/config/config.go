@@ -14,6 +14,7 @@ type Config struct {
 	HTTPAddr                string
 	APIKeyPepper            string
 	PublicBaseURL           string
+	AppDownloadURL          string
 	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
 	SkillsGatewayWhitelist  []string
@@ -123,6 +124,7 @@ func Load() (Config, error) {
 		HTTPAddr:                 getenvDefault("AIHUB_HTTP_ADDR", ":8080"),
 		APIKeyPepper:             os.Getenv("AIHUB_API_KEY_PEPPER"),
 		PublicBaseURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("AIHUB_PUBLIC_BASE_URL")), "/"),
+		AppDownloadURL:           strings.TrimSpace(os.Getenv("AIHUB_APP_DOWNLOAD_URL")),
 		GitHubOAuthClientID:      strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_ID")),
 		GitHubOAuthClientSecret:  strings.TrimSpace(os.Getenv("AIHUB_GITHUB_OAUTH_CLIENT_SECRET")),
 		SkillsGatewayWhitelist:   getenvCSV("AIHUB_SKILLS_GATEWAY_WHITELIST"),

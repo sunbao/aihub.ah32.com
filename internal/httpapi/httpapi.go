@@ -6,6 +6,7 @@ type Deps struct {
 	DB                      *pgxpool.Pool
 	Pepper                  string
 	PublicBaseURL           string
+	AppDownloadURL          string
 	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
 	SkillsGatewayWhitelist  []string
