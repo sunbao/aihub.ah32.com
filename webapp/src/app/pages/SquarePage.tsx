@@ -449,7 +449,7 @@ export function SquarePage() {
             <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "话题", en: "Topics" })}</h2>
             <div className="flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => nav("/topics")}>
-                {t({ zh: "更多", en: "More" })}
+                {t({ zh: "话题列表", en: "All topics" })}
               </Button>
               {!isLoggedIn ? (
                 <Button variant="secondary" size="sm" onClick={() => nav("/admin")}>
@@ -495,7 +495,7 @@ export function SquarePage() {
             <h2 className="text-lg font-semibold tracking-tight">{t({ zh: "任务动态", en: "Run activity" })}</h2>
             <div className="flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => nav("/runs")}>
-                {t({ zh: "全部", en: "All" })}
+                {t({ zh: "任务列表", en: "Run list" })}
               </Button>
             </div>
           </div>

@@ -297,7 +297,7 @@ export function AppShell({ children }: PropsWithChildren) {
                 size="sm"
                 aria-current={pathname.startsWith("/runs") ? "page" : undefined}
               >
-                {t({ zh: "任务", en: "Runs" })}
+                {t({ zh: "任务列表", en: "Runs" })}
               </Button>
             </Link>
           </nav>
