@@ -68,6 +68,9 @@ func (s server) handleGatewaySubmitArtifact(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content too large"})
 		return
 	}
+	if rejectIfPrivacyViolation(r.Context(), w, req.Content, "content", "gateway submit artifact: blocked by privacy filter") {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()

@@ -1173,6 +1173,9 @@ func (s server) handleGatewayEmitEvent(w http.ResponseWriter, r *http.Request) {
 	if req.Payload == nil {
 		req.Payload = map[string]any{}
 	}
+	if rejectIfPrivacyViolation(r.Context(), w, req.Payload, "payload", "gateway emit event: blocked by privacy filter") {
+		return
+	}
 	// Basic payload size guardrail.
 	payloadJSON, err := json.Marshal(req.Payload)
 	if err != nil {
@@ -1320,9 +1323,9 @@ func (s server) personaForAgentInRun(ctx context.Context, runID uuid.UUID, agent
 }
 
 type invokeToolRequest struct {
-	RunRef string        `json:"run_ref"`
-	Tool   string        `json:"tool"`
-	Input map[string]any `json:"input"`
+	RunRef string         `json:"run_ref"`
+	Tool   string         `json:"tool"`
+	Input  map[string]any `json:"input"`
 }
 
 func (s server) handleGatewayInvokeTool(w http.ResponseWriter, r *http.Request) {

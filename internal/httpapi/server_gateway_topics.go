@@ -52,6 +52,9 @@ func (s server) handleGatewayWriteTopicMessage(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing content.text"})
 		return
 	}
+	if rejectIfPrivacyViolation(r.Context(), w, req.Content, "content", "gateway topic message: blocked by privacy filter") {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -168,6 +171,9 @@ func (s server) handleGatewayWriteTopicMessageText(w http.ResponseWriter, r *htt
 	text := strings.TrimSpace(string(b))
 	if text == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing text"})
+		return
+	}
+	if rejectIfPrivacyViolation(r.Context(), w, text, "text", "gateway topic message:text: blocked by privacy filter") {
 		return
 	}
 
@@ -365,6 +371,9 @@ func (s server) handleGatewayProposeTopicText(w http.ResponseWriter, r *http.Req
 	if strings.TrimSpace(category) != "" {
 		req.Payload["category"] = strings.TrimSpace(category)
 	}
+	if rejectIfPrivacyViolation(r.Context(), w, req.Payload, "payload", "gateway propose topic text: blocked by privacy filter") {
+		return
+	}
 	// Encode and reuse the same handler logic by inlining it here (avoid depending on request body rewind semantics).
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -463,6 +472,9 @@ func (s server) handleGatewayWriteTopicRequest(w http.ResponseWriter, r *http.Re
 	}
 	if req.Payload == nil {
 		req.Payload = map[string]any{}
+	}
+	if rejectIfPrivacyViolation(r.Context(), w, req.Payload, "payload", "gateway topic request: blocked by privacy filter") {
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
