@@ -60,6 +60,7 @@ function BottomNav({ squareLabel, meLabel }: { squareLabel: string; meLabel: str
     <nav
       className={cn(
         "fixed bottom-0 left-0 right-0 z-30 border-t border-border/40 bg-background/80 backdrop-blur-md",
+        "lg:hidden",
         "pb-[env(safe-area-inset-bottom)] transition-all duration-300",
       )}
     >
@@ -100,6 +101,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const meta = getAppTitleMeta(pathname, isZh);
   const lastExchangeToken = useRef("");
   const showDownloadNudge = shouldShowDownloadNudge();
+  const isLoggedIn = Boolean(String(getUserApiKey() ?? "").trim());
 
   const showBack = meta.showBack;
   const backTo = meta.backTo ?? "/";
@@ -204,8 +206,8 @@ export function AppShell({ children }: PropsWithChildren) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-md transition-all duration-300">
-
-        <div className="mx-auto flex max-w-md items-center gap-2 px-3 py-3 lg:max-w-5xl">
+        {/* Mobile header: app-like */}
+        <div className="mx-auto flex max-w-md items-center gap-2 px-3 py-3 lg:hidden">
           {showBack ? (
             <Button
               variant="ghost"
@@ -248,9 +250,83 @@ export function AppShell({ children }: PropsWithChildren) {
             </Button>
           )}
         </div>
+
+        {/* Desktop header: website-like */}
+        <div className="mx-auto hidden w-full max-w-7xl items-center gap-4 px-6 py-3 lg:flex">
+          <div className="flex items-center gap-2">
+            {showBack ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (window.history.length > 1) nav(-1);
+                  else nav(backTo, { replace: true });
+                }}
+                aria-label={t({ zh: "返回", en: "Back" })}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            ) : null}
+            <Link to="/" className="flex items-center gap-2">
+              <div className="text-base font-semibold tracking-tight">AIHub</div>
+            </Link>
+          </div>
+
+          <nav className="flex items-center gap-1 text-sm">
+            <Link to="/">
+              <Button
+                variant={pathname === "/" ? "secondary" : "ghost"}
+                size="sm"
+                aria-current={pathname === "/" ? "page" : undefined}
+              >
+                {t({ zh: "广场", en: "Square" })}
+              </Button>
+            </Link>
+            <Link to="/topics">
+              <Button
+                variant={pathname.startsWith("/topics") ? "secondary" : "ghost"}
+                size="sm"
+                aria-current={pathname.startsWith("/topics") ? "page" : undefined}
+              >
+                {t({ zh: "话题", en: "Topics" })}
+              </Button>
+            </Link>
+            <Link to="/runs">
+              <Button
+                variant={pathname.startsWith("/runs") ? "secondary" : "ghost"}
+                size="sm"
+                aria-current={pathname.startsWith("/runs") ? "page" : undefined}
+              >
+                {t({ zh: "任务", en: "Runs" })}
+              </Button>
+            </Link>
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            {showDownloadNudge ? (
+              <Button variant="default" size="sm" onClick={() => nav("/download")}>
+                <Download className="h-4 w-4" />
+                <span>{t({ zh: "下载 App", en: "Get the app" })}</span>
+              </Button>
+            ) : null}
+            <Link to={isLoggedIn ? "/me" : "/admin"}>
+              <Button variant="secondary" size="sm">
+                {isLoggedIn ? t({ zh: "我的", en: "Me" }) : t({ zh: "登录", en: "Sign in" })}
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
+              aria-label={t({ zh: "切换主题", en: "Toggle theme" })}
+            >
+              {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
       </header>
 
-      <main className="mx-auto max-w-md px-3 py-3 pb-24 lg:max-w-5xl">
+      <main className="mx-auto max-w-md px-3 py-3 pb-24 lg:max-w-7xl lg:px-6 lg:pb-6">
         <div
           key={pathname}
           className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both"
