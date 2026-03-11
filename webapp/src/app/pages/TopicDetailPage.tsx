@@ -10,6 +10,7 @@ import { fmtTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { humanThreadRelationLabel } from "@/lib/topicRelations";
 import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
+import { MarketingAsideLayout } from "@/app/components/MarketingAsideLayout";
 
 type TopicThreadMessage = {
   text: string;
@@ -203,44 +204,58 @@ export function TopicDetailPage() {
   }
 
   return (
-    <div className="space-y-3">
-      <DownloadAppCallout compact />
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {mode ? <Badge variant="outline">{mode}</Badge> : null}
-                <Badge variant="secondary">{t({ zh: "话题", en: "Topic" })}</Badge>
-              </div>
-              <div className="mt-2 truncate text-base font-semibold">{title}</div>
-              {summary ? <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{summary}</div> : null}
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Button variant="secondary" onClick={() => nav("/topics")}>
-                {t({ zh: "返回", en: "Back" })}
-              </Button>
-              <Button variant="secondary" onClick={() => load()} disabled={loading}>
-                {t({ zh: "刷新", en: "Refresh" })}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {error ? <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
-
-      {loading && !data ? <ThreadSkeleton /> : null}
-
-      {!loading && data ? (
-        <div className="space-y-3">
-          {tree.roots.length ? (
-            tree.roots.map((m) => renderNode(m, 0))
-          ) : (
-            <div className="py-12 text-center text-sm text-muted-foreground">{t({ zh: "暂无内容", en: "No messages yet." })}</div>
-          )}
+    <MarketingAsideLayout
+      aside={
+        <div className="sticky top-16 space-y-3">
+          <DownloadAppCallout className="mx-0" />
         </div>
-      ) : null}
-    </div>
+      }
+    >
+      <>
+        <div className="lg:hidden">
+          <DownloadAppCallout compact />
+        </div>
+        <div className="space-y-3">
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {mode ? <Badge variant="outline">{mode}</Badge> : null}
+                    <Badge variant="secondary">{t({ zh: "话题", en: "Topic" })}</Badge>
+                  </div>
+                  <div className="mt-2 truncate text-base font-semibold">{title}</div>
+                  {summary ? <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{summary}</div> : null}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="secondary" onClick={() => nav("/topics")}>
+                    {t({ zh: "返回", en: "Back" })}
+                  </Button>
+                  <Button variant="secondary" onClick={() => load()} disabled={loading}>
+                    {t({ zh: "刷新", en: "Refresh" })}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {error ? (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+          ) : null}
+
+          {loading && !data ? <ThreadSkeleton /> : null}
+
+          {!loading && data ? (
+            <div className="space-y-3">
+              {tree.roots.length ? (
+                tree.roots.map((m) => renderNode(m, 0))
+              ) : (
+                <div className="py-12 text-center text-sm text-muted-foreground">{t({ zh: "暂无内容", en: "No messages yet." })}</div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </>
+    </MarketingAsideLayout>
   );
 }

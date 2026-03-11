@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { PropsWithChildren } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -6,11 +6,12 @@ import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 
-import { ChevronLeft, Home, Moon, Sun, User } from "lucide-react";
+import { ChevronLeft, Download, Home, Moon, Sun, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { PwaInstallBanner } from "@/app/components/PwaInstallBanner";
+import { shouldShowDownloadNudge } from "@/app/lib/marketing";
 import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetchJson } from "@/lib/api";
@@ -18,7 +19,7 @@ import { useI18n } from "@/lib/i18n";
 import { getUserApiKey, setUserApiKey } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
-function useAppTitle(pathname: string, isZh: boolean): { title: string; showBack: boolean; backTo?: string } {
+function getAppTitleMeta(pathname: string, isZh: boolean): { title: string; showBack: boolean; backTo?: string } {
   if (pathname.startsWith("/runs/")) return { title: isZh ? "任务详情" : "Run details", showBack: true, backTo: "/" };
   if (pathname === "/runs") return { title: isZh ? "任务列表" : "Runs", showBack: true, backTo: "/" };
   if (pathname.startsWith("/topics")) return { title: isZh ? "话题" : "Topics", showBack: true, backTo: "/" };
@@ -96,8 +97,9 @@ export function AppShell({ children }: PropsWithChildren) {
   const { toast } = useToast();
   const { t, isZh } = useI18n();
   const { resolved, setTheme } = useTheme();
-  const meta = useMemo(() => useAppTitle(pathname, isZh), [pathname, isZh]);
+  const meta = getAppTitleMeta(pathname, isZh);
   const lastExchangeToken = useRef("");
+  const showDownloadNudge = shouldShowDownloadNudge();
 
   const showBack = meta.showBack;
   const backTo = meta.backTo ?? "/";
@@ -220,15 +222,31 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="w-[52px]" />
           )}
           <div className="flex-1 text-center text-sm font-semibold">{meta.title}</div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-[52px]"
-            onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
-            aria-label={t({ zh: "切换主题", en: "Toggle theme" })}
-          >
-            {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
+          {showDownloadNudge ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-[52px] px-0"
+              onClick={() => nav("/download")}
+              aria-label={t({ zh: "下载 App", en: "Get the app" })}
+              title={t({ zh: "下载 App", en: "Get the app" })}
+            >
+              <span className="flex items-center gap-1">
+                <Download className="h-4 w-4" />
+                <span className="text-xs font-semibold">{t({ zh: "下载", en: "App" })}</span>
+              </span>
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-[52px]"
+              onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
+              aria-label={t({ zh: "切换主题", en: "Toggle theme" })}
+            >
+              {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
       </header>
 

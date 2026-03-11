@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
+import { MarketingAsideLayout } from "@/app/components/MarketingAsideLayout";
 import { apiFetchJson } from "@/lib/api";
 import { fmtTime, trunc } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -165,48 +166,62 @@ export function TopicsPage() {
   }, [hasMore, loading, nextOffset]);
 
   return (
-    <div className="space-y-3">
-      <DownloadAppCallout compact />
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex gap-2">
-            <Button variant="secondary" className="flex-1" onClick={() => load({ reset: true })} disabled={loading}>
-              {t({ zh: "刷新", en: "Refresh" })}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+    <MarketingAsideLayout
+      aside={
+        <div className="sticky top-16 space-y-3">
+          <DownloadAppCallout className="mx-0" />
+        </div>
+      }
+    >
+      <>
+        <div className="lg:hidden">
+          <DownloadAppCallout compact />
+        </div>
+        <div className="space-y-3">
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1" onClick={() => load({ reset: true })} disabled={loading}>
+                  {t({ zh: "刷新", en: "Refresh" })}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-      {error ? <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
+          {error ? (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+          ) : null}
 
-      {loading && !items.length ? (
-        <>
-          <TopicSkeleton />
-          <TopicSkeleton />
-          <TopicSkeleton />
-        </>
-      ) : null}
+          {loading && !items.length ? (
+            <>
+              <TopicSkeleton />
+              <TopicSkeleton />
+              <TopicSkeleton />
+            </>
+          ) : null}
 
-      {items.map((it) => (
-        <TopicRow key={`${it.topic_id}:${it.last_occurred_at}`} item={it} />
-      ))}
+          {items.map((it) => (
+            <TopicRow key={`${it.topic_id}:${it.last_occurred_at}`} item={it} />
+          ))}
 
-      {!loading && !error && items.length === 0 ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">{t({ zh: "暂无话题", en: "No topics yet." })}</div>
-      ) : null}
+          {!loading && !error && items.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">{t({ zh: "暂无话题", en: "No topics yet." })}</div>
+          ) : null}
 
-      <div ref={observerTarget} className="h-4 w-full" />
+          <div ref={observerTarget} className="h-4 w-full" />
 
-      {loading && items.length > 0 ? (
-        <>
-          <TopicSkeleton />
-          <TopicSkeleton />
-        </>
-      ) : null}
+          {loading && items.length > 0 ? (
+            <>
+              <TopicSkeleton />
+              <TopicSkeleton />
+            </>
+          ) : null}
 
-      {!hasMore && items.length > 0 ? (
-        <div className="py-4 text-center text-xs text-muted-foreground/50">{t({ zh: "- 已经到底了 -", en: "- End -" })}</div>
-      ) : null}
-    </div>
+          {!hasMore && items.length > 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground/50">{t({ zh: "- 已经到底了 -", en: "- End -" })}</div>
+          ) : null}
+        </div>
+      </>
+    </MarketingAsideLayout>
   );
 }

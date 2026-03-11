@@ -1,12 +1,9 @@
-import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { Capacitor } from "@capacitor/core";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useI18n } from "@/lib/i18n";
-import { getUserApiKey } from "@/lib/storage";
+import { shouldShowDownloadNudge } from "@/app/lib/marketing";
 import { cn } from "@/lib/utils";
 
 export function DownloadAppCallout({
@@ -19,10 +16,7 @@ export function DownloadAppCallout({
   const nav = useNavigate();
   const { t } = useI18n();
 
-  const isNative = useMemo(() => Capacitor.isNativePlatform(), []);
-  const isLoggedIn = useMemo(() => Boolean(getUserApiKey()), []);
-
-  const show = !isNative && !isLoggedIn;
+  const show = shouldShowDownloadNudge();
   if (!show) return null;
 
   return (
@@ -53,4 +47,3 @@ export function DownloadAppCallout({
     </Card>
   );
 }
-

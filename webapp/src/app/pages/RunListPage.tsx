@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
+import { MarketingAsideLayout } from "@/app/components/MarketingAsideLayout";
 import { apiFetchJson } from "@/lib/api";
 import { fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 
@@ -153,90 +154,106 @@ export function RunListPage() {
   }, [hasMore, loading, nextOffset]);
 
   return (
-    <div className="space-y-3">
-      <DownloadAppCallout compact />
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-2">
-            <Input
-              data-testid="run-search-input"
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              placeholder="搜索任务…"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const next = new URLSearchParams(sp);
-                  if (qInput.trim()) next.set("q", qInput.trim());
-                  else next.delete("q");
-                  setSp(next, { replace: true });
-                }
-              }}
-            />
-            <Button
-              data-testid="run-search-button"
-              onClick={() => {
-                const next = new URLSearchParams(sp);
-                if (qInput.trim()) next.set("q", qInput.trim());
-                else next.delete("q");
-                setSp(next, { replace: true });
-              }}
-            >
-              搜索
-            </Button>
-          </div>
-          <div className="mt-3 flex gap-2">
-            {(["all", "running", "done"] as const).map((s) => (
-              <Button
-                key={s}
-                data-testid={`run-filter-${s}`}
-                variant={status === s ? "default" : "secondary"}
-                size="sm"
-                onClick={() => {
-                  const next = new URLSearchParams(sp);
-                  next.set("status", s);
-                  setSp(next, { replace: true });
-                }}
-              >
-                {s === "all" ? "全部" : s === "running" ? "进行中" : "已完成"}
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+    <MarketingAsideLayout
+      aside={
+        <div className="sticky top-16 space-y-3">
+          <DownloadAppCallout className="mx-0" />
+        </div>
+      }
+    >
+      <>
+        <div className="lg:hidden">
+          <DownloadAppCallout compact />
+        </div>
+        <div className="space-y-3">
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  data-testid="run-search-input"
+                  value={qInput}
+                  onChange={(e) => setQInput(e.target.value)}
+                  placeholder="搜索任务…"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const next = new URLSearchParams(sp);
+                      if (qInput.trim()) next.set("q", qInput.trim());
+                      else next.delete("q");
+                      setSp(next, { replace: true });
+                    }
+                  }}
+                />
+                <Button
+                  data-testid="run-search-button"
+                  onClick={() => {
+                    const next = new URLSearchParams(sp);
+                    if (qInput.trim()) next.set("q", qInput.trim());
+                    else next.delete("q");
+                    setSp(next, { replace: true });
+                  }}
+                >
+                  搜索
+                </Button>
+              </div>
+              <div className="mt-3 flex gap-2">
+                {(["all", "running", "done"] as const).map((s) => (
+                  <Button
+                    key={s}
+                    data-testid={`run-filter-${s}`}
+                    variant={status === s ? "default" : "secondary"}
+                    size="sm"
+                    onClick={() => {
+                      const next = new URLSearchParams(sp);
+                      next.set("status", s);
+                      setSp(next, { replace: true });
+                    }}
+                  >
+                    {s === "all" ? "全部" : s === "running" ? "进行中" : "已完成"}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-      {error ? <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
+          {error ? (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+          ) : null}
 
-      {/* Initial skeleton */}
-      {loading && !items.length && (
-        <>
-          <RunSkeleton />
-          <RunSkeleton />
-          <RunSkeleton />
-        </>
-      )}
+          {/* Initial skeleton */}
+          {loading && !items.length && (
+            <>
+              <RunSkeleton />
+              <RunSkeleton />
+              <RunSkeleton />
+            </>
+          )}
 
-      {filtered.map((r) => (
-        <RunRow key={r.run_ref} run={r} />
-      ))}
+          {filtered.map((r) => (
+            <RunRow key={r.run_ref} run={r} />
+          ))}
 
-      {!loading && !error && !filtered.length ? (
-        <div data-testid="run-empty-state" className="py-12 text-center text-sm text-muted-foreground">暂无任务。</div>
-      ) : null}
+          {!loading && !error && !filtered.length ? (
+            <div data-testid="run-empty-state" className="py-12 text-center text-sm text-muted-foreground">
+              暂无任务。
+            </div>
+          ) : null}
 
-      {/* Sentinel */}
-      <div ref={observerTarget} className="h-4 w-full" />
+          {/* Sentinel */}
+          <div ref={observerTarget} className="h-4 w-full" />
 
-      {/* Bottom loading skeletons */}
-      {loading && items.length > 0 && (
-        <>
-          <RunSkeleton />
-          <RunSkeleton />
-        </>
-      )}
+          {/* Bottom loading skeletons */}
+          {loading && items.length > 0 && (
+            <>
+              <RunSkeleton />
+              <RunSkeleton />
+            </>
+          )}
 
-      {!hasMore && filtered.length > 0 && (
-        <div className="py-4 text-center text-xs text-muted-foreground/50">- 已经到底了 -</div>
-      )}
-    </div>
+          {!hasMore && filtered.length > 0 && (
+            <div className="py-4 text-center text-xs text-muted-foreground/50">- 已经到底了 -</div>
+          )}
+        </div>
+      </>
+    </MarketingAsideLayout>
   );
 }

@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetchJson, getApiBaseUrl } from "@/lib/api";
 import { fmtArtifactKind, fmtEventKind, fmtRunStatus, fmtTime, trunc } from "@/lib/format";
 import { DownloadAppCallout } from "@/app/components/DownloadAppCallout";
+import { MarketingAsideLayout } from "@/app/components/MarketingAsideLayout";
 
 type RunPublic = {
   run_ref: string;
@@ -501,54 +502,66 @@ export function RunDetailPage() {
   if (!rid) return <div className="text-sm text-muted-foreground">缺少任务参数。</div>;
 
   return (
-    <div className="space-y-3">
-      <DownloadAppCallout compact />
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">任务摘要</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {loading && !run ? (
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-1/3" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : null}
-          {error ? <div className="text-sm text-destructive">{error}</div> : null}
-          {run ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="secondary">{fmtRunStatus(run.status)}</Badge>
-                <span>{fmtTime(run.created_at)}</span>
-              </div>
-              <div className="text-sm font-medium">{trunc(run.goal, 200) || "（无标题）"}</div>
-              {run.constraints ? (
-                <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  {trunc(run.constraints, 260)}
+    <MarketingAsideLayout
+      aside={
+        <div className="sticky top-16 space-y-3">
+          <DownloadAppCallout className="mx-0" />
+        </div>
+      }
+    >
+      <>
+        <div className="lg:hidden">
+          <DownloadAppCallout compact />
+        </div>
+        <div className="space-y-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">任务摘要</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {loading && !run ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-1/3" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
                 </div>
               ) : null}
-            </>
-          ) : null}
-        </CardContent>
-      </Card>
+              {error ? <div className="text-sm text-destructive">{error}</div> : null}
+              {run ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary">{fmtRunStatus(run.status)}</Badge>
+                    <span>{fmtTime(run.created_at)}</span>
+                  </div>
+                  <div className="text-sm font-medium">{trunc(run.goal, 200) || "（无标题）"}</div>
+                  {run.constraints ? (
+                    <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      {trunc(run.constraints, 260)}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </CardContent>
+          </Card>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="progress">进度</TabsTrigger>
-          <TabsTrigger value="replay">记录</TabsTrigger>
-          <TabsTrigger value="output">作品</TabsTrigger>
-        </TabsList>
-        <TabsContent value="progress" className="mt-3">
-          <ProgressView runRef={rid} />
-        </TabsContent>
-        <TabsContent value="replay" className="mt-3">
-          <ReplayView runRef={rid} />
-        </TabsContent>
-        <TabsContent value="output" className="mt-3">
-          <OutputView runRef={rid} />
-        </TabsContent>
-      </Tabs>
-    </div>
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="progress">进度</TabsTrigger>
+              <TabsTrigger value="replay">记录</TabsTrigger>
+              <TabsTrigger value="output">作品</TabsTrigger>
+            </TabsList>
+            <TabsContent value="progress" className="mt-3">
+              <ProgressView runRef={rid} />
+            </TabsContent>
+            <TabsContent value="replay" className="mt-3">
+              <ReplayView runRef={rid} />
+            </TabsContent>
+            <TabsContent value="output" className="mt-3">
+              <OutputView runRef={rid} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </>
+    </MarketingAsideLayout>
   );
 }

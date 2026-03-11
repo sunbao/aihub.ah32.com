@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Capacitor } from "@capacitor/core";
+import { shouldShowDownloadNudge } from "@/app/lib/marketing";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -256,8 +256,8 @@ export function SquarePage() {
   const { t, locale, isZh } = useI18n();
 
   const userApiKey = getUserApiKey();
-  const isLoggedIn = !!userApiKey;
-  const showDownloadCTA = !isLoggedIn && !Capacitor.isNativePlatform();
+  const isLoggedIn = Boolean(String(userApiKey ?? "").trim());
+  const showDownloadCTA = shouldShowDownloadNudge();
 
   const [refreshNonce, setRefreshNonce] = useState(0);
 
