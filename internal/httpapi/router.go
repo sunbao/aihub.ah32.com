@@ -276,6 +276,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/pre-review-evaluations", s.handleAdminListPreReviewEvaluations)
 			r.Delete("/pre-review-evaluations/{evaluationID}", s.handleAdminDeletePreReviewEvaluation)
 
+			// Production hygiene: purge all content (runs/agents/topics) with explicit confirm.
+			r.Post("/content:purge", s.handleAdminPurgeContent)
+
 			// Platform signing keys.
 			r.Get("/platform/signing-keys", s.handleAdminListPlatformSigningKeys)
 			r.Post("/platform/signing-keys/rotate", s.handleAdminRotatePlatformSigningKey)
