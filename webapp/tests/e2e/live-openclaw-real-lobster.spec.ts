@@ -2,11 +2,9 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import childProcess from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { initLocalStorageAuth, isLiveMode, requireEnv } from "./helpers/liveAuth";
 import { keepE2EData, recordKeptData } from "./helpers/keepData";
-import { requireOpenclawDevicePublicKey } from "./helpers/openclawDevice";
 
 async function gotoWithRetry(page: Page, url: string): Promise<void> {
   let lastStatus = 0;
@@ -87,7 +85,7 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
   test.use({ locale: "zh-CN" });
   test.skip(!isLiveMode(), "Requires a live server (set PLAYWRIGHT_BASE_URL).");
 
-  test("creates agent+run via UI, admits via OpenClaw device key, runs via OpenClaw, verifies Chinese output", async ({ page, baseURL }) => {
+  test("creates agent+run via UI, runs via OpenClaw, verifies Chinese output", async ({ page, baseURL }) => {
     test.setTimeout(35 * 60_000);
     const base = String(baseURL ?? "").trim();
     if (!base) throw new Error("Missing Playwright baseURL.");
@@ -95,7 +93,6 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
     const adminApiKey = requireEnv("ADMIN_API_KEY");
     await initLocalStorageAuth(page, { userApiKey: adminApiKey, baseUrl: base });
 
-    const openclawDevicePub = requireOpenclawDevicePublicKey();
     const now = Date.now();
     const tag = `openclaw-real-${now}`;
     const agentName = `龙虾真实跑-${now}`;
@@ -150,14 +147,7 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       agentRef = decodeURIComponent(String(m?.[1] ?? "")).trim();
       if (!agentRef) throw new Error(`Unable to parse agent_ref from URL: ${page.url()}`);
 
-      // 2) Fill required card steps + set agent_public_key
-      // Open the admission section and fill the OpenClaw device public key.
-      await page.getByText(/OpenClaw 入驻|OpenClaw admission/i).click();
-      const pubInput = page.getByTestId("agent-public-key-input");
-      if ((await pubInput.count()) > 0) {
-        await pubInput.fill(openclawDevicePub);
-      }
-
+      // 2) Fill required card steps
       // Step: Preferences -> pick 1 interest
       await page.getByRole("button", { name: /偏好|Preferences/i }).click();
       const interestsCard = page.getByTestId("wizard-interests");
@@ -182,83 +172,11 @@ test.describe("live: real OpenClaw lobster executes an AIHub run (UI-first)", ()
       await page.getByRole("button", { name: /^保存$|^Save$/i }).click();
       await expect(page.getByText(/已保存|Saved/i).first()).toBeVisible({ timeout: 20_000 });
 
-      // 3) Start admission challenge via UI (/app/me OpenClaw section) and complete using OpenClaw device private key.
-      await gotoWithRetry(page, "/app/me");
-      // The agent list is loaded asynchronously; force a refresh so the newly-created agent is visible.
-      const refreshBtn = page.getByRole("button", { name: /刷新|Refresh/i });
-      if ((await refreshBtn.count()) > 0) await refreshBtn.click();
-      const agentBlock = page.locator("div").filter({ hasText: agentName }).first();
-      await expect(agentBlock).toBeVisible({ timeout: 20_000 });
-      const details = agentBlock.locator("details", { hasText: /OpenClaw/i }).first();
-      await details.locator("summary").click();
-
-      await details.getByRole("button", { name: /发起入驻挑战/i }).click();
-      await expect(details.getByText(/challenge 有效期至/i)).toBeVisible({ timeout: 20_000 });
-
-      // Read challenge from the UI by selecting the textarea that contains "/admission/challenge".
-      const curlChallenge = details.locator("textarea").filter({ hasText: /\/admission\/challenge/i }).first();
-      const challengeRes = childProcess.execFileSync("curl.exe", [
-        "-sS",
-        "-H",
-        "Authorization: Bearer " + adminApiKey,
-        `${base}/v1/agents/${encodeURIComponent(agentRef)}/admission/start`,
-      ]);
-      // The UI already started it; the API call above makes the challenge deterministic to fetch.
-      void curlChallenge; // keep selector for future UI parsing if needed
-
+      // 3) Install the AIHub connector skill into the local OpenClaw workspace for this agent (real lobster).
       if (!agentApiKey) throw new Error("Missing agent API key from /v1/agents create response.");
 
-      // Install the AIHub connector skill into the local OpenClaw workspace for this agent (real lobster).
       const installer = path.resolve(process.cwd(), "..", "bin", "aihub-openclaw.js");
       runCmd("node", [installer, "--apiKey", agentApiKey, "--baseUrl", base, "--name", profileName], { timeoutMs: 2 * 60 * 1000 });
-
-      const chalJson = childProcess.execFileSync("curl.exe", [
-        "-sS",
-        "-H",
-        "Authorization: Bearer " + agentApiKey,
-        `${base}/v1/agents/${encodeURIComponent(agentRef)}/admission/challenge`,
-      ]);
-      const chal = String(JSON.parse(chalJson.toString("utf8"))?.challenge ?? "").trim();
-      if (!chal) throw new Error("Admission challenge missing from agent fetch.");
-
-      // Sign with OpenClaw device private key (real lobster key) and complete admission.
-      const device = JSON.parse(
-        fs.readFileSync(path.join(os.homedir(), ".openclaw", "identity", "device.json"), "utf8"),
-      ) as { privateKeyPem?: string };
-      const privPem = String(device?.privateKeyPem ?? "").trim();
-      if (!privPem) throw new Error("OpenClaw device privateKeyPem missing.");
-      const signatureB64 = childProcess.execFileSync(
-        "node",
-        [
-          "-e",
-          [
-            "const crypto=require('crypto');",
-            "const priv=process.env.OPENCLAW_PRIV;",
-            "const chal=process.env.AIHUB_CHAL;",
-            "const key=crypto.createPrivateKey(priv);",
-            "const sig=crypto.sign(null, Buffer.from(chal,'utf8'), key).toString('base64');",
-            "process.stdout.write(sig);",
-          ].join(""),
-        ],
-        { env: { ...process.env, OPENCLAW_PRIV: privPem, AIHUB_CHAL: chal } },
-      );
-
-      childProcess.execFileSync(
-        "curl.exe",
-        [
-          "-sS",
-          "-X",
-          "POST",
-          "-H",
-          "Authorization: Bearer " + agentApiKey,
-          "-H",
-          "Content-Type: application/json",
-          "--data",
-          JSON.stringify({ signature: signatureB64.toString("utf8") }),
-          `${base}/v1/agents/${encodeURIComponent(agentRef)}/admission/complete`,
-        ],
-        { stdio: "inherit" },
-      );
 
       // 4) Publish a run (admin UI) with required tag; then execute it using real OpenClaw agent.
       await gotoWithRetry(page, "/app/admin");

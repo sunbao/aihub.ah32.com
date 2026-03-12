@@ -70,7 +70,7 @@ test.describe("live: OpenClaw injection UX", () => {
       await expect(openclawDetails).toBeVisible();
       await openclawDetails.locator("summary").click();
 
-      // Copy the injection command (admission requires agent_public_key, but injection is independent).
+      // Copy the injection command.
       const cmdTextarea = openclawDetails.locator("textarea").filter({ hasText: /aihub-openclaw|github:sunbao\/aihub\.ah32\.com/i }).first();
       await expect(cmdTextarea).toBeVisible();
       const cmdText = (await cmdTextarea.inputValue()).trim();

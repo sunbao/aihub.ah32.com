@@ -170,8 +170,6 @@ export function MePage() {
   const [cronExprInputs, setCronExprInputs] = useState<Record<string, string>>({});
   const [openclawProfileIds, setOpenclawProfileIds] = useState<Record<string, string>>({});
   const [openclawSkillKeys, setOpenclawSkillKeys] = useState<Record<string, string>>({});
-  const [admissionChallenges, setAdmissionChallenges] = useState<Record<string, { challenge: string; expires_at: string }>>({});
-  const [admissionStarting, setAdmissionStarting] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -195,29 +193,6 @@ export function MePage() {
       cancelled = true;
     };
   }, [agents, profileNames]);
-
-  async function startAdmission(agentRef: string) {
-    const agentRefV = String(agentRef ?? "").trim();
-    if (!userApiKey) {
-      toast({ title: "未登录", description: "请先登录后再发起入驻。", variant: "destructive" });
-      return;
-    }
-    if (!agentRefV) return;
-    setAdmissionStarting((prev) => ({ ...(prev ?? {}), [agentRefV]: true }));
-    try {
-      const res = await apiFetchJson<{ challenge: string; expires_at: string }>(`/v1/agents/${encodeURIComponent(agentRefV)}/admission/start`, {
-        method: "POST",
-        apiKey: userApiKey,
-      });
-      setAdmissionChallenges((prev) => ({ ...(prev ?? {}), [agentRefV]: res }));
-      toast({ title: "已发起入驻挑战", description: "请在 OpenClaw 机器完成签名并提交。" });
-    } catch (e: any) {
-      console.warn("[AIHub] start admission failed", { agentRef: agentRefV, error: e });
-      toast({ title: "发起入驻失败", description: String(e?.message ?? ""), variant: "destructive" });
-    } finally {
-      setAdmissionStarting((prev) => ({ ...(prev ?? {}), [agentRefV]: false }));
-    }
-  }
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -588,7 +563,7 @@ export function MePage() {
 
                   <details className="mt-3 rounded-md border bg-muted/20 px-3 py-2">
                     <summary className="cursor-pointer select-none text-sm font-medium">
-                      OpenClaw 接入（两步）
+                      OpenClaw 接入（可选）
                     </summary>
                     <div className="mt-2 space-y-2">
                       {(() => {
@@ -601,58 +576,11 @@ export function MePage() {
                           profileId: pid,
                           skillKey,
                         });
-                        const admission = admissionChallenges[agentRef];
-                        const starting = Boolean(admissionStarting[agentRef]);
-                        const cmdBaseUrl = baseUrl.trim() || window.location.origin;
-                        const curlChallenge = `curl -sS -H \"Authorization: Bearer $AIHUB_AGENT_API_KEY\" \"${cmdBaseUrl}/v1/agents/${agentRef}/admission/challenge\"`;
-                        const curlComplete = `curl -sS -X POST -H \"Authorization: Bearer $AIHUB_AGENT_API_KEY\" -H \"Content-Type: application/json\" --data '{\"signature\":\"<base64>\"}' \"${cmdBaseUrl}/v1/agents/${agentRef}/admission/complete\"`;
 
                         return (
                           <>
                             <div className="rounded-md border bg-background px-3 py-2">
-                              <div className="text-sm font-medium">步骤 1：入驻（PoP）</div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                先在卡片里设置好该智能体的 <span className="font-mono">agent_public_key</span>，再发起入驻挑战并在 OpenClaw 机器完成签名提交。
-                              </div>
-                              <div className="mt-2 flex gap-2">
-                                <Button size="sm" variant="secondary" disabled={starting} onClick={() => startAdmission(agentRef)}>
-                                  {starting ? "发起中…" : "发起入驻挑战"}
-                                </Button>
-                                {admission?.challenge ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={async () => {
-                                      const ok = await copyText(String(admission.challenge ?? "").trim());
-                                      toast({ title: ok ? "已复制 challenge" : "复制失败，请手动复制", variant: ok ? "default" : "destructive" });
-                                    }}
-                                  >
-                                    复制 challenge
-                                  </Button>
-                                ) : null}
-                              </div>
-
-                              {admission?.challenge ? (
-                                <div className="mt-2 space-y-2">
-                                  <div className="text-xs text-muted-foreground">
-                                    challenge 有效期至：{String(admission.expires_at ?? "").trim() || "-"}
-                                  </div>
-                                  <div className="space-y-2">
-                                    <div className="text-xs text-muted-foreground">Agent 侧获取 challenge（可选）</div>
-                                    <Textarea value={curlChallenge} readOnly className="min-h-[56px] font-mono text-xs" />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <div className="text-xs text-muted-foreground">Agent 侧提交签名完成入驻</div>
-                                    <Textarea value={curlComplete} readOnly className="min-h-[56px] font-mono text-xs" />
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="mt-2 text-xs text-muted-foreground">尚未发起 challenge。</div>
-                              )}
-                            </div>
-
-                            <div className="rounded-md border bg-background px-3 py-2">
-                              <div className="text-sm font-medium">步骤 2：定时任务（你自己定时间）</div>
+                              <div className="text-sm font-medium">定时任务（可选）</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 AIHub 不会替你写入定时配置；这里提供可复制模板，你自行决定 cron 表达式与部署方式。
                               </div>
@@ -743,7 +671,7 @@ export function MePage() {
                               </div>
 
                               <div className="space-y-2 pt-2">
-                                <div className="text-xs text-muted-foreground">OpenClaw 定时任务模板（~/.openclaw/cron/jobs.json）</div>
+                                <div className="text-xs text-muted-foreground">OpenClaw 定时任务模板（jobs.json）</div>
                                 <Textarea value={jobsJson} readOnly className="min-h-[120px] font-mono text-xs" />
                                 <div className="flex gap-2">
                                   <Button
