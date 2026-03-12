@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -17,29 +16,27 @@ import (
 )
 
 type agentFullDTO struct {
-	AgentRef       string         `json:"agent_ref"`
-	Name           string         `json:"name"`
-	Description    string         `json:"description"`
-	Status         string         `json:"status"`
-	IdentityMode   string         `json:"identity_mode"`
-	Tags           []string       `json:"tags"`
-	AvatarURL      string         `json:"avatar_url"`
-	Personality    personalityDTO `json:"personality"`
-	Interests      []string       `json:"interests"`
-	Capabilities   []string       `json:"capabilities"`
-	Bio            string         `json:"bio"`
-	Greeting       string         `json:"greeting"`
-	Persona        any            `json:"persona,omitempty"`
-	PromptView     string         `json:"prompt_view"`
-	CardVersion    int            `json:"card_version"`
-	CardCert       any            `json:"card_cert,omitempty"`
-	CardReview     string         `json:"card_review_status"`
-	AgentPublicKey string         `json:"agent_public_key"`
-	Admission      map[string]any `json:"admission"`
-	Discovery      discoveryDTO   `json:"discovery"`
-	Autonomous     autonomousDTO  `json:"autonomous"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
+	AgentRef     string         `json:"agent_ref"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Status       string         `json:"status"`
+	IdentityMode string         `json:"identity_mode"`
+	Tags         []string       `json:"tags"`
+	AvatarURL    string         `json:"avatar_url"`
+	Personality  personalityDTO `json:"personality"`
+	Interests    []string       `json:"interests"`
+	Capabilities []string       `json:"capabilities"`
+	Bio          string         `json:"bio"`
+	Greeting     string         `json:"greeting"`
+	Persona      any            `json:"persona,omitempty"`
+	PromptView   string         `json:"prompt_view"`
+	CardVersion  int            `json:"card_version"`
+	CardCert     any            `json:"card_cert,omitempty"`
+	CardReview   string         `json:"card_review_status"`
+	Discovery    discoveryDTO   `json:"discovery"`
+	Autonomous   autonomousDTO  `json:"autonomous"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
 }
 
 func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
@@ -75,9 +72,6 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		cardVersion     int
 		cardCertRaw     []byte
 		cardReview      string
-		agentPubKey     string
-		admittedStatus  string
-		admittedAt      *time.Time
 		createdAt       time.Time
 		updatedAt       time.Time
 	)
@@ -102,9 +96,6 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 			card_version,
 			card_cert,
 			card_review_status,
-			agent_public_key,
-			admitted_status,
-			admitted_at,
 			created_at,
 			updated_at
 		from agents
@@ -128,9 +119,6 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		&cardVersion,
 		&cardCertRaw,
 		&cardReview,
-		&agentPubKey,
-		&admittedStatus,
-		&admittedAt,
 		&createdAt,
 		&updatedAt,
 	)
@@ -196,35 +184,28 @@ func (s server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		cardCert = nil
 	}
 
-	admission := map[string]any{"status": admittedStatus}
-	if admittedAt != nil {
-		admission["admitted_at"] = admittedAt.UTC().Format(time.RFC3339)
-	}
-
 	writeJSON(w, http.StatusOK, agentFullDTO{
-		AgentRef:       agentRef,
-		Name:           strings.TrimSpace(name),
-		Description:    strings.TrimSpace(description),
-		Status:         strings.TrimSpace(status),
-		IdentityMode:   strings.TrimSpace(identityMode),
-		Tags:           tags,
-		AvatarURL:      strings.TrimSpace(avatarURL),
-		Personality:    personality,
-		Interests:      interests,
-		Capabilities:   capabilities,
-		Bio:            strings.TrimSpace(bio),
-		Greeting:       strings.TrimSpace(greeting),
-		Persona:        persona,
-		PromptView:     strings.TrimSpace(promptView),
-		CardVersion:    cardVersion,
-		CardCert:       cardCert,
-		CardReview:     strings.TrimSpace(cardReview),
-		AgentPublicKey: strings.TrimSpace(agentPubKey),
-		Admission:      admission,
-		Discovery:      discovery,
-		Autonomous:     autonomous,
-		CreatedAt:      createdAt.UTC().Format(time.RFC3339),
-		UpdatedAt:      updatedAt.UTC().Format(time.RFC3339),
+		AgentRef:     agentRef,
+		Name:         strings.TrimSpace(name),
+		Description:  strings.TrimSpace(description),
+		Status:       strings.TrimSpace(status),
+		IdentityMode: strings.TrimSpace(identityMode),
+		Tags:         tags,
+		AvatarURL:    strings.TrimSpace(avatarURL),
+		Personality:  personality,
+		Interests:    interests,
+		Capabilities: capabilities,
+		Bio:          strings.TrimSpace(bio),
+		Greeting:     strings.TrimSpace(greeting),
+		Persona:      persona,
+		PromptView:   strings.TrimSpace(promptView),
+		CardVersion:  cardVersion,
+		CardCert:     cardCert,
+		CardReview:   strings.TrimSpace(cardReview),
+		Discovery:    discovery,
+		Autonomous:   autonomous,
+		CreatedAt:    createdAt.UTC().Format(time.RFC3339),
+		UpdatedAt:    updatedAt.UTC().Format(time.RFC3339),
 	})
 }
 
@@ -315,7 +296,6 @@ func (s server) handleDiscoverAgents(w http.ResponseWriter, r *http.Request) {
 	args := make([]any, 0, 2)
 	where := []string{
 		`status = 'enabled'`,
-		`admitted_status = 'admitted'`,
 		`coalesce(discovery->>'public','false') = 'true'`,
 		`card_review_status = 'approved'`,
 	}
@@ -484,7 +464,6 @@ func (s server) handleDiscoverAgentDetail(w http.ResponseWriter, r *http.Request
 		from agents
 		where public_ref = $1
 		  and status = 'enabled'
-		  and admitted_status = 'admitted'
 		  and coalesce(discovery->>'public','false') = 'true'
 		  and card_review_status = 'approved'
 	`, agentRef).Scan(&agentID, &name, &description, &avatarURL, &promptView, &bio, &greeting, &personaRaw, &interestsRaw, &capabilitiesRaw, &personalityRaw, &cardReview)
@@ -602,460 +581,4 @@ func (s server) ossCfg() agenthome.OSSConfig {
 		STSDurationSeconds: s.ossSTSDurationSeconds,
 		LocalDir:           s.ossLocalDir,
 	}
-}
-
-func (s server) handleSyncAgentToOSS(w http.ResponseWriter, r *http.Request) {
-	userID, ok := userIDFromCtx(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
-	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
-	if !ok {
-		return
-	}
-	if strings.TrimSpace(s.ossProvider) == "" {
-		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-	defer cancel()
-
-	var agentID uuid.UUID
-	var (
-		name            string
-		description     string
-		avatarURL       string
-		personalityRaw  []byte
-		interestsRaw    []byte
-		capabilitiesRaw []byte
-		bio             string
-		greeting        string
-		discoveryRaw    []byte
-		autonomousRaw   []byte
-		personaRaw      []byte
-		promptView      string
-		cardVersion     int
-		cardReview      string
-		agentPubKey     string
-	)
-	err := s.db.QueryRow(ctx, `
-		select id, name, description, avatar_url, personality, interests, capabilities, bio, greeting, discovery, autonomous,
-		       coalesce(persona, '{}'::jsonb), prompt_view, card_version, card_review_status, agent_public_key
-		from agents
-		where public_ref = $1 and owner_id = $2
-	`, agentRef, userID).Scan(
-		&agentID,
-		&name, &description, &avatarURL, &personalityRaw, &interestsRaw, &capabilitiesRaw, &bio, &greeting, &discoveryRaw, &autonomousRaw,
-		&personaRaw, &promptView, &cardVersion, &cardReview, &agentPubKey,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	if err != nil {
-		logError(ctx, "query agent for sync failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
-		return
-	}
-	if strings.TrimSpace(cardReview) != "approved" {
-		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "agent card not approved"})
-		return
-	}
-
-	tags, err := s.listAgentTags(ctx, agentID)
-	if err != nil {
-		logError(ctx, "list agent tags failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
-		return
-	}
-
-	var personality personalityDTO
-	if err := unmarshalJSONNullable(personalityRaw, &personality); err != nil {
-		logError(ctx, "sync agent to oss personality unmarshal failed", err)
-		personality = defaultPersonality()
-	} else if personality.Validate() != nil {
-		logError(ctx, "sync agent to oss personality invalid", errors.New("invalid personality"))
-		personality = defaultPersonality()
-	}
-	var interests []string
-	if err := unmarshalJSONNullable(interestsRaw, &interests); err != nil {
-		logError(ctx, "sync agent to oss interests unmarshal failed", err)
-	}
-	var capabilities []string
-	if err := unmarshalJSONNullable(capabilitiesRaw, &capabilities); err != nil {
-		logError(ctx, "sync agent to oss capabilities unmarshal failed", err)
-	}
-	var discovery discoveryDTO
-	if err := unmarshalJSONNullable(discoveryRaw, &discovery); err != nil {
-		logError(ctx, "sync agent to oss discovery unmarshal failed", err)
-	}
-	var autonomous autonomousDTO
-	if err := unmarshalJSONNullable(autonomousRaw, &autonomous); err != nil {
-		logError(ctx, "sync agent to oss autonomous unmarshal failed", err)
-		autonomous = defaultAutonomous()
-	} else if autonomous.Validate() != nil {
-		logError(ctx, "sync agent to oss autonomous invalid", errors.New("invalid autonomous"))
-		autonomous = defaultAutonomous()
-	}
-	var persona any
-	if err := unmarshalJSONNullable(personaRaw, &persona); err != nil {
-		logError(ctx, "sync agent to oss persona unmarshal failed", err)
-	}
-	if m, ok := persona.(map[string]any); ok && len(m) == 0 {
-		persona = nil
-	}
-
-	if strings.TrimSpace(promptView) == "" {
-		promptView = promptViewFromFields(name, persona, personality, interests, capabilities, bio)
-	}
-	if len([]rune(promptView)) > s.promptViewMaxChars {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt_view too long"})
-		return
-	}
-
-	obj := map[string]any{
-		"kind":             "agent_card",
-		"schema_version":   1,
-		"agent_ref":        agentRef,
-		"card_version":     cardVersion,
-		"name":             strings.TrimSpace(name),
-		"description":      strings.TrimSpace(description),
-		"avatar_url":       strings.TrimSpace(avatarURL),
-		"personality":      personality,
-		"interests":        interests,
-		"capabilities":     capabilities,
-		"bio":              strings.TrimSpace(bio),
-		"greeting":         strings.TrimSpace(greeting),
-		"persona":          persona,
-		"prompt_view":      promptView,
-		"agent_public_key": strings.TrimSpace(agentPubKey),
-		"discovery": map[string]any{
-			"public": discovery.Public,
-			"tags":   tags,
-		},
-		"autonomous": autonomous,
-	}
-
-	cert, err := s.signObject(ctx, obj)
-	if err != nil {
-		logError(ctx, "sign agent card failed", err)
-		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "platform signing not configured"})
-		return
-	}
-	obj["cert"] = cert
-
-	body, err := json.Marshal(obj)
-	if err != nil {
-		logError(ctx, "marshal agent card failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
-		return
-	}
-
-	store, err := agenthome.NewOSSObjectStore(s.ossCfg())
-	if err != nil {
-		logError(ctx, "init oss store failed", err)
-		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "oss not configured"})
-		return
-	}
-
-	objectKey := "agents/all/" + agentRef + ".json"
-	if err := store.PutObject(ctx, objectKey, "application/json", body); err != nil {
-		logError(ctx, "put agent card failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss write failed"})
-		return
-	}
-
-	ossEndpoint := "oss://" + strings.TrimSpace(s.ossBucket) + "/" + agenthome.JoinKey(s.ossBasePrefix, objectKey)
-
-	// Also publish a signed prompt bundle (agent-private).
-	promptBundle := buildPromptBundle(agentRef, name, persona, promptView)
-	bundleCert, err := s.signObject(ctx, promptBundle)
-	if err != nil {
-		logError(ctx, "sign prompt bundle failed", err)
-		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "platform signing not configured"})
-		return
-	}
-	promptBundle["cert"] = bundleCert
-	bundleBody, err := json.Marshal(promptBundle)
-	if err != nil {
-		logError(ctx, "marshal prompt bundle failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
-		return
-	}
-	bundleKey := "agents/prompts/" + agentRef + "/bundle.json"
-	if err := store.PutObject(ctx, bundleKey, "application/json", bundleBody); err != nil {
-		logError(ctx, "put prompt bundle failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "oss write failed"})
-		return
-	}
-
-	// Update discovery + cert in DB (best-effort; do not roll back OSS write).
-	discovery.OSSEndpoint = ossEndpoint
-	discovery.LastSyncedAt = nowRFC3339()
-	discoveryJSON, err := marshalJSONB(discovery)
-	if err != nil {
-		logError(ctx, "marshal discovery failed", err)
-	} else {
-		certJSON, err := marshalJSONB(cert)
-		if err != nil {
-			logError(ctx, "marshal cert failed", err)
-		} else {
-			if _, err := s.db.Exec(ctx, `
-				update agents
-				set discovery = $1,
-				    prompt_view = $2,
-				    card_cert = $3,
-				    updated_at = now()
-				where id = $4 and owner_id = $5
-			`, discoveryJSON, promptView, certJSON, agentID, userID); err != nil {
-				logError(ctx, "update agent sync metadata failed", err)
-			}
-		}
-	}
-
-	s.audit(ctx, "user", userID, "agent_synced_to_oss", map[string]any{
-		"agent_ref":      agentRef,
-		"object_key":     objectKey,
-		"bundle_version": promptBundle["bundle_version"],
-		"ab_group":       promptBundle["ab_group"],
-	})
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"oss_endpoint": ossEndpoint,
-		"card_version": cardVersion,
-	})
-}
-
-type admissionStartResponse struct {
-	Challenge string `json:"challenge"`
-	ExpiresAt string `json:"expires_at"`
-}
-
-func (s server) handleAdmissionStart(w http.ResponseWriter, r *http.Request) {
-	userID, ok := userIDFromCtx(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
-	agentRef, ok := requireAgentRefParam(w, r, "agentRef")
-	if !ok {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	var (
-		agentID uuid.UUID
-		pubKey  string
-	)
-	if err := s.db.QueryRow(ctx, `select id, agent_public_key from agents where public_ref=$1 and owner_id=$2`, agentRef, userID).Scan(&agentID, &pubKey); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-			return
-		}
-		logError(ctx, "query agent_public_key failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
-		return
-	}
-	if strings.TrimSpace(pubKey) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing agent_public_key"})
-		return
-	}
-
-	chal, err := agenthome.NewRandomChallenge()
-	if err != nil {
-		logError(ctx, "generate admission challenge failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "challenge generation failed"})
-		return
-	}
-	expiresAt := time.Now().Add(10 * time.Minute).UTC()
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		logError(ctx, "db begin failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
-		return
-	}
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
-		insert into agent_admission_challenges (agent_id, challenge, expires_at)
-		values ($1, $2, $3)
-	`, agentID, chal, expiresAt); err != nil {
-		logError(ctx, "insert admission challenge failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "insert failed"})
-		return
-	}
-	if _, err := tx.Exec(ctx, `
-		update agents
-		set admitted_status = 'pending', updated_at = now()
-		where id=$1 and owner_id=$2
-	`, agentID, userID); err != nil {
-		logError(ctx, "update admitted_status pending failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
-		return
-	}
-	if err := tx.Commit(ctx); err != nil {
-		logError(ctx, "db commit failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
-		return
-	}
-
-	s.audit(ctx, "user", userID, "agent_admission_started", map[string]any{"agent_id": agentID.String()})
-	writeJSON(w, http.StatusOK, admissionStartResponse{Challenge: chal, ExpiresAt: expiresAt.Format(time.RFC3339)})
-}
-
-func (s server) handleAdmissionChallenge(w http.ResponseWriter, r *http.Request) {
-	agentIDFromAuth, ok := agentIDFromCtx(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
-
-	agentID, _, ok := s.requireAgentFromURLRef(w, r, "agentRef")
-	if !ok {
-		return
-	}
-	if agentID != agentIDFromAuth {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	var (
-		chal      string
-		expiresAt time.Time
-	)
-	err := s.db.QueryRow(ctx, `
-		select challenge, expires_at
-		from agent_admission_challenges
-		where agent_id = $1 and consumed_at is null and expires_at > now()
-		order by created_at desc
-		limit 1
-	`, agentID).Scan(&chal, &expiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active challenge"})
-		return
-	}
-	if err != nil {
-		logError(ctx, "query admission challenge failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, admissionStartResponse{Challenge: chal, ExpiresAt: expiresAt.UTC().Format(time.RFC3339)})
-}
-
-type admissionCompleteRequest struct {
-	Signature string `json:"signature"`
-}
-
-func (s server) handleAdmissionComplete(w http.ResponseWriter, r *http.Request) {
-	agentIDFromAuth, ok := agentIDFromCtx(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
-
-	agentID, _, ok := s.requireAgentFromURLRef(w, r, "agentRef")
-	if !ok {
-		return
-	}
-	if agentID != agentIDFromAuth {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	var req admissionCompleteRequest
-	if !readJSONLimited(w, r, &req, 16*1024) {
-		return
-	}
-	req.Signature = strings.TrimSpace(req.Signature)
-	if req.Signature == "" || len(req.Signature) > 1024 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	var (
-		pubKeyStr string
-		chalID    uuid.UUID
-		chal      string
-		expiresAt time.Time
-	)
-	err := s.db.QueryRow(ctx, `
-		select a.agent_public_key, c.id, c.challenge, c.expires_at
-		from agents a
-		join agent_admission_challenges c on c.agent_id = a.id
-		where a.id = $1
-		  and c.consumed_at is null
-		  and c.expires_at > now()
-		order by c.created_at desc
-		limit 1
-	`, agentID).Scan(&pubKeyStr, &chalID, &chal, &expiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active challenge"})
-		return
-	}
-	if err != nil {
-		logError(ctx, "query admission context failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
-		return
-	}
-
-	pubKey, err := agenthome.ParseEd25519PublicKey(pubKeyStr)
-	if err != nil {
-		logError(ctx, "parse agent_public_key failed", err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_public_key"})
-		return
-	}
-
-	okSig, err := agenthome.VerifyEd25519Base64(pubKey, []byte(chal), req.Signature)
-	if err != nil {
-		logError(ctx, "verify admission signature failed", err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
-		return
-	}
-	if !okSig {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "signature verify failed"})
-		return
-	}
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		logError(ctx, "db begin failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db begin failed"})
-		return
-	}
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `update agent_admission_challenges set consumed_at = now() where id = $1`, chalID); err != nil {
-		logError(ctx, "consume admission challenge failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
-		return
-	}
-	if _, err := tx.Exec(ctx, `
-		update agents
-		set admitted_status = 'admitted', admitted_at = now(), updated_at = now()
-		where id = $1
-	`, agentID); err != nil {
-		logError(ctx, "update admitted status failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
-		return
-	}
-	if err := tx.Commit(ctx); err != nil {
-		logError(ctx, "db commit failed", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
-		return
-	}
-
-	s.audit(ctx, "agent", agentID, "agent_admitted", map[string]any{"agent_id": agentID.String(), "expires_at": expiresAt.UTC().Format(time.RFC3339)})
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "admitted"})
 }

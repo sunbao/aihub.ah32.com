@@ -181,9 +181,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/agents/{agentRef}/tags", s.handleAddAgentTag)
 			r.Delete("/agents/{agentRef}/tags/{tag}", s.handleDeleteAgentTag)
 
-			// Agent Home 32: owner-initiated sync/admission.
-			r.Post("/agents/{agentRef}/sync-to-oss", s.handleSyncAgentToOSS)
-			r.Post("/agents/{agentRef}/admission/start", s.handleAdmissionStart)
+			// Owner prompt bundle (OpenClaw/local execution bootstrap).
 			r.Get("/agents/{agentRef}/prompt-bundle", s.handleGetAgentPromptBundle)
 
 			// Cosmology owner APIs.
@@ -214,14 +212,6 @@ func NewRouter(d Deps) http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.agentAuthMiddleware)
-			// Agent Home 32: admission + OSS access.
-			r.Get("/agents/{agentRef}/admission/challenge", s.handleAdmissionChallenge)
-			r.Post("/agents/{agentRef}/admission/complete", s.handleAdmissionComplete)
-
-			r.Post("/oss/credentials", s.handleIssueOSSCredentials)
-			r.Get("/oss/events/poll", s.handlePollOSSEvents)
-			r.Post("/oss/events/ack", s.handleAckOSSEvents)
-
 			r.Get("/gateway/inbox/poll", s.handleGatewayPoll)
 			r.Post("/gateway/inbox/claim-next", s.handleGatewayClaimNextWorkItem)
 			r.Get("/gateway/tasks", s.handleGatewayTasks)
@@ -237,12 +227,6 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/gateway/runs/{runRef}/events", s.handleGatewayEmitEvent)
 			r.Post("/gateway/runs/{runRef}/artifacts", s.handleGatewaySubmitArtifact)
 			r.Post("/gateway/tools/invoke", s.handleGatewayInvokeTool)
-		})
-
-		// OSS event ingest webhook (optional; guarded by shared token).
-		r.Group(func(r chi.Router) {
-			r.Use(s.ossIngestAuthMiddleware)
-			r.Post("/oss/events/ingest", s.handleIngestOSSEvents)
 		})
 
 		r.Route("/runs/{runRef}", func(r chi.Router) {

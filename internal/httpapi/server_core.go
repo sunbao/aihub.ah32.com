@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	"aihub/internal/agenthome"
 	"aihub/internal/keys"
 
 	"github.com/go-chi/chi/v5"
@@ -229,7 +227,6 @@ type createAgentRequest struct {
 	IdentityMode string `json:"identity_mode,omitempty"`
 
 	AvatarURL         string          `json:"avatar_url,omitempty"`
-	AgentPublicKey    string          `json:"agent_public_key,omitempty"`
 	Personality       *personalityDTO `json:"personality,omitempty"`
 	Interests         []string        `json:"interests,omitempty"`
 	Capabilities      []string        `json:"capabilities,omitempty"`
@@ -367,16 +364,6 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		autonomous = *req.Autonomous
 	}
 
-	agentPublicKey := strings.TrimSpace(req.AgentPublicKey)
-	if agentPublicKey != "" {
-		pub, err := agenthome.ParseEd25519PublicKey(agentPublicKey)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_public_key"})
-			return
-		}
-		agentPublicKey = "ed25519:" + base64.StdEncoding.EncodeToString(pub)
-	}
-
 	var personaAny any
 	var personaJSON []byte
 	if strings.TrimSpace(req.PersonaTemplateID) != "" {
@@ -492,7 +479,6 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 				identity_mode,
 				avatar_url, personality, interests, capabilities, bio, greeting,
 				discovery, autonomous, persona,
-				agent_public_key,
 				prompt_view,
 				card_review_status
 			)
@@ -503,8 +489,7 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 				$6, $7, $8, $9, $10, $11,
 				$12, $13, $14,
 				$15,
-				$16,
-				$17
+				$16
 			)
 			returning id
 		`, agentRef,
@@ -512,7 +497,6 @@ func (s server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 			identityMode,
 			avatarURL, personalityJSON, interestsJSON, capabilitiesJSON, bio, greeting,
 			discoveryJSON, autonomousJSON, personaJSON,
-			agentPublicKey,
 			promptView,
 			cardReviewStatus,
 		).Scan(&agentID)
@@ -907,7 +891,6 @@ type updateAgentRequest struct {
 	Discovery         *discoveryDTO   `json:"discovery,omitempty"`
 	Autonomous        *autonomousDTO  `json:"autonomous,omitempty"`
 	PersonaTemplateID *string         `json:"persona_template_id,omitempty"`
-	AgentPublicKey    *string         `json:"agent_public_key,omitempty"`
 }
 
 func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -937,8 +920,7 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		req.Greeting == nil &&
 		req.Discovery == nil &&
 		req.Autonomous == nil &&
-		req.PersonaTemplateID == nil &&
-		req.AgentPublicKey == nil {
+		req.PersonaTemplateID == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no fields"})
 		return
 	}
@@ -969,7 +951,6 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		curDiscoveryRaw    []byte
 		curAutonomousRaw   []byte
 		curPersonaRaw      []byte
-		curAgentPubKey     string
 		curCardVersion     int
 		curPromptView      string
 		curCardCertRaw     []byte
@@ -983,7 +964,6 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			bio, greeting,
 			discovery, autonomous,
 			persona,
-			agent_public_key,
 			card_version,
 			prompt_view,
 			card_cert,
@@ -997,7 +977,6 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		&curBio, &curGreeting,
 		&curDiscoveryRaw, &curAutonomousRaw,
 		&curPersonaRaw,
-		&curAgentPubKey,
 		&curCardVersion,
 		&curPromptView,
 		&curCardCertRaw,
@@ -1195,28 +1174,6 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	admittedStatus := ""
-	admittedAt := (*time.Time)(nil)
-	agentPublicKey := strings.TrimSpace(curAgentPubKey)
-	if req.AgentPublicKey != nil {
-		if strings.TrimSpace(curAgentPubKey) != "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent_public_key already set"})
-			return
-		}
-		k := strings.TrimSpace(*req.AgentPublicKey)
-		if k != "" {
-			pub, err := agenthome.ParseEd25519PublicKey(k)
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_public_key"})
-				return
-			}
-			agentPublicKey = "ed25519:" + base64.StdEncoding.EncodeToString(pub)
-			admittedStatus = "not_requested"
-			admittedAt = nil
-			cardChanged = true
-		}
-	}
-
 	personalityJSON, err := marshalJSONB(personality)
 	if err != nil {
 		logError(ctx, "marshal personality failed", err)
@@ -1304,16 +1261,13 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 			discovery = $10,
 			autonomous = $11,
 			persona = $12,
-			agent_public_key = $13,
-			admitted_status = case when $14 <> '' then $14 else admitted_status end,
-			admitted_at = case when $14 <> '' then $15 else admitted_at end,
-			card_version = $16,
-			prompt_view = case when $17 <> '' then $17 else prompt_view end,
-			card_cert = $18,
-			card_review_status = $19,
-			identity_mode = $20,
+			card_version = $13,
+			prompt_view = case when $14 <> '' then $14 else prompt_view end,
+			card_cert = $15,
+			card_review_status = $16,
+			identity_mode = $17,
 			updated_at = now()
-		where id = $21 and owner_id = $22
+		where id = $18 and owner_id = $19
 	`,
 		name,
 		description,
@@ -1327,9 +1281,6 @@ func (s server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		discoveryJSON,
 		autonomousJSON,
 		personaJSON,
-		agentPublicKey,
-		admittedStatus,
-		admittedAt,
 		curCardVersion,
 		promptView,
 		cardCertJSON,

@@ -514,28 +514,6 @@ export function MePage() {
                     >
                       编辑智能体卡片
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        try {
-                          await apiFetchJson(`/v1/agents/${encodeURIComponent(agentRef)}/sync-to-oss`, {
-                            method: "POST",
-                            apiKey: userApiKey,
-                          });
-                          toast({ title: "已同步到 OSS" });
-                        } catch (e: any) {
-                          console.warn("[AIHub] MePage sync-to-oss failed", { agentRef, error: e });
-                          toast({
-                            title: "同步失败",
-                            description: String(e?.message ?? ""),
-                            variant: "destructive",
-                          });
-                        }
-                      }}
-                    >
-                      同步到 OSS
-                    </Button>
                     <Button size="sm" variant="secondary" onClick={() => nav(`/agents/${encodeURIComponent(agentRef)}/timeline`)}>
                       时间线
                     </Button>

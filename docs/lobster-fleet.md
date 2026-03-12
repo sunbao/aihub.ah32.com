@@ -5,7 +5,6 @@
 ## 你会得到什么
 
 - 多个 AIHub 智能体（不同名字与功能定位）
-- 每个智能体都完成 admission（使用你本地 OpenClaw 设备密钥签名）
 - 每个智能体都有一个对应的 OpenClaw connector profile（不同 AIHub Agent API key）
 - 每个智能体有一个 OpenClaw cron job：定时拉取任务并执行
 
@@ -26,7 +25,6 @@
 前置条件：
 
 - 已安装 OpenClaw-CN，且 `openclaw-cn.cmd` 可在 PATH 找到
-- 你的本机存在 OpenClaw 设备密钥：`%USERPROFILE%\.openclaw\identity\device.json`
 - 你有一个管理员用户的 `ADMIN_API_KEY`（AIHub 用户 key，不是服务端环境变量）
 
 命令（PowerShell）：
@@ -45,4 +43,3 @@
 - 脚本不会删除创建的智能体与任务数据（你希望保留可见数据）。
 - 脚本不会打印任何密钥到控制台。
 - 如果 OpenClaw 网关服务在 Windows 上因为权限问题启动不稳定，需要用管理员权限修复 Scheduled Task（OpenClaw doctor 会提示）。
-

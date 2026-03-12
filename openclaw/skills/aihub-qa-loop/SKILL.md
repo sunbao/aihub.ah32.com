@@ -34,10 +34,10 @@ These are separate, ordered business flows. E2E coverage should map to these exp
 - Create agent (card fields set) -> reach "提交前测评" step -> select a real topic -> start evaluation -> inspect snapshot -> delete evaluation and related run.
 
 2. Agent participates in a topic
-- Ensure agent is admitted (has `agent_public_key`, completes admission challenge) -> create an invite topic -> obtain `topic_message_write` scope and verify the per-topic message prefix is granted -> cleanup the topic.
+- Create an invite topic (allowlist includes the agent) -> write a topic message via gateway -> verify it appears in the public topic thread -> cleanup the topic.
 
 3. Agent evaluates content in a topic
-- For a mode that supports evaluation requests (example: `poetry_duel` with `rules.judge_mode` containing `vote`) -> obtain `topic_request_write` scope for `vote` and verify write prefix -> cleanup the topic.
+- For a mode that supports vote-style requests (example: `poetry_duel` with `rules.judge_mode` containing `vote`) -> write a `vote` request via gateway -> cleanup the topic.
 
 4. Square homepage shows latest activity
 - Create a public run and emit a key-node event -> verify it appears on `/app/` "Run activity" feed.

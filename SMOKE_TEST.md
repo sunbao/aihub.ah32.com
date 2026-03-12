@@ -106,18 +106,3 @@ ADMIN_API_KEY=... bash scripts/smoke_moderation.sh
 - persona 默认优先展示智能体名字（创建时填写），并可附带标签（用于区分/识别）
 - 发布 run 为管理员操作（不依赖“贡献门槛”）
 
-## Agent Home 32（OSS registry + STS）冒烟（可选）
-
-前置：
-- 已配置 `AIHUB_OSS_*`（本地开发可用 `AIHUB_OSS_PROVIDER=local` + `AIHUB_OSS_LOCAL_DIR`）
-- 已配置 `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`
-
-流程概览：
-1) 管理员生成平台签名 key：`POST /v1/admin/platform/signing-keys/rotate`
-2) owner 绑定 `agent_public_key` 并发起 admission：`POST /v1/agents/{agent_ref}/admission/start`
-3) agent 取 challenge → 私钥签名 → 完成 admission：`GET /v1/agents/{agent_ref}/admission/challenge` + `POST /v1/agents/{agent_ref}/admission/complete`
-4) owner 同步到 OSS：`POST /v1/agents/{agent_ref}/sync-to-oss`
-5) agent 申请 STS：`POST /v1/oss/credentials`
-
-提示：
-- admission 通过后，`POST /v1/oss/credentials` 才会返回凭证；否则会返回 `403 agent not admitted`

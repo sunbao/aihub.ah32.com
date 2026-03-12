@@ -3,19 +3,15 @@
 /**
  * Bootstrap a "lobster fleet":
  * - Create multiple AIHub agents (server: AIHUB_BASE_URL) using ADMIN_API_KEY (user key).
- * - Bind each agent to the same local OpenClaw device Ed25519 public key (agent_public_key).
- * - Complete admission for each agent by signing the challenge with the local OpenClaw device private key.
  * - Install per-agent OpenClaw connector profiles (bin/aihub-openclaw.js) so OpenClaw can act as that AIHub agent.
  * - Create per-agent OpenClaw cron jobs that poll+execute tasks periodically.
  *
  * Secrets:
  * - Reads ADMIN_API_KEY from env; never prints it.
- * - Reads OpenClaw device privateKeyPem from ~/.openclaw/identity/device.json; never prints it.
  * - AIHub agent API keys are used to configure local OpenClaw config; never printed.
  */
 
 const childProcess = require("node:child_process");
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -31,35 +27,10 @@ function envRequired(name) {
   return v;
 }
 
-function b64UrlToB64(s) {
-  const v = String(s ?? "").trim().replace(/-/g, "+").replace(/_/g, "/");
-  const pad = v.length % 4 === 0 ? "" : "=".repeat(4 - (v.length % 4));
-  return v + pad;
-}
-
 function normalizeBaseUrl(u) {
   const v = String(u ?? "").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(v)) die(`Invalid AIHUB_BASE_URL: ${v}`);
   return v;
-}
-
-function readOpenclawDevice() {
-  const p = path.join(os.homedir(), ".openclaw", "identity", "device.json");
-  const raw = fs.readFileSync(p, "utf8");
-  const j = JSON.parse(raw);
-  const publicKeyPem = String(j?.publicKeyPem ?? "").trim();
-  const privateKeyPem = String(j?.privateKeyPem ?? "").trim();
-  if (!publicKeyPem) die(`OpenClaw device publicKeyPem missing: ${p}`);
-  if (!privateKeyPem) die(`OpenClaw device privateKeyPem missing: ${p}`);
-
-  const pubKey = crypto.createPublicKey(publicKeyPem);
-  const jwk = pubKey.export({ format: "jwk" });
-  const x = String(jwk?.x ?? "").trim();
-  if (!x) die(`OpenClaw device JWK export missing x: ${p}`);
-
-  // Canonical format expected by the server: "ed25519:<std-base64>".
-  const pubStdB64 = b64UrlToB64(x);
-  return { devicePath: p, publicKey: `ed25519:${pubStdB64}`, privateKeyPem };
 }
 
 function locateOpenclawEntryJs() {
@@ -105,21 +76,6 @@ async function apiJson(method, url, apiKey, body) {
     throw err;
   }
   return j;
-}
-
-async function startAdmission(baseUrl, userApiKey, agentRef) {
-  const ref = String(agentRef ?? "").trim();
-  if (!ref) die("Missing agentRef for admission/start.");
-  // This creates an active challenge (10 min TTL) for the agent to sign.
-  await apiJson("POST", `${baseUrl}/v1/agents/${encodeURIComponent(ref)}/admission/start`, userApiKey, {});
-}
-
-function signChallengeEd25519B64(challenge, privateKeyPem) {
-  const chal = String(challenge ?? "").trim();
-  if (!chal) die("Missing admission challenge to sign.");
-  const key = crypto.createPrivateKey(privateKeyPem);
-  const sig = crypto.sign(null, Buffer.from(chal, "utf8"), key);
-  return sig.toString("base64");
 }
 
 function run(cmd, args, opts) {
@@ -222,7 +178,6 @@ async function main() {
   const stamp = Date.now();
   const fleetTag = String(process.env.LOBSTER_FLEET_TAG || `lobster-fleet-${stamp}`).trim();
 
-  const { publicKey: devicePubKey, privateKeyPem } = readOpenclawDevice();
   const openclawEntry = locateOpenclawEntryJs();
 
   // Best-effort: allowlist curl for the main agent so the connector can run non-interactively.
@@ -286,7 +241,6 @@ async function main() {
       capabilities: role.capabilities,
       bio: `${role.desc}\n\n原则：测评是参考，不是门槛；允许入驻后随时修改卡片再测评。`,
       greeting: "你好，我会用中文协助你完成任务。",
-      agent_public_key: devicePubKey,
     });
 
     const agentRef = String(create?.agent_ref ?? "").trim();
@@ -298,7 +252,6 @@ async function main() {
       agent_name: name,
       agent_ref: agentRef,
       tags,
-      admitted: false,
       openclaw_profile: "",
       openclaw_skill_key: "",
       cron_name: "",
@@ -308,17 +261,6 @@ async function main() {
     };
     created.push(entry);
     fs.writeFileSync(evidencePath, JSON.stringify({ baseUrl, fleetTag, created }, null, 2) + "\n", "utf8");
-
-    // Admission flow:
-    // 1) Owner starts admission to create an active challenge.
-    // 2) Agent fetches the challenge using its agent API key.
-    // 3) Agent signs and completes admission using the same agent key.
-    await startAdmission(baseUrl, adminKey, agentRef);
-    const chalRes = await apiJson("GET", `${baseUrl}/v1/agents/${encodeURIComponent(agentRef)}/admission/challenge`, agentApiKey);
-    const challenge = String(chalRes?.challenge ?? "").trim();
-    const sigB64 = signChallengeEd25519B64(challenge, privateKeyPem);
-    await apiJson("POST", `${baseUrl}/v1/agents/${encodeURIComponent(agentRef)}/admission/complete`, agentApiKey, { signature: sigB64 });
-    entry.admitted = true;
 
     // Install OpenClaw connector for this AIHub agent key.
     // Profile name is ASCII so the resulting skill key is readable.
@@ -342,7 +284,7 @@ async function main() {
 
     // Keep the local output free of secrets (no API keys).
     fs.writeFileSync(evidencePath, JSON.stringify({ baseUrl, fleetTag, created }, null, 2) + "\n", "utf8");
-    process.stdout.write(`OK: created+admitted: ${name} (${agentRef})\n`);
+    process.stdout.write(`OK: created: ${name} (${agentRef})\n`);
   }
 
   process.stdout.write(`\nEvidence: ${evidencePath}\n`);

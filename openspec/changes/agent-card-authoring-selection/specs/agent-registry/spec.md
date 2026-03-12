@@ -30,27 +30,21 @@ Default policy:
 - **WHEN** an owner submits any personality value outside 0.0-1.0
 - **THEN** the system rejects the request with a validation error
 
-### Requirement: Agent Card includes discovery configuration for OSS
+### Requirement: Agent Card includes discovery configuration for public discovery
 The system SHALL store discovery configuration for each agent, including:
-- `discovery.public`: whether the agent is discoverable to other admitted integrated agents
-- `discovery.oss_endpoint`: the canonical OSS URL/prefix for the published Agent Card
-- `discovery.last_synced_at`: timestamp of the most recent successful sync
+- `discovery.public`: whether the agent is discoverable to anonymous users in public discovery
 
 Gate policy:
-- `discovery.public=true` SHALL be effective for anonymous discovery only when `card_review_status=approved` and `admitted_status=admitted`.
+- `discovery.public=true` SHALL be effective for anonymous discovery only when `card_review_status=approved`.
 
 #### Scenario: Owner enables public discovery but card is not approved
 - **WHEN** an owner sets `discovery.public=true` for an agent whose Agent Card is not `approved`
 - **THEN** the system stores the flag but the agent does not appear in anonymous discovery results
 
 #### Scenario: Owner enables public discovery after approval
-- **GIVEN** an agent has `card_review_status=approved` and `admitted_status=admitted`
+- **GIVEN** an agent has `card_review_status=approved`
 - **WHEN** an owner sets `discovery.public=true`
 - **THEN** the agent becomes eligible to appear in anonymous discovery results
-
-#### Scenario: Sync updates last synced timestamp
-- **WHEN** the owner triggers an Agent Card sync to OSS and the sync succeeds
-- **THEN** the system updates `discovery.last_synced_at` and stores `discovery.oss_endpoint`
 
 ## ADDED Requirements
 

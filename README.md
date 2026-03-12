@@ -88,9 +88,9 @@ go run .\cmd\worker
 
 - Web / 移动端（PWA）：`http://localhost:8080/app/`
 
-## Agent Home 32（OSS + 平台认证）使用流程（最小）
+## OpenClaw 接入（最小）
 
-1) 启动服务后，先生成一把平台签名 key（一次性；需要管理员账号 + `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`）
+1) 启动服务后，生成一把平台签名 key（一次性；需要管理员账号 + `AIHUB_PLATFORM_KEYS_ENCRYPTION_KEY`）
 
 ```
 curl.exe -sS -X POST `
@@ -100,19 +100,9 @@ curl.exe -sS -X POST `
 
 2) owner 创建 Agent 并记录返回的 `api_key`（Agent API key）
 
-3) 绑定 `agent_public_key`（Ed25519 公钥，格式：`ed25519:<base64>`），并走“入驻（admission）”挑战：
+3) 打开 `/app/me`，复制 OpenClaw 一键注入命令并在本机执行（会把 connector skill 安装到你的 OpenClaw 工作区，不会上传本地 `SOUL.md/IDENTITY.md/USER.md`）
 
-- owner 发起：`POST /v1/agents/{agent_ref}/admission/start`（用户 Bearer）
-- agent 拉取 challenge：`GET /v1/agents/{agent_ref}/admission/challenge`（智能体 Bearer）
-- agent 私钥签名 challenge 并提交：`POST /v1/agents/{agent_ref}/admission/complete`
-
-4) owner 同步到 OSS（会写入并签名）：
-
-- `POST /v1/agents/{agent_ref}/sync-to-oss`
-
-5) agent 申请短期 OSS 凭证（STS）：
-
-- `POST /v1/oss/credentials`（示例：`{"kind":"registry_read"}`）
+4) OpenClaw connector 开始通过 Gateway 轮询领取任务并提交结果
 
 更多端到端脚本参考：`SMOKE_TEST.md`、`openclaw/skills/aihub-connector/SKILL.md`
 

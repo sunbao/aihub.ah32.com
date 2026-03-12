@@ -21,11 +21,10 @@ const (
 )
 
 type adminEvaluationJudgeDTO struct {
-	AgentRef       string `json:"agent_ref"`
-	Name           string `json:"name"`
-	Enabled        bool   `json:"enabled"`
-	Status         string `json:"status"`
-	AdmittedStatus string `json:"admitted_status"`
+	AgentRef string `json:"agent_ref"`
+	Name     string `json:"name"`
+	Enabled  bool   `json:"enabled"`
+	Status   string `json:"status"`
 }
 
 func (s server) handleAdminListEvaluationJudges(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +32,7 @@ func (s server) handleAdminListEvaluationJudges(w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	rows, err := s.db.Query(ctx, `
-		select a.public_ref, a.name, j.enabled, a.status, a.admitted_status
+		select a.public_ref, a.name, j.enabled, a.status
 		from evaluation_judge_agents j
 		join agents a on a.id = j.agent_id
 		order by j.enabled desc, a.updated_at desc
@@ -48,23 +47,21 @@ func (s server) handleAdminListEvaluationJudges(w http.ResponseWriter, r *http.R
 	out := make([]adminEvaluationJudgeDTO, 0)
 	for rows.Next() {
 		var (
-			agentRef       string
-			name           string
-			enabled        bool
-			status         string
-			admittedStatus string
+			agentRef string
+			name     string
+			enabled  bool
+			status   string
 		)
-		if err := rows.Scan(&agentRef, &name, &enabled, &status, &admittedStatus); err != nil {
+		if err := rows.Scan(&agentRef, &name, &enabled, &status); err != nil {
 			logError(ctx, "admin list evaluation judges: scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		out = append(out, adminEvaluationJudgeDTO{
-			AgentRef:       strings.ToLower(strings.TrimSpace(agentRef)),
-			Name:           strings.TrimSpace(name),
-			Enabled:        enabled,
-			Status:         strings.TrimSpace(status),
-			AdmittedStatus: strings.TrimSpace(admittedStatus),
+			AgentRef: strings.ToLower(strings.TrimSpace(agentRef)),
+			Name:     strings.TrimSpace(name),
+			Enabled:  enabled,
+			Status:   strings.TrimSpace(status),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -212,9 +209,7 @@ func (s server) listActiveEvaluationJudgeAgents(ctx context.Context) ([]uuid.UUI
 		join agents a on a.id = j.agent_id
 		where j.enabled = true
 		  and a.status = 'enabled'
-		order by
-			case when a.admitted_status = 'admitted' then 1 else 0 end desc,
-			a.updated_at desc
+		order by a.updated_at desc
 	`)
 	if err != nil {
 		return nil, err
@@ -753,19 +748,19 @@ func (s server) handleOwnerCreatePreReviewEvaluation(w http.ResponseWriter, r *h
 	}
 	defer tx.Rollback(ctx)
 
-		var (
-			runID  uuid.UUID
-			runRef string
-		)
-		for attempt := 0; attempt < 5; attempt++ {
-			ref, err := randomPublicRef(runRefPrefix)
-			if err != nil {
-				logError(ctx, "create pre-review evaluation: generate run_ref failed", err)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
-				return
-			}
-			runRef = ref
-			err = tx.QueryRow(ctx, `
+	var (
+		runID  uuid.UUID
+		runRef string
+	)
+	for attempt := 0; attempt < 5; attempt++ {
+		ref, err := randomPublicRef(runRefPrefix)
+		if err != nil {
+			logError(ctx, "create pre-review evaluation: generate run_ref failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create run failed"})
+			return
+		}
+		runRef = ref
+		err = tx.QueryRow(ctx, `
 				insert into runs (public_ref, publisher_user_id, goal, constraints, status, review_status, is_public)
 				values ($1, $2, $3, $4, 'created', 'pending', false)
 				returning id

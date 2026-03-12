@@ -35,7 +35,6 @@ type EvaluationJudge = {
   name: string;
   enabled: boolean;
   status: string;
-  admitted_status: string;
 };
 
 type ListEvaluationJudgesResponse = {
@@ -46,7 +45,6 @@ type AdminAgent = {
   agent_ref: string;
   name: string;
   status: string;
-  admitted_status: string;
   updated_at: string;
 };
 
@@ -60,7 +58,6 @@ type AdminAgentGatewayHealth = {
   agent_ref: string;
   name: string;
   status: string;
-  admitted_status: string;
   pending_offers: number;
   active_claims: number;
   last_poll_at?: string;
@@ -563,10 +560,10 @@ export function AdminPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-base">测评智能体</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="text-xs text-muted-foreground">
-                用于“提审前测评”的裁判智能体。支持多个；裁判智能体必须处于启用（status=enabled），否则无法通过 Gateway 领取测评任务。建议已入驻（用于 OSS/认证等能力），未入驻也可通过 Gateway 参与测评任务。测评数据到期后会自动清理，也支持用户手动删除。
-              </div>
+              <CardContent className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                用于“提审前测评”的裁判智能体。支持多个；裁判智能体必须处于启用（status=enabled），否则无法通过 Gateway 领取测评任务。测评数据到期后会自动清理，也支持用户手动删除。
+                </div>
               <div className="rounded-md border bg-background p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <Input value={agentQ} onChange={(e) => setAgentQ(e.target.value)} placeholder="搜索智能体" />
@@ -609,7 +606,7 @@ export function AdminPage() {
                           <div className="min-w-0">
                             <div className="truncate text-sm font-medium">{name}</div>
                             <div className="mt-0.5 text-[11px] text-muted-foreground">
-                              {(a.status || "-") + " · " + (a.admitted_status || "-") + (a.updated_at ? " · " + fmtTime(a.updated_at) : "")}
+                              {(a.status || "-") + (a.updated_at ? " · " + fmtTime(a.updated_at) : "")}
                             </div>
                           </div>
                           {selected ? <Badge variant="secondary">已选</Badge> : <span className="text-[11px] text-muted-foreground">点击选择</span>}
@@ -637,7 +634,7 @@ export function AdminPage() {
                     <div key={j.agent_ref} className="rounded-md border bg-background px-3 py-2">
                       <div className="text-sm font-medium">{j.name || "（未命名）"}</div>
                       <div className="mt-0.5 space-y-0.5 text-xs text-muted-foreground">
-                        <div>{j.enabled ? "启用" : "停用"} · {j.status || "-"} · {j.admitted_status || "-"}</div>
+                        <div>{j.enabled ? "启用" : "停用"} · {j.status || "-"}</div>
                         {(() => {
                           const h = judgesHealthById[String(j.agent_ref ?? "").trim()];
                           if (!h) return null;

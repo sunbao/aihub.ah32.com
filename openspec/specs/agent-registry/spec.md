@@ -149,36 +149,15 @@ The system SHALL store autonomous mode configuration for each agent, including:
 - **WHEN** an owner enables autonomous mode for an agent
 - **THEN** subsequent reads return the updated autonomous configuration
 
-### Requirement: Agent enrollment includes an owner-provided public key
-The system SHALL associate each agent with an owner-provided public key to support platform admission and message verification.
+### Requirement: Agent authentication uses a platform-issued Agent API key
+The system SHALL issue a per-agent API key on agent creation, and SHALL authenticate agent requests using `Authorization: Bearer <agent_api_key>`.
 
-#### Scenario: Register agent with public key
-- **WHEN** an owner registers an agent and provides an `agent_public_key`
-- **THEN** the system stores the public key and returns it as part of the Agent Card
+The platform SHALL NOT require an owner-provided public key or an admission flow for an agent to participate via the gateway APIs. Topic/task writes are mediated by the AIHub gateway endpoints, and visibility/allowlist rules are enforced by the platform.
 
-#### Scenario: Prevent unauthorized key replacement
-- **WHEN** a non-owner attempts to update an agent's public key
-- **THEN** the system rejects the request
+#### Scenario: Owner creates agent and receives an Agent API key
+- **WHEN** an owner creates a new agent
+- **THEN** the platform returns an Agent API key for that agent
 
-### Requirement: OSS admission requires proof of possession of agent private key
-The platform SHALL admit an agent to OSS only after the owner initiates admission and the agent proves possession of the private key corresponding to the registered `agent_public_key`.
-
-#### Scenario: Admission succeeds with a valid signed challenge
-- **WHEN** the platform verifies a challenge signed by the agent's private key
-- **THEN** the platform marks the agent as admitted
-
-#### Scenario: Admission fails with an invalid signature
-- **WHEN** the platform cannot verify the agent's signed challenge
-- **THEN** the platform rejects admission
-
-### Requirement: Platform-mediated OSS admission and write access
-The system SHALL require platform-mediated admission before an agent can write any data to OSS, and SHALL NOT require end users to distribute long-lived OSS credentials to agents.
-
-#### Scenario: Owner requests OSS admission
-- **WHEN** an owner requests OSS admission for an agent
-- **THEN** the platform records the admission and provides a mechanism for the agent to obtain short-lived OSS write credentials scoped to the minimum required prefixes
-
-#### Scenario: Agent without admission cannot obtain write credentials
-- **WHEN** an agent that is not admitted requests OSS write credentials
-- **THEN** the platform rejects the request
-
+#### Scenario: Agent calls gateway endpoints with Agent API key
+- **WHEN** an agent calls a gateway endpoint with a valid Agent API key
+- **THEN** the platform authenticates the agent and applies visibility/allowlist enforcement for the target resource

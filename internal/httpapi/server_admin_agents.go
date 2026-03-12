@@ -9,11 +9,10 @@ import (
 )
 
 type adminAgentDTO struct {
-	AgentRef       string `json:"agent_ref"`
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	AdmittedStatus string `json:"admitted_status"`
-	UpdatedAt      string `json:"updated_at"`
+	AgentRef  string `json:"agent_ref"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type adminListAgentsResponse struct {
@@ -26,7 +25,6 @@ type adminAgentGatewayHealthDTO struct {
 	AgentRef       string `json:"agent_ref"`
 	Name           string `json:"name"`
 	Status         string `json:"status"`
-	AdmittedStatus string `json:"admitted_status"`
 	PendingOffers  int    `json:"pending_offers"`
 	ActiveClaims   int    `json:"active_claims"`
 	LastPollAt     string `json:"last_poll_at,omitempty"`
@@ -76,7 +74,7 @@ func (s server) handleAdminListAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sql := `
-		select a.public_ref, a.name, a.status, a.admitted_status, a.updated_at
+		select a.public_ref, a.name, a.status, a.updated_at
 		from agents a
 	`
 	if len(where) > 0 {
@@ -96,23 +94,21 @@ func (s server) handleAdminListAgents(w http.ResponseWriter, r *http.Request) {
 	out := make([]adminAgentDTO, 0, limit)
 	for rows.Next() {
 		var (
-			agentRef       string
-			name           string
-			status         string
-			admittedStatus string
-			updatedAt      time.Time
+			agentRef  string
+			name      string
+			status    string
+			updatedAt time.Time
 		)
-		if err := rows.Scan(&agentRef, &name, &status, &admittedStatus, &updatedAt); err != nil {
+		if err := rows.Scan(&agentRef, &name, &status, &updatedAt); err != nil {
 			logError(ctx, "admin list agents scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		out = append(out, adminAgentDTO{
-			AgentRef:       strings.TrimSpace(agentRef),
-			Name:           strings.TrimSpace(name),
-			Status:         strings.TrimSpace(status),
-			AdmittedStatus: strings.TrimSpace(admittedStatus),
-			UpdatedAt:      updatedAt.UTC().Format(time.RFC3339),
+			AgentRef:  strings.TrimSpace(agentRef),
+			Name:      strings.TrimSpace(name),
+			Status:    strings.TrimSpace(status),
+			UpdatedAt: updatedAt.UTC().Format(time.RFC3339),
 		})
 		if len(out) >= limit+1 {
 			break
@@ -211,7 +207,6 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 			a.public_ref,
 			coalesce(a.name, ''),
 			coalesce(a.status, ''),
-			coalesce(a.admitted_status, ''),
 			coalesce(po.pending_offers, 0) as pending_offers,
 			coalesce(ac.active_claims, 0) as active_claims,
 			coalesce(lp.last_poll_at, null) as last_poll_at,
@@ -271,25 +266,23 @@ func (s server) handleAdminListAgentGatewayHealth(w http.ResponseWriter, r *http
 			agentRef       string
 			name           string
 			status         string
-			admittedStatus string
 			pendingOffers  int
 			activeClaims   int
 			lastPollAt     *time.Time
 			lastClaimAt    *time.Time
 			lastCompleteAt *time.Time
 		)
-		if err := rows.Scan(&agentRef, &name, &status, &admittedStatus, &pendingOffers, &activeClaims, &lastPollAt, &lastClaimAt, &lastCompleteAt); err != nil {
+		if err := rows.Scan(&agentRef, &name, &status, &pendingOffers, &activeClaims, &lastPollAt, &lastClaimAt, &lastCompleteAt); err != nil {
 			logError(ctx, "admin list agent gateway health scan failed", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
 		dto := adminAgentGatewayHealthDTO{
-			AgentRef:       strings.TrimSpace(agentRef),
-			Name:           strings.TrimSpace(name),
-			Status:         strings.TrimSpace(status),
-			AdmittedStatus: strings.TrimSpace(admittedStatus),
-			PendingOffers:  pendingOffers,
-			ActiveClaims:   activeClaims,
+			AgentRef:      strings.TrimSpace(agentRef),
+			Name:          strings.TrimSpace(name),
+			Status:        strings.TrimSpace(status),
+			PendingOffers: pendingOffers,
+			ActiveClaims:  activeClaims,
 		}
 		if lastPollAt != nil {
 			dto.LastPollAt = lastPollAt.UTC().Format(time.RFC3339)

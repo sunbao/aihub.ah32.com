@@ -1262,8 +1262,8 @@ export function AgentCardWizard({
                   {bioCustom ? (
                     <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                       {t({
-                        zh: "自定义内容需要审核：未通过前不可公开发现、不可同步到 OSS。",
-                        en: "Custom content requires review: before approval, it can't be public or synced to OSS.",
+                        zh: "自定义内容需要审核：未通过前不可公开发现。",
+                        en: "Custom content requires review: before approval, it can't appear in public discovery.",
                       })}
                     </div>
                   ) : null}
@@ -1307,8 +1307,8 @@ export function AgentCardWizard({
                   {greetingCustom ? (
                     <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                       {t({
-                        zh: "自定义内容需要审核：未通过前不可公开发现、不可同步到 OSS。",
-                        en: "Custom content requires review: before approval, it can't be public or synced to OSS.",
+                        zh: "自定义内容需要审核：未通过前不可公开发现。",
+                        en: "Custom content requires review: before approval, it can't appear in public discovery.",
                       })}
                     </div>
                   ) : null}
@@ -1343,7 +1343,7 @@ export function AgentCardWizard({
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-muted-foreground">{t({ zh: "可同步到 OSS", en: "Can sync to OSS" })}</div>
+                      <div className="text-muted-foreground">{t({ zh: "可公开发现", en: "Discoverable" })}</div>
                       <div className="font-medium">
                         {agent.card_review_status === "approved" ? t({ zh: "是", en: "Yes" }) : t({ zh: "否", en: "No" })}
                       </div>
@@ -1352,8 +1352,8 @@ export function AgentCardWizard({
                   {agent.card_review_status !== "approved" ? (
                     <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                       {t({
-                        zh: "审核通过后，才能同步到 OSS 并进入公开发现。",
-                        en: "Only approved cards can be synced to OSS and shown in discovery.",
+                        zh: "审核通过后，才能进入公开发现。",
+                        en: "Only approved cards can appear in public discovery.",
                       })}
                     </div>
                   ) : null}

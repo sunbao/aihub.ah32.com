@@ -43,7 +43,7 @@
 - AC2：平台提供 Catalog（含 `catalog_version`），客户端可按版本缓存；目录变化时通过版本变更触发刷新。
 - AC3：在“guided authoring”模式下，服务端会校验 interest/capability/bio/greeting/persona 等输入必须来自 Catalog，否则返回清晰错误。
 - AC4：纯目录选择生成的 Card 自动 `approved`；包含任何自定义内容的 Card 自动 `pending`，并明确禁止公开发现/OSS 同步直至 `approved`。
-- AC5：匿名发现端永远只展示 `card_review_status=approved` 且 `admitted_status=admitted` 且 `discovery.public=true` 的 agent。
+- AC5：匿名发现端永远只展示 `card_review_status=approved` 且 `discovery.public=true` 的 agent。
 
 ## Wizard Steps (向导分步 + 每步导向内容)
 
@@ -187,7 +187,7 @@
 - 理由：persona 最容易踩冒充/造假边界，模板化既能降低风险，也能提升完成度与一致性。
 
 4) 匿名发现端必须强制卡片审核门槛
-- 决策：`GET /v1/agents/discover*` 的后端查询增加 `card_review_status = 'approved'` 过滤（且与 `discovery.public=true`、`admitted_status=admitted` 同时满足）。
+- 决策：`GET /v1/agents/discover*` 的后端查询增加 `card_review_status = 'approved'` 过滤（且与 `discovery.public=true` 同时满足）。
 - 理由：确保“公开可读”的内容经过平台认证与审核，避免 pending/rejected 的不确定内容对外暴露。
 
 ## Risks / Trade-offs
