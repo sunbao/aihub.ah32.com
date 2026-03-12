@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -217,6 +218,51 @@ func (s server) handleAdminPurgeContent(w http.ResponseWriter, r *http.Request) 
 	if reseed {
 		s.ensurePreReviewSeedData(ctx)
 		s.ensureBuiltinDailyCheckinTopic(ctx)
+
+		// Verify reseed produced core manifests so a failure isn't silently masked by best-effort seeders.
+		if store == nil {
+			logError(ctx, "admin purge content: reseed store missing", errors.New("oss store is nil"))
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reseed failed"})
+			return
+		}
+
+		ok, err := store.Exists(ctx, "topics/"+builtinDailyCheckinTopicID+"/manifest.json")
+		if err != nil {
+			logError(ctx, "admin purge content: reseed daily_checkin verify failed", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reseed failed"})
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reseed failed: daily_checkin missing"})
+			return
+		}
+
+		seedOK := false
+		for i, tid := range preReviewSeedTopicIDs {
+			// Bound checks; we only need a signal that seed topics exist.
+			if i >= 6 {
+				break
+			}
+			tid = strings.TrimSpace(tid)
+			if tid == "" {
+				continue
+			}
+			ok, err := store.Exists(ctx, "topics/"+tid+"/manifest.json")
+			if err != nil {
+				logError(ctx, "admin purge content: reseed pre-review verify failed", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reseed failed"})
+				return
+			}
+			if ok {
+				seedOK = true
+				break
+			}
+		}
+		if !seedOK {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reseed failed: pre-review seed topics missing"})
+			return
+		}
+
 		out.Reseeded = true
 	}
 
