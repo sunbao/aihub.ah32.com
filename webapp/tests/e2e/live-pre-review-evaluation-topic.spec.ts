@@ -16,6 +16,22 @@ async function gotoWithRetry(page: Page, url: string): Promise<void> {
   throw new Error(`Failed to open ${url}, last status=${lastStatus}`);
 }
 
+async function openEvaluationStep(page: Page, url: string): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await gotoWithRetry(page, url);
+    const topicBtn = page.getByRole("button", { name: /^Topic$/i });
+    try {
+      await expect(topicBtn).toBeVisible({ timeout: 3_000 });
+      return;
+    } catch {
+      const bodyText = String((await page.textContent("body")) ?? "");
+      if (!bodyText.includes("Not found.")) throw new Error("Evaluation step did not render the Topic selector.");
+    }
+    await page.waitForTimeout(500 * (i + 1));
+  }
+  throw new Error("Evaluation step remained unavailable after retries.");
+}
+
 async function createAgent(request: APIRequestContext, baseURL: string, adminApiKey: string, name: string) {
   const res = await request.post(`${baseURL}/v1/agents`, {
     headers: { Authorization: `Bearer ${adminApiKey}` },
@@ -64,6 +80,26 @@ async function patchAgentForWizardUnlock(request: APIRequestContext, baseURL: st
   if (!res.ok()) throw new Error(`Patch agent failed, status=${res.status()}`);
 }
 
+async function waitForAgentReadable(
+  request: APIRequestContext,
+  baseURL: string,
+  adminApiKey: string,
+  agentRef: string,
+): Promise<void> {
+  const ref = String(agentRef ?? "").trim();
+  if (!ref) throw new Error("Missing agentRef.");
+  let lastStatus = 0;
+  for (let i = 0; i < 6; i++) {
+    const res = await request.get(`${baseURL}/v1/agents/${encodeURIComponent(ref)}`, {
+      headers: { Authorization: `Bearer ${adminApiKey}` },
+    });
+    lastStatus = res.status();
+    if (res.ok()) return;
+    await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)));
+  }
+  throw new Error(`Agent was not readable after create, last status=${lastStatus}`);
+}
+
 async function deleteAllEvaluationsForAgent(request: APIRequestContext, baseURL: string, adminApiKey: string, agentRef: string): Promise<void> {
   const ref = String(agentRef ?? "").trim();
   if (!ref) return;
@@ -104,6 +140,7 @@ test.describe("live: pre-review evaluation picks a topic", () => {
     const agentName = `e2e-eval-topic-${Date.now()}`;
     const { agentRef } = await createAgent(request, base, adminApiKey, agentName);
     await patchAgentForWizardUnlock(request, base, adminApiKey, agentRef);
+    await waitForAgentReadable(request, base, adminApiKey, agentRef);
 
     // UI auth: treat ADMIN_API_KEY as the user API key for console flows.
     await initLocalStorageAuth(page, { userApiKey: adminApiKey, baseUrl: base });
@@ -114,11 +151,10 @@ test.describe("live: pre-review evaluation picks a topic", () => {
 
     try {
       // Go straight to the Status step which contains the pre-review evaluation panel.
-      await gotoWithRetry(page, `/app/agents/${encodeURIComponent(agentRef)}/card/edit?step=6`);
-      await expect(page.getByRole("button", { name: /话题|Topic/i })).toBeVisible();
+      await openEvaluationStep(page, `/app/agents/${encodeURIComponent(agentRef)}/card/edit?step=6`);
 
       // Choose Topic source.
-      await page.getByRole("button", { name: /话题|Topic/i }).click();
+      await page.getByRole("button", { name: /^Topic$/i }).click();
 
       // Pick our seeded topic.
       // Click the Pick button on the same row/card as our exact title (avoid strict-mode collisions
@@ -126,33 +162,33 @@ test.describe("live: pre-review evaluation picks a topic", () => {
       const topicRow = page
         .getByText(topicTitle, { exact: true })
         .first()
-        .locator("xpath=ancestor::*[.//button[normalize-space()='Pick' or normalize-space()='选择']][1]");
+        .locator("xpath=ancestor::*[.//button[normalize-space()='Pick']][1]");
       await expect(topicRow, `Seed topic not visible: "${topicTitle}"`).toBeVisible();
-      await topicRow.getByRole("button", { name: /选择|Pick/i }).click();
+      await topicRow.getByRole("button", { name: /^Pick$/i }).click();
 
-      // Start evaluation (button text is "发起测评/Start").
+      // Start evaluation.
       const createRespP = page.waitForResponse((resp) => {
         const u = String(resp.url() ?? "");
         return resp.request().method() === "POST" && u.includes(`/v1/agents/${encodeURIComponent(agentRef)}/pre-review-evaluations`);
       });
-      await page.getByRole("button", { name: /发起测评|Start/i }).click();
+      await page.getByRole("button", { name: /^Start$/i }).click();
       if (keepE2EData()) {
         const createResp = await createRespP;
         const j = (await createResp.json()) as { evaluation_id?: string; run_ref?: string };
         keptEvaluationId = String(j?.evaluation_id ?? "").trim();
         keptRunRef = String(j?.run_ref ?? "").trim();
       }
-      await expect(page.getByText(/已发起测评|Evaluation started/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText(/Evaluation started/i).first()).toBeVisible({ timeout: 10_000 });
 
       // Find evaluation entry and open snapshot.
       const evalRow = page
         .getByText(topicTitle, { exact: true })
         .first()
-        .locator("xpath=ancestor::*[.//button[normalize-space()='Snapshot' or normalize-space()='快照']][1]");
+        .locator("xpath=ancestor::*[.//button[normalize-space()='Snapshot']][1]");
       await expect(evalRow).toBeVisible();
-      await evalRow.getByRole("button", { name: /快照|Snapshot/i }).click();
+      await evalRow.getByRole("button", { name: /^Snapshot$/i }).click();
 
-      await expect(page.getByText(/测评来源快照|Source snapshot/i)).toBeVisible();
+      await expect(page.getByText(/Source snapshot/i)).toBeVisible();
       const snapDialog = page.getByRole("alertdialog");
       await expect(snapDialog.getByText(new RegExp(topicTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).first()).toBeVisible();
 
@@ -161,11 +197,11 @@ test.describe("live: pre-review evaluation picks a topic", () => {
 
       if (!keepE2EData()) {
         // Cleanup evaluation via UI delete (also deletes the evaluation run).
-        await evalRow.getByRole("button", { name: /删除|Delete/i }).click();
-        await expect(page.getByText(/删除测评数据|Delete evaluation/i)).toBeVisible();
-        await page.getByRole("alertdialog").getByRole("button", { name: /删除|Delete/i }).click();
+        await evalRow.getByRole("button", { name: /^Delete$/i }).click();
+        await expect(page.getByText(/Delete evaluation/i)).toBeVisible();
+        await page.getByRole("alertdialog").getByRole("button", { name: /^Delete$/i }).click();
 
-        await expect(page.getByText(/暂无测评记录|No evaluations yet/i)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/No evaluations yet/i)).toBeVisible({ timeout: 15_000 });
       }
     } finally {
       if (keepE2EData()) {

@@ -16,11 +16,38 @@ async function gotoWithRetry(page: Page, url: string): Promise<void> {
   throw new Error(`Failed to open ${url}, last status=${lastStatus}`);
 }
 
-async function createAgent(request: APIRequestContext, baseURL: string, adminApiKey: string, name: string, tags: string[]) {
-  const res = await request.post(`${baseURL}/v1/agents`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-    data: { name, description: "e2e: square latest activity", tags },
+async function withRetries<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < 4; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)));
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`${label} failed`);
+}
+
+async function deleteWithRetry(
+  request: APIRequestContext,
+  url: string,
+  headers: Record<string, string>,
+  label: string,
+): Promise<void> {
+  await withRetries(label, async () => {
+    const res = await request.delete(url, { headers });
+    if (!res.ok()) throw new Error(`${label} failed, status=${res.status()}`);
   });
+}
+
+async function createAgent(request: APIRequestContext, baseURL: string, adminApiKey: string, name: string, tags: string[]) {
+  const res = await withRetries("Create agent", () =>
+    request.post(`${baseURL}/v1/agents`, {
+      headers: { Authorization: `Bearer ${adminApiKey}` },
+      data: { name, description: "e2e: square latest activity", tags },
+    }),
+  );
   if (!res.ok()) throw new Error(`Create agent failed, status=${res.status()}`);
   const j = (await res.json()) as { agent_ref?: string; api_key?: string };
   const agentRef = String(j.agent_ref ?? "").trim();
@@ -30,10 +57,12 @@ async function createAgent(request: APIRequestContext, baseURL: string, adminApi
 }
 
 async function adminCreateRun(request: APIRequestContext, baseURL: string, adminApiKey: string, goal: string, requiredTags: string[]) {
-  const res = await request.post(`${baseURL}/v1/admin/runs`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-    data: { goal, constraints: "e2e: square activity", required_tags: requiredTags },
-  });
+  const res = await withRetries("Create run", () =>
+    request.post(`${baseURL}/v1/admin/runs`, {
+      headers: { Authorization: `Bearer ${adminApiKey}` },
+      data: { goal, constraints: "e2e: square activity", required_tags: requiredTags },
+    }),
+  );
   if (!res.ok()) throw new Error(`Create run failed, status=${res.status()}`);
   const j = (await res.json()) as { run_ref?: string };
   const runRef = String(j.run_ref ?? "").trim();
@@ -42,29 +71,35 @@ async function adminCreateRun(request: APIRequestContext, baseURL: string, admin
 }
 
 async function emitKeyEvent(request: APIRequestContext, baseURL: string, agentKey: string, runRef: string, text: string) {
-  const res = await request.post(`${baseURL}/v1/gateway/runs/${encodeURIComponent(runRef)}/events`, {
-    headers: { Authorization: `Bearer ${agentKey}` },
-    data: { kind: "summary", payload: { text } },
-  });
+  const res = await withRetries("Emit event", () =>
+    request.post(`${baseURL}/v1/gateway/runs/${encodeURIComponent(runRef)}/events`, {
+      headers: { Authorization: `Bearer ${agentKey}` },
+      data: { kind: "summary", payload: { text } },
+    }),
+  );
   if (!res.ok()) throw new Error(`Emit event failed, status=${res.status()}`);
 }
 
 async function adminDeleteRun(request: APIRequestContext, baseURL: string, adminApiKey: string, runRef: string): Promise<void> {
   const ref = String(runRef ?? "").trim();
   if (!ref) return;
-  const res = await request.delete(`${baseURL}/v1/admin/runs/${encodeURIComponent(ref)}`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-  });
-  if (!res.ok()) throw new Error(`Admin delete run failed, status=${res.status()}`);
+  await deleteWithRetry(
+    request,
+    `${baseURL}/v1/admin/runs/${encodeURIComponent(ref)}`,
+    { Authorization: `Bearer ${adminApiKey}` },
+    "Admin delete run",
+  );
 }
 
 async function adminDeleteAgent(request: APIRequestContext, baseURL: string, adminApiKey: string, agentRef: string): Promise<void> {
   const ref = String(agentRef ?? "").trim();
   if (!ref) return;
-  const res = await request.delete(`${baseURL}/v1/agents/${encodeURIComponent(ref)}`, {
-    headers: { Authorization: `Bearer ${adminApiKey}` },
-  });
-  if (!res.ok()) throw new Error(`Delete agent failed, status=${res.status()}`);
+  await deleteWithRetry(
+    request,
+    `${baseURL}/v1/agents/${encodeURIComponent(ref)}`,
+    { Authorization: `Bearer ${adminApiKey}` },
+    "Delete agent",
+  );
 }
 
 test.describe("live: Square shows latest activity", () => {

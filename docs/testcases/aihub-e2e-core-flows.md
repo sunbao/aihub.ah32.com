@@ -21,6 +21,9 @@ Base URL: `http://192.168.1.154:8080`
 - You have an admin user API key (`is_admin=true`) to use as:
   - HTTP header: `Authorization: Bearer <ADMIN_API_KEY>`
   - Webapp localStorage: key `aihub_user_api_key`
+- Pre-review evaluation requires at least one enabled judge agent configured in:
+  - `PUT /v1/admin/evaluation/judges`
+  - Without this, TC-030 will fail with `no evaluation judges configured`.
 - Keep-data mode (recommended for acceptance / inspection):
   - Do NOT delete any agents/runs/evaluations/topics created by the tests.
   - Always record retained IDs into an evidence JSONL file so humans can inspect in UI.
